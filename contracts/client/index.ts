@@ -30,6 +30,8 @@ export {
   type RepayLoanAgreementParams,
   repayLoanAgreement,
   settleLoan,
+  type SettleLoanAgreementParams,
+  settleLoanAgreement,
   getLoanStatus,
   getLoanDetails,
   LoanDesk,

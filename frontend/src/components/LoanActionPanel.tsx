@@ -9,6 +9,7 @@ interface LoanActionPanelProps {
   loansMap?: Record<string, LoanDetailsModel>;
   onStartVerification?: () => void;
   onStartRepayment?: () => void;
+  onStartSettlement?: () => void;
 }
 
 export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
@@ -18,6 +19,7 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
   loansMap,
   onStartVerification,
   onStartRepayment,
+  onStartSettlement,
 }) => {
   const action = getLifecycleActionDescriptor(loan);
 
@@ -79,8 +81,12 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
                 onStartRepayment();
                 return;
               }
+              if (loan.status === 2 && onStartSettlement) {
+                onStartSettlement();
+                return;
+              }
               alert(
-                `Prototype Action: ${action.buttonText}\n\nNotice: The frontend is currently operating in Local Mock Mode (Commit #18). This action is derived from canonical LoanDesk contract guards (canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan). No fake blockchain transactions or wallet signatures are fabricated.`
+                `Prototype Action: ${action.buttonText}\n\nNotice: The frontend is currently operating in Local Mock Mode (Commit #19). This action is derived from canonical LoanDesk contract guards (canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan). No fake blockchain transactions or wallet signatures are fabricated.`
               );
             }}
           >

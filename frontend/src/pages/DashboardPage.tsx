@@ -10,6 +10,7 @@ import { LoanMarketplace } from '../components/LoanMarketplace.js';
 import { LenderEvaluationPanel } from '../components/LenderEvaluationPanel.js';
 import { EligibilityVerificationPanel } from '../components/EligibilityVerificationPanel.js';
 import { RepaymentPanel } from '../components/RepaymentPanel.js';
+import { SettlementPanel } from '../components/SettlementPanel.js';
 import type { LoanDetailsModel } from '../types/index.js';
 import { LoanStatus } from '../types/index.js';
 
@@ -19,6 +20,7 @@ interface DashboardPageProps {
   onLoanFunded?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanVerified?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanRepaid?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
+  onLoanSettled?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -27,11 +29,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onLoanFunded,
   onLoanVerified,
   onLoanRepaid,
+  onLoanSettled,
 }) => {
   const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
+  const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
 
   useEffect(() => {
     setInternalLoans(loansMap);
@@ -41,6 +45,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   useEffect(() => {
     setIsVerifyingEligibility(false);
     setIsRepayingLoan(false);
+    setIsSettlingLoan(false);
   }, [selectedLoanId]);
 
   const activeLoans = internalLoans;
@@ -79,6 +84,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }));
     if (onLoanRepaid) {
       onLoanRepaid(repaidLoanId, updatedLoan);
+    }
+  };
+
+  const handleSettlementSuccess = (settledLoanId: string, updatedLoan: LoanDetailsModel) => {
+    setInternalLoans((prev) => ({
+      ...prev,
+      [settledLoanId]: updatedLoan,
+    }));
+    setIsSettlingLoan(false);
+    if (onLoanSettled) {
+      onLoanSettled(settledLoanId, updatedLoan);
     }
   };
 
@@ -237,6 +253,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </div>
                 )}
 
+                {/* Borrower/Lender Settlement CTA for repaid loans */}
+                {currentLoan.status === LoanStatus.repaid && !isSettlingLoan && (
+                  <div className="borrower-settlement-cta-card">
+                    <div className="cta-header">
+                      <span className="cta-icon">🏁</span>
+                      <div className="cta-text">
+                        <h4>Repaid Agreement Awaiting Settlement</h4>
+                        <p>
+                          The loan obligation has been cleared. The borrower or designated lender may now settle and conclude this agreement.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-start-settlement"
+                      onClick={() => setIsSettlingLoan(true)}
+                    >
+                      Settle Loan Agreement
+                    </button>
+                  </div>
+                )}
+
+                {/* Active Terminal Settlement Panel */}
+                {isSettlingLoan && currentLoan.status === LoanStatus.repaid && (
+                  <SettlementPanel
+                    loan={currentLoan}
+                    loanId={effectiveLoanId}
+                    onLoanSettled={handleSettlementSuccess}
+                    onClose={() => setIsSettlingLoan(false)}
+                  />
+                )}
+
+                {/* Terminal Settled Confirmation Banner */}
+                {currentLoan.status === LoanStatus.settled && (
+                  <div className="settled-attestation-banner">
+                    <span className="banner-icon">🔒</span>
+                    <div className="banner-content">
+                      <strong>Agreement Concluded &amp; Settled</strong>
+                      <p>
+                        This loan agreement has reached its terminal lifecycle state. All obligations have been cleared and the contract is permanently closed.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <LoanActionPanel
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
@@ -244,6 +305,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   loansMap={activeLoans}
                   onStartVerification={() => setIsVerifyingEligibility(true)}
                   onStartRepayment={() => setIsRepayingLoan(true)}
+                  onStartSettlement={() => setIsSettlingLoan(true)}
                 />
               </div>
 
@@ -291,7 +353,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #18
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #19
         </p>
       </footer>
     </div>

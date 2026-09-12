@@ -555,6 +555,59 @@ export function repayLoanAgreement(params: RepayLoanAgreementParams): RepayLoanR
   });
 }
 
+/**
+ * Parameters for settling a loan agreement model.
+ */
+export interface SettleLoanAgreementParams {
+  loan: LoanDetailsModel;
+  callerPk?: Uint8Array;
+  contractState?: ContractState;
+}
+
+/**
+ * Executes loan settlement on a loan model, initializing or reusing contract state.
+ */
+export function settleLoanAgreement(params: SettleLoanAgreementParams): SettleLoanResult {
+  const callerPk = params.callerPk ?? params.loan.borrowerBytes;
+  const guard = canSettleLoan(params.loan, callerPk);
+  if (!guard.canExecute) {
+    throw new LoanApiError(LoanErrorCode.INVALID_STATE, guard.reason ?? 'Cannot settle loan');
+  }
+
+  let activeState = params.contractState;
+  if (!activeState) {
+    const init = initializeLoanContract({
+      borrowerPk: params.loan.borrowerBytes,
+      principalAmount: params.loan.amount,
+      interestRateBasisPoints: params.loan.interestRateBasisPoints,
+      durationBlocks: params.loan.durationBlocks,
+      eligibilityThreshold: params.loan.eligibilityThreshold,
+    });
+    const verified = executeEligibilityProof({
+      contractState: init.contractState,
+      borrowerPk: params.loan.borrowerBytes,
+      privateFinancialValue: params.loan.eligibilityThreshold,
+    });
+    const lenderPk = params.loan.lenderBytes ?? new Uint8Array(32).fill(10);
+    const funded = executeFundLoan({
+      contractState: verified.updatedContractState,
+      lenderPk,
+      callerPk: lenderPk,
+    });
+    const repaid = executeRepayLoan({
+      contractState: funded.updatedContractState,
+      borrowerPk: params.loan.borrowerBytes,
+      callerPk: params.loan.borrowerBytes,
+    });
+    activeState = repaid.updatedContractState;
+  }
+
+  return settleLoan({
+    contractState: activeState,
+    callerPk,
+  });
+}
+
 // -----------------------------------------------------------------------------
 // 6. Unified LoanDesk Facade
 // -----------------------------------------------------------------------------
@@ -569,6 +622,7 @@ export const LoanDesk = {
   repayLoan,
   repayLoanAgreement,
   settleLoan,
+  settleLoanAgreement,
   getLoanStatus,
   getLoanDetails,
   calculateRepaymentObligation,

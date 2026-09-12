@@ -106,7 +106,7 @@ export const RepaymentPanel: React.FC<RepaymentPanelProps> = ({
         <span className="privacy-shield-icon">🛡️</span>
         <p>
           Repayment obligation is calculated strictly from on-chain agreement terms.
-          No confidential borrower credentials or off-chain witness values are involved.
+          No confidential borrower credentials or off-chain data parameters are involved.
         </p>
       </div>
 

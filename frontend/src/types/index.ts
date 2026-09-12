@@ -77,3 +77,12 @@ export type {
   RepaymentFailureReason,
 } from './repayment.js';
 
+export type {
+  SettlementReadinessStatus,
+  SettlementReadiness,
+  SettlementEvaluation,
+  SettlementRequest,
+  SettlementPrivacyAttestation,
+  SettlementResult,
+} from './settlement.js';
+

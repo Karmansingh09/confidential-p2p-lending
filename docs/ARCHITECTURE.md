@@ -1044,3 +1044,70 @@ In local prototype mode, token escrow and cross-party asset transfers are not si
 - The `assetTransferStatus` property explicitly reads `"Not executed — local prototype mode"`.
 - Live token settlement will be integrated in upcoming milestones via Midnight Native Tokens and Lace Wallet signing.
 
+---
+
+## 19. Loan Settlement Frontend Workflow & Protocol Finality (Commit #19)
+
+Commit #19 implements the final lifecycle state transition workflow (`REPAID → SETTLED`) across the client and React frontend layers, enabling either authorized participant (the borrower or the lender) to conclude a successfully repaid micro-loan agreement and transition it to the terminal `SETTLED` state.
+
+### 19.1 Workflow Architecture & Component Structure
+
+```
+contracts/client/
+├── loan-api.ts                    # Exports settleLoanAgreement and canonical lifecycle guard canSettleLoan
+frontend/src/
+├── types/
+│   └── settlement.ts              # Domain types for settlement readiness, evaluations, requests, and results
+├── lib/
+│   └── settlement-service.ts      # Service layer wrapping canSettleLoan and executing prototype settlement
+├── components/
+│   ├── SettlementPanel.tsx        # Interactive settlement panel with role switcher, readiness badge & drawer
+│   ├── SettlementConfirmation.tsx # Terminal confirmation card with complete 5-phase stepper and protocol disclaimers
+│   └── LoanActionPanel.tsx        # Action panel with contextual "Proceed to Settlement" trigger
+├── pages/
+│   └── DashboardPage.tsx          # Renders settlement CTA banner, drawer toggle, and terminal attestation card
+└── App.tsx                        # Global agreement registry state handler onLoanSettled
+```
+
+### 19.2 Symmetrical Participant Authorization Model
+
+In adherence to the core Compact smart contract logic (`settleLoan` circuit), settlement does not mandate a single unilateral party. Instead, it enforces **symmetrical authorization**:
+- **Borrower Authorization**: The borrower whose public key matches `loan.borrowerBytes` may execute protocol settlement.
+- **Lender Authorization**: The lender whose public key matches `loan.lenderBytes` may execute protocol settlement.
+- **Third-Party Rejection**: Any caller whose public key matches neither participant is unconditionally rejected with the code `UNAUTHORIZED_PARTICIPANT`.
+- **Interactive Role Switcher**: In `SettlementPanel.tsx`, the prototype UI offers a participant switcher allowing evaluators to execute settlement from either the borrower's or the lender's perspective.
+
+### 19.3 Contract-Guarded Settlement Readiness
+
+Settlement execution is governed strictly by the canonical lifecycle rules defined in `canSettleLoan(agreement, caller)`:
+- **`READY_TO_SETTLE`**: Agreement status is `LoanStatus.repaid` ($2$), lender is assigned, and caller matches borrower or lender.
+- **`LOAN_NOT_REPAID`**: Rejected if loan status is `requested` ($0$) or `funded` ($1$).
+- **`ALREADY_SETTLED`**: Rejected if loan status is already in the terminal `settled` ($3$) state.
+- **`UNAUTHORIZED_PARTICIPANT`**: Rejected if the caller is neither the designated borrower nor the lender.
+- **`LOAN_NOT_AVAILABLE`**: Handled gracefully if agreement data is missing or corrupted.
+
+### 19.4 Lifecycle Stepper & Protocol Finality
+
+1. **Repayment Complete Discovery**: When viewing an agreement with status `REPAID`, the dashboard displays a prominent "Repayment Received — Agreement Ready for Final Settlement" banner.
+2. **Review & Authorization**: The user reviews the public agreement parameters (principal, agreed interest, total settled obligation, borrower and lender keys) and selects their participant identity.
+3. **Execution & Finality**: Confirming settlement triggers `executeSettlementPrototype`, transitioning agreement status to `SETTLED`. The UI renders `SettlementConfirmation.tsx` displaying:
+   - The complete 5-phase protocol lifecycle stepper:
+     $$\text{REQUESTED} \longrightarrow \text{VERIFIED} \longrightarrow \text{FUNDED} \longrightarrow \text{REPAID} \longrightarrow \mathbf{SETTLED}$$
+   - Highlighted terminal protocol finality badge: all debt obligations extinguished, loan agreement locked against any subsequent transitions.
+   - Comprehensive audit details: transaction ID, settled obligation amount, final timestamp, and participant identities.
+
+### 19.5 Strict Privacy Guarantees & Zero Leakage
+
+Like the funding and repayment workflows, settlement is entirely public and deterministic:
+- Derived solely from public agreement identifiers and authorized public keys.
+- Operates with zero knowledge of private borrower financial inputs, bank statements, or off-chain credentials.
+- All code in `frontend/src/` passes automated privacy audits forbidding sensitive or secret terms.
+
+### 19.6 Honest Prototype Disclosures
+
+In accordance with protocol design standards, no real blockchain transactions or wallet signatures are fabricated:
+- The UI explicitly renders: `"Asset transfer is not executed in local prototype mode. State machine transition only."`
+- Settlement results record `assetTransferStatus: "Not executed — local prototype mode"`.
+- Live on-chain settlement will be integrated in subsequent milestones via Midnight.js and Lace Wallet signing.
+
+

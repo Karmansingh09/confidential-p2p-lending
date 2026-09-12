@@ -138,7 +138,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #18)
+### Current Status & Features (Commit #19)
+- **Settlement Frontend Workflow & Protocol Finality (Commit #19)**:
+  - **Typed Settlement Domain Models**: Comprehensive typing (`frontend/src/types/settlement.ts`) defining settlement readiness states, multi-party authorization models, audit records, and settlement results.
+  - **Symmetrical Participant Authorization**: Governed by canonical contract rules (`settleLoan`), authorizing either the verified borrower (`loan.borrowerBytes`) or the assigned lender (`loan.lenderBytes`) to trigger protocol closure while rejecting unauthorized third parties (`UNAUTHORIZED_PARTICIPANT`).
+  - **Contract-Guarded Readiness**: Enforces canonical lifecycle validation via `canSettleLoan` from `contracts/client/loan-api.ts`, returning typed readiness codes (`READY_TO_SETTLE`, `LOAN_NOT_REPAID`, `ALREADY_SETTLED`, `UNAUTHORIZED_PARTICIPANT`, `LOAN_NOT_AVAILABLE`).
+  - **Interactive Role Switcher & Review Drawer**: `SettlementPanel.tsx` offers seamless switching between borrower and lender perspectives, an agreement details breakdown, and an expandable review drawer.
+  - **Terminal Protocol Finality & 5-Phase Stepper**: `SettlementConfirmation.tsx` renders the terminal `SETTLED` state with complete extinguishment of debt obligations and an updated 5-phase visual stepper (`REQUESTED → VERIFIED → FUNDED → REPAID → [SETTLED]`).
+  - **Dashboard & Action Panel Integration**: Contextual settlement action buttons in `LoanActionPanel.tsx`, repayment completion discovery banners, review drawer management, and settled attestation banners in `DashboardPage.tsx`.
 - **Borrower Repayment Workflow & Contract-Guarded Repayment UI (Commit #18)**:
   - **Typed Repayment Domain Models**: Comprehensive typing (`frontend/src/types/repayment.ts`) defining lifecycle readiness states, calculation models, and attestations.
   - **Exact BigInt Parity**: Obligation calculations in `frontend/src/lib/repayment-service.ts` directly delegate to `calculateRepaymentObligation` from the contract workspace with exact integer basis points math.
@@ -166,4 +173,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #18). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #19). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

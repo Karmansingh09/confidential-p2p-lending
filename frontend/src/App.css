@@ -3462,3 +3462,446 @@
   justify-content: flex-end;
   gap: 12px;
 }
+
+/* =============================================================================
+   Commit #19: Terminal Settlement Workflow Styles
+   ============================================================================= */
+
+/* Settlement CTA Card in Dashboard */
+.borrower-settlement-cta-card {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(16, 185, 129, 0.06));
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.borrower-settlement-cta-card .cta-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.borrower-settlement-cta-card .cta-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.borrower-settlement-cta-card .cta-text h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  margin-bottom: 4px;
+}
+
+.borrower-settlement-cta-card .cta-text p {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.btn-start-settlement {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.btn-start-settlement:hover {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  transform: translateY(-1px);
+}
+
+/* Settled Terminal Banner */
+.settled-attestation-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.settled-attestation-banner .banner-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.settled-attestation-banner .banner-content strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #a5b4fc;
+  margin-bottom: 2px;
+}
+
+.settled-attestation-banner .banner-content p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Settlement Panel Card */
+.settlement-panel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.repayment-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.repayment-complete-banner .badge-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.repayment-complete-banner .badge-content strong {
+  font-size: 0.9rem;
+  color: #34d399;
+}
+
+.repayment-complete-banner .badge-content p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 2px 0 0 0;
+}
+
+.settlement-readiness-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+
+.settlement-auth-card {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settlement-auth-card .auth-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settlement-auth-card .auth-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.settlement-auth-card .auth-header h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.settlement-auth-card .auth-header p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.role-switcher-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.role-switcher-box .switcher-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.switcher-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-role {
+  font-size: 0.78rem;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: var(--bg-dark);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-bright);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-role.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border-color: #6366f1;
+  font-weight: 600;
+}
+
+.btn-role:hover:not(.active):not(:disabled) {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.btn-role:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.settlement-grid-item {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settlement-grid-item.highlight-cleared {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.settlement-grid-item.highlight-cleared .grid-val {
+  color: #34d399;
+  font-family: var(--font-mono);
+}
+
+.status-repaid {
+  color: #34d399;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+/* Settlement Review Drawer */
+.settlement-review-drawer {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settlement-review-drawer h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.settlement-review-drawer .review-lead {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.settlement-summary-box {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settlement-summary-box .summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.settlement-summary-box .summary-row strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.target-settled {
+  color: #a5b4fc !important;
+}
+
+.btn-confirm-settlement {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-confirm-settlement:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  transform: translateY(-1px);
+}
+
+.btn-confirm-settlement:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-review-settlement {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-review-settlement:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  transform: translateY(-1px);
+}
+
+.btn-review-settlement:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settlement-error-alert {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #ef4444;
+  font-size: 0.82rem;
+}
+
+/* Settlement Confirmation Card */
+.settlement-confirmation-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.settlement-badge {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: #a5b4fc !important;
+  border: 2px solid #6366f1 !important;
+}
+
+.settlement-flow-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.flow-step.step-terminal {
+  background: #6366f1;
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #818cf8;
+}
+
+.settlement-terminal-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #c7d2fe;
+  line-height: 1.45;
+}
+
+.status-settled {
+  color: #a5b4fc !important;
+}
+
+.network-status-tag {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.privacy-status-text {
+  font-size: 0.8rem;
+  color: #34d399;
+  font-weight: 600;
+}

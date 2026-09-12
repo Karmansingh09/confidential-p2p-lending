@@ -48,7 +48,13 @@ import {
   createRepaymentAttestation,
   executeRepaymentPrototype,
 } from '../frontend/src/lib/repayment-service.ts';
-import { canVerifyEligibility, canFundLoan, canRepayLoan } from '../contracts/dist/index.js';
+import {
+  getSettlementReadiness,
+  evaluateLoanForSettlement,
+  createSettlementAttestation,
+  executeSettlementPrototype,
+} from '../frontend/src/lib/settlement-service.ts';
+import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
@@ -68,6 +74,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/lender.ts',
       'src/types/eligibility.ts',
       'src/types/repayment.ts',
+      'src/types/settlement.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -76,6 +83,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/lender-evaluation.ts',
       'src/lib/eligibility-service.ts',
       'src/lib/repayment-service.ts',
+      'src/lib/settlement-service.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -96,6 +104,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/EligibilityVerificationPanel.tsx',
       'src/components/RepaymentPanel.tsx',
       'src/components/RepaymentConfirmation.tsx',
+      'src/components/SettlementPanel.tsx',
+      'src/components/SettlementConfirmation.tsx',
     ];
 
     for (const relPath of requiredFiles) {
@@ -1455,6 +1465,240 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 22, 'Must audit all frontend source files including new repayment modules');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // ===========================================================================
+  // Commit #19: Terminal Loan Settlement Workflow Tests
+  // ===========================================================================
+
+  it('Test 76 (Commit #19 - Req A): Repaid loan is eligible for settlement by borrower', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    assert.equal(repaidLoan.status, LoanStatus.repaid);
+    const readiness = getSettlementReadiness(repaidLoan, repaidLoan.borrowerBytes);
+    assert.equal(readiness.canSettle, true);
+    assert.equal(readiness.status, 'READY_TO_SETTLE');
+    assert.equal(readiness.callerRole, 'BORROWER');
+    assert.equal(readiness.reason, undefined);
+  });
+
+  it('Test 77 (Commit #19 - Req B): Repaid loan is eligible for settlement by lender', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    assert.equal(repaidLoan.status, LoanStatus.repaid);
+    assert.ok(repaidLoan.lenderBytes);
+    const readiness = getSettlementReadiness(repaidLoan, repaidLoan.lenderBytes);
+    assert.equal(readiness.canSettle, true);
+    assert.equal(readiness.status, 'READY_TO_SETTLE');
+    assert.equal(readiness.callerRole, 'LENDER');
+    assert.equal(readiness.reason, undefined);
+  });
+
+  it('Test 78 (Commit #19 - Req C & D): Requested and verified loans cannot be settled', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const unverifiedReadiness = getSettlementReadiness(unverifiedLoan, unverifiedLoan.borrowerBytes);
+    assert.equal(unverifiedReadiness.canSettle, false);
+    assert.equal(unverifiedReadiness.status, 'LOAN_NOT_REPAID');
+    assert.ok(unverifiedReadiness.reason.includes('must be fully repaid'));
+
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const verifiedReadiness = getSettlementReadiness(verifiedLoan, verifiedLoan.borrowerBytes);
+    assert.equal(verifiedReadiness.canSettle, false);
+    assert.equal(verifiedReadiness.status, 'LOAN_NOT_REPAID');
+  });
+
+  it('Test 79 (Commit #19 - Req E): Funded loan cannot be settled before repayment', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    assert.equal(fundedLoan.status, LoanStatus.funded);
+    const borrowerReadiness = getSettlementReadiness(fundedLoan, fundedLoan.borrowerBytes);
+    assert.equal(borrowerReadiness.canSettle, false);
+    assert.equal(borrowerReadiness.status, 'LOAN_NOT_REPAID');
+
+    const lenderReadiness = getSettlementReadiness(fundedLoan, fundedLoan.lenderBytes);
+    assert.equal(lenderReadiness.canSettle, false);
+    assert.equal(lenderReadiness.status, 'LOAN_NOT_REPAID');
+  });
+
+  it('Test 80 (Commit #19 - Req F): Already settled loan cannot be settled again', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    assert.equal(settledLoan.status, LoanStatus.settled);
+    const readiness = getSettlementReadiness(settledLoan, settledLoan.borrowerBytes);
+    assert.equal(readiness.canSettle, false);
+    assert.equal(readiness.status, 'ALREADY_SETTLED');
+    assert.ok(readiness.reason.includes('already reached terminal settlement'));
+  });
+
+  it('Test 81 (Commit #19 - Req G): Unauthorized third party cannot settle', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const unauthorizedPk = new Uint8Array(32).fill(77);
+    const readiness = getSettlementReadiness(repaidLoan, unauthorizedPk);
+    assert.equal(readiness.canSettle, false);
+    assert.equal(readiness.status, 'UNAUTHORIZED_PARTICIPANT');
+    assert.equal(readiness.callerRole, 'UNAUTHORIZED');
+    assert.ok(readiness.reason.includes('Only the borrower or designated lender'));
+  });
+
+  it('Test 82 (Commit #19 - Req H): Settlement transition correctly changes REPAID to SETTLED', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { updatedLoan, result } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+      callerPk: repaidLoan.borrowerBytes,
+      callerRole: 'BORROWER',
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.previousStatus, 'REPAID');
+    assert.equal(result.updatedStatus, LoanStatus.settled);
+    assert.equal(result.updatedStatusText, 'settled');
+    assert.equal(updatedLoan.status, LoanStatus.settled);
+    assert.equal(updatedLoan.statusText, 'settled');
+    assert.equal(result.settledBy, 'BORROWER');
+  });
+
+  it('Test 83 (Commit #19 - Req I): Settlement assigns no new financial values or balance mutations', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { updatedLoan, result } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+      callerPk: repaidLoan.borrowerBytes,
+    });
+    assert.equal(updatedLoan.amount, repaidLoan.amount);
+    assert.equal(updatedLoan.interestRateBasisPoints, repaidLoan.interestRateBasisPoints);
+    assert.equal(result.totalObligationCleared, 21600n);
+  });
+
+  it('Test 84 (Commit #19 - Req J): Settlement preserves original public loan terms', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { updatedLoan } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+      callerPk: repaidLoan.lenderBytes,
+      callerRole: 'LENDER',
+    });
+    assert.equal(updatedLoan.amount, repaidLoan.amount);
+    assert.equal(updatedLoan.interestRateBasisPoints, repaidLoan.interestRateBasisPoints);
+    assert.equal(updatedLoan.durationBlocks, repaidLoan.durationBlocks);
+    assert.equal(updatedLoan.eligibilityThreshold, repaidLoan.eligibilityThreshold);
+    assert.equal(updatedLoan.isEligibilityVerified, repaidLoan.isEligibilityVerified);
+    assert.deepEqual(updatedLoan.borrowerBytes, repaidLoan.borrowerBytes);
+    assert.deepEqual(updatedLoan.lenderBytes, repaidLoan.lenderBytes);
+  });
+
+  it('Test 85 (Commit #19 - Req K): Settlement result contains no private witness or financial secrets', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { result } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+    });
+    const serialized = JSON.stringify(result, (_, v) => (typeof v === 'bigint' ? v.toString() : v));
+    assert.equal(serialized.includes('privateFinancialValue'), false);
+    assert.equal(serialized.includes('witnessAmount'), false);
+    assert.equal(serialized.includes('secret'), false);
+    assert.ok(result.privacyAttestation.statement.includes('without disclosing confidential data'));
+  });
+
+  it('Test 86 (Commit #19 - Req L): Settlement explicitly reports asset transfer as not executed', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { result } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+    });
+    assert.equal(result.assetTransferStatus, 'Not executed — local prototype mode');
+    assert.equal(result.networkStatus, 'Local Prototype');
+    assert.ok(result.disclaimer.includes('No real blockchain transactions or asset movements occurred'));
+  });
+
+  it('Test 87 (Commit #19 - Req M): SETTLED is treated as terminal and rejects re-settlement', async () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const { updatedLoan } = await executeSettlementPrototype({
+      loanId: 'loan-004',
+      loan: repaidLoan,
+    });
+    const terminalReadiness = getSettlementReadiness(updatedLoan, updatedLoan.borrowerBytes);
+    assert.equal(terminalReadiness.canSettle, false);
+    assert.equal(terminalReadiness.status, 'ALREADY_SETTLED');
+    await assert.rejects(
+      async () => executeSettlementPrototype({ loanId: 'loan-004', loan: updatedLoan }),
+      /Cannot settle loan loan-004: This agreement has already reached terminal settlement/
+    );
+  });
+
+  it('Test 88 (Commit #19 - Req N): evaluateLoanForSettlement exposes exclusively public agreement metadata', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const evaluation = evaluateLoanForSettlement(repaidLoan, repaidLoan.borrowerBytes);
+    assert.equal(evaluation.principal, 20000n);
+    assert.equal(evaluation.interestRateBasisPoints, 800n);
+    assert.equal(evaluation.repaymentObligation, 21600n);
+    assert.equal(evaluation.repaymentStatus, 'COMPLETE');
+    assert.equal(evaluation.settlementReadiness.canSettle, true);
+    assert.equal(evaluation.currentStatus, LoanStatus.repaid);
+    assert.equal(evaluation.currentStatusText, 'repaid');
+  });
+
+  it('Test 89 (Commit #19): Settlement UI components contain authorization, review step, and disclaimers', () => {
+    const panelPath = path.join(srcDir, 'components', 'SettlementPanel.tsx');
+    const panelContent = fs.readFileSync(panelPath, 'utf8');
+    assert.ok(panelContent.includes('Repayment Complete'), 'Must confirm repayment status');
+    assert.ok(panelContent.includes('Only the borrower or designated lender can settle this agreement'), 'Must explain authorization');
+    assert.ok(panelContent.includes('Review Settlement Conditions'), 'Must provide review step');
+    assert.ok(panelContent.includes('settlement-panel-card'), 'Must render card container');
+
+    const confPath = path.join(srcDir, 'components', 'SettlementConfirmation.tsx');
+    const confContent = fs.readFileSync(confPath, 'utf8');
+    assert.ok(confContent.includes('REQUESTED'), 'Must include REQUESTED in flow');
+    assert.ok(confContent.includes('VERIFIED'), 'Must include VERIFIED in flow');
+    assert.ok(confContent.includes('FUNDED'), 'Must include FUNDED in flow');
+    assert.ok(confContent.includes('REPAID'), 'Must include REPAID in flow');
+    assert.ok(confContent.includes('SETTLED'), 'Must include SETTLED in flow');
+    assert.ok(confContent.includes('step-terminal'), 'Must highlight SETTLED as terminal');
+    assert.ok(confContent.includes('Asset Transfer Status'), 'Must report honest asset status');
+    assert.ok(confContent.includes('result.assetTransferStatus'), 'Must render assetTransferStatus property');
+  });
+
+  it('Test 90 (Commit #19 & Strict Privacy Audit): Zero references to private financial credentials across all frontend files including settlement modules', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 26, 'Must audit all frontend source files including new settlement modules');
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

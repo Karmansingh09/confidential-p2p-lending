@@ -8,7 +8,17 @@ export enum LoanStatus {
   settled
 }
 
-// Foundational loan details structure
+/**
+ * Public Loan Details Structure
+ *
+ * PRIVACY BOUNDARY DESIGN:
+ * This struct represents the public, discoverable agreement terms that lenders legitimately
+ * need to evaluate and fulfill a loan request.
+ *
+ * Sensitive borrower financial values (e.g. actual income, exact wallet balance, banking
+ * credentials) remain strictly off-chain within the borrower's private witness context.
+ * Only the verified eligibility result (isEligibilityVerified) is published on-chain.
+ */
 export struct LoanDetails {
   borrower: Bytes<32>,
   lender: Maybe<Bytes<32>>,
@@ -16,17 +26,38 @@ export struct LoanDetails {
   interestRateBasisPoints: Uint<16>,
   durationBlocks: Uint<32>,
   status: LoanStatus,
+  isEligibilityVerified: Boolean,
 }
 
-// On-chain public ledger state
+// -----------------------------------------------------------------------------
+// On-chain Public Ledger State
+// -----------------------------------------------------------------------------
+
+// Discoverable loan participants
 export ledger borrower: Bytes<32>;
 export ledger lender: Maybe<Bytes<32>>;
+
+// Public loan terms required for marketplace discovery
 export ledger amount: Uint<64>;
 export ledger interestRateBasisPoints: Uint<16>;
 export ledger durationBlocks: Uint<32>;
+
+// Public loan lifecycle status
 export ledger status: LoanStatus;
 
-// Contract initialization with requested loan terms
+// Public verification flag: confirms ZK eligibility proof verification
+// without revealing the underlying private financial witnesses on-chain.
+export ledger isEligibilityVerified: Boolean;
+
+// -----------------------------------------------------------------------------
+// Contract Initialization
+// -----------------------------------------------------------------------------
+
+/**
+ * Initializes the loan desk contract instance with the requested terms.
+ * All public parameters are explicitly disclosed to the ledger state.
+ * Eligibility starts unverified (false) and will be updated by future ZK proof circuits.
+ */
 constructor(
   borrowerPk: Bytes<32>,
   principalAmount: Uint<64>,
@@ -42,14 +73,19 @@ constructor(
   interestRateBasisPoints = disclose(interestRate);
   durationBlocks = disclose(termBlocks);
   status = LoanStatus.requested;
+  isEligibilityVerified = false;
 }
+
+// -----------------------------------------------------------------------------
+// Inspection Circuits
+// -----------------------------------------------------------------------------
 
 // Circuit to inspect current loan status
 export circuit getLoanStatus(): LoanStatus {
   return status;
 }
 
-// Circuit to inspect full loan details
+// Circuit to inspect full public loan details
 export circuit getLoanDetails(): LoanDetails {
   return LoanDetails {
     borrower: borrower,
@@ -58,5 +94,6 @@ export circuit getLoanDetails(): LoanDetails {
     interestRateBasisPoints: interestRateBasisPoints,
     durationBlocks: durationBlocks,
     status: status,
+    isEligibilityVerified: isEligibilityVerified,
   };
 }

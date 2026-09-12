@@ -11,8 +11,16 @@ import { LenderEvaluationPanel } from '../components/LenderEvaluationPanel.js';
 import { EligibilityVerificationPanel } from '../components/EligibilityVerificationPanel.js';
 import { RepaymentPanel } from '../components/RepaymentPanel.js';
 import { SettlementPanel } from '../components/SettlementPanel.js';
+import { AccountSwitcher } from '../components/AccountSwitcher.js';
+import { AccountStatusPanel } from '../components/AccountStatusPanel.js';
+import {
+  connectMockAccount,
+  disconnectMockAccount,
+  switchMockRole,
+} from '../lib/account-service.js';
 import type { LoanDetailsModel } from '../types/index.js';
 import { LoanStatus } from '../types/index.js';
+import type { AccountContext, AccountRole } from '../types/account.js';
 
 interface DashboardPageProps {
   onNavigateToCreateLoan?: () => void;
@@ -21,6 +29,11 @@ interface DashboardPageProps {
   onLoanVerified?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanRepaid?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanSettled?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
+  accountContext?: AccountContext;
+  selectedRole?: AccountRole;
+  onSwitchRole?: (role: AccountRole) => void;
+  onDisconnect?: () => void;
+  onConnect?: (role?: AccountRole) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -30,12 +43,53 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onLoanVerified,
   onLoanRepaid,
   onLoanSettled,
+  accountContext: propAccountContext,
+  onSwitchRole: propSwitchRole,
+  onDisconnect: propDisconnect,
+  onConnect: propConnect,
 }) => {
   const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
   const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
+
+  // Local fallback account context if not provided via props
+  const [localAccountContext, setLocalAccountContext] = useState<AccountContext>(() =>
+    propAccountContext ?? connectMockAccount('BORROWER')
+  );
+
+  useEffect(() => {
+    if (propAccountContext) {
+      setLocalAccountContext(propAccountContext);
+    }
+  }, [propAccountContext]);
+
+  const effectiveAccountContext = propAccountContext ?? localAccountContext;
+
+  const handleSwitchRole = (role: AccountRole) => {
+    if (propSwitchRole) {
+      propSwitchRole(role);
+    } else {
+      setLocalAccountContext(switchMockRole(role));
+    }
+  };
+
+  const handleDisconnect = () => {
+    if (propDisconnect) {
+      propDisconnect();
+    } else {
+      setLocalAccountContext(disconnectMockAccount());
+    }
+  };
+
+  const handleConnect = (role: AccountRole = 'BORROWER') => {
+    if (propConnect) {
+      propConnect(role);
+    } else {
+      setLocalAccountContext(connectMockAccount(role));
+    }
+  };
 
   useEffect(() => {
     setInternalLoans(loansMap);
@@ -127,6 +181,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
         </div>
 
+        {/* Prototype Account Switcher (Commit #20) */}
+        <section className="account-switcher-section">
+          <AccountSwitcher
+            accountContext={effectiveAccountContext}
+            onSwitchRole={handleSwitchRole}
+            onDisconnect={handleDisconnect}
+            onConnect={handleConnect}
+          />
+        </section>
+
         {/* Warning if an invalid/unknown loan was selected */}
         {isUnknownLoan && (
           <div className="selection-warning-banner" role="alert">
@@ -161,6 +225,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <section className="main-grid-section">
               <div className="left-column">
+                {/* Active Account Status & Permissions Panel (Commit #20) */}
+                <AccountStatusPanel
+                  loan={currentLoan}
+                  loanId={effectiveLoanId}
+                  accountContext={effectiveAccountContext}
+                  onSwitchRole={handleSwitchRole}
+                />
+
                 <LoanSummaryCard loan={currentLoan} loanId={effectiveLoanId} />
 
                 {/* Borrower Confidential Verification CTA for unverified requests */}
@@ -306,6 +378,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   onStartVerification={() => setIsVerifyingEligibility(true)}
                   onStartRepayment={() => setIsRepayingLoan(true)}
                   onStartSettlement={() => setIsSettlingLoan(true)}
+                  accountContext={effectiveAccountContext}
+                  onConnectAccount={handleConnect}
                 />
               </div>
 
@@ -325,16 +399,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <h3>Protocol Invariant Safeguards</h3>
                   <ul className="notes-list">
                     <li>
+                      <strong>Account Abstraction:</strong> Strongly typed participant personas (Borrower, Lender, Third-Party) without coupling to live wallets.
+                    </li>
+                    <li>
                       <strong>Immutable Terms:</strong> Principal, interest rate, duration, and threshold are sealed upon agreement creation.
                     </li>
                     <li>
                       <strong>Euclidean Math in ZK:</strong> Repayment interest is mathematically validated using scalar field division proofs.
                     </li>
                     <li>
-                      <strong>Lender Binding:</strong> Only the assigned lender or borrower can settle a repaid agreement.
+                      <strong>Contract Authority:</strong> Actions are guarded by canonical Compact circuits (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`).
                     </li>
                     <li>
-                      <strong>Honest Asset Escrow:</strong> Real native token movements await Midnight.js token integration.
+                      <strong>Honest Simulation:</strong> Local prototype mode explicitly declares offline simulation with zero real network claims.
                     </li>
                   </ul>
                 </div>
@@ -353,11 +430,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #19
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #20
         </p>
       </footer>
     </div>
   );
 };
-
-

@@ -138,7 +138,13 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #19)
+### Current Status & Features (Commit #20)
+- **Wallet / Account Identity Abstraction & Dynamic Authorization (Commit #20)**:
+  - **Typed Account Domain Models**: Strongly typed definitions (`frontend/src/types/account.ts`) for connection status, roles (`BORROWER`, `LENDER`, `PARTICIPANT`, `NONE`), public identity models, and contextual authorization matrices.
+  - **Local Prototype Account Adapter**: Clean account service (`frontend/src/lib/account-service.ts`) providing deterministic mock identities (`Mock Borrower Account`, `Mock Lender Account`, `Mock Third-Party Account`, and Disconnected) without coupling the UI to live wallet infrastructure.
+  - **Contract-Guarded Authorization Engine**: Pure evaluation engine (`frontend/src/lib/account-authorization.ts`) querying canonical Compact guards (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`) against the active account's public key.
+  - **Interactive Account Switcher**: UI component (`AccountSwitcher.tsx`) enabling evaluators to seamlessly toggle personas and test authorization boundaries with explicit `"Simulation Only"` notices.
+  - **Real-Time Permissions Matrix**: Agreement-specific status panel (`AccountStatusPanel.tsx`) and dynamic action button adaptation in `LoanActionPanel.tsx`.
 - **Settlement Frontend Workflow & Protocol Finality (Commit #19)**:
   - **Typed Settlement Domain Models**: Comprehensive typing (`frontend/src/types/settlement.ts`) defining settlement readiness states, multi-party authorization models, audit records, and settlement results.
   - **Symmetrical Participant Authorization**: Governed by canonical contract rules (`settleLoan`), authorizing either the verified borrower (`loan.borrowerBytes`) or the assigned lender (`loan.lenderBytes`) to trigger protocol closure while rejecting unauthorized third parties (`UNAUTHORIZED_PARTICIPANT`).
@@ -173,4 +179,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #19). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #20). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

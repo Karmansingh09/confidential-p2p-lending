@@ -54,6 +54,17 @@ import {
   createSettlementAttestation,
   executeSettlementPrototype,
 } from '../frontend/src/lib/settlement-service.ts';
+import {
+  connectMockAccount,
+  disconnectMockAccount,
+  switchMockRole,
+  getMockAccount,
+  getAvailableMockIdentities,
+  MOCK_BORROWER_PK,
+  MOCK_LENDER_PK,
+  MOCK_THIRD_PARTY_PK,
+} from '../frontend/src/lib/account-service.ts';
+import { getAccountAuthorization } from '../frontend/src/lib/account-authorization.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -75,6 +86,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/eligibility.ts',
       'src/types/repayment.ts',
       'src/types/settlement.ts',
+      'src/types/account.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -84,6 +96,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/eligibility-service.ts',
       'src/lib/repayment-service.ts',
       'src/lib/settlement-service.ts',
+      'src/lib/account-service.ts',
+      'src/lib/account-authorization.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -106,6 +120,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/RepaymentConfirmation.tsx',
       'src/components/SettlementPanel.tsx',
       'src/components/SettlementConfirmation.tsx',
+      'src/components/AccountSwitcher.tsx',
+      'src/components/AccountStatusPanel.tsx',
     ];
 
     for (const relPath of requiredFiles) {
@@ -1711,6 +1727,269 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       }
     }
   });
+
+  it('Test 91 (Commit #20): Disconnected account is represented correctly', () => {
+    const disconnectedCtx = disconnectMockAccount();
+    assert.equal(disconnectedCtx.connectionStatus, 'DISCONNECTED');
+    assert.equal(disconnectedCtx.identity, null);
+    assert.equal(disconnectedCtx.selectedRole, 'NONE');
+    assert.equal(disconnectedCtx.isPrototype, true);
+    assert.equal(disconnectedCtx.isRealNetwork, false);
+
+    const noneIdentity = getMockAccount('NONE');
+    assert.equal(noneIdentity.connectionStatus, 'DISCONNECTED');
+    assert.equal(noneIdentity.publicKey, null);
+    assert.equal(noneIdentity.publicKeyHex, '');
+    assert.equal(noneIdentity.role, 'NONE');
+    assert.equal(noneIdentity.isPrototype, true);
+  });
+
+  it('Test 92 (Commit #20): Mock borrower account exposes only public identity', () => {
+    const borrower = getMockAccount('BORROWER');
+    assert.equal(borrower.role, 'BORROWER');
+    assert.equal(borrower.connectionStatus, 'CONNECTED');
+    assert.ok(borrower.publicKey instanceof Uint8Array);
+    assert.equal(borrower.publicKey.length, 32);
+    assert.ok(borrower.publicKeyHex.startsWith('0x'));
+    assert.equal(borrower.displayName, 'Mock Borrower Account');
+    assert.equal(borrower.isPrototype, true);
+
+    const allowedKeys = new Set([
+      'publicKey',
+      'publicKeyHex',
+      'connectionStatus',
+      'displayName',
+      'shortLabel',
+      'role',
+      'isPrototype',
+    ]);
+    for (const key of Object.keys(borrower)) {
+      assert.ok(allowedKeys.has(key), `Unexpected key in borrower account: ${key}`);
+    }
+  });
+
+  it('Test 93 (Commit #20): Mock lender account exposes only public identity', () => {
+    const lender = getMockAccount('LENDER');
+    assert.equal(lender.role, 'LENDER');
+    assert.equal(lender.connectionStatus, 'CONNECTED');
+    assert.ok(lender.publicKey instanceof Uint8Array);
+    assert.equal(lender.publicKey.length, 32);
+    assert.ok(lender.publicKeyHex.startsWith('0x'));
+    assert.equal(lender.displayName, 'Mock Lender Account');
+    assert.equal(lender.isPrototype, true);
+
+    const allowedKeys = new Set([
+      'publicKey',
+      'publicKeyHex',
+      'connectionStatus',
+      'displayName',
+      'shortLabel',
+      'role',
+      'isPrototype',
+    ]);
+    for (const key of Object.keys(lender)) {
+      assert.ok(allowedKeys.has(key), `Unexpected key in lender account: ${key}`);
+    }
+  });
+
+  it('Test 94 (Commit #20): Third-party account is represented correctly', () => {
+    const thirdParty = getMockAccount('PARTICIPANT');
+    assert.equal(thirdParty.role, 'PARTICIPANT');
+    assert.equal(thirdParty.connectionStatus, 'CONNECTED');
+    assert.ok(thirdParty.publicKey instanceof Uint8Array);
+    assert.equal(thirdParty.publicKey.length, 32);
+    assert.equal(thirdParty.displayName, 'Mock Third-Party Account');
+    assert.equal(thirdParty.isPrototype, true);
+  });
+
+  it('Test 95 (Commit #20): Prototype account explicitly reports isPrototype=true', () => {
+    assert.equal(getMockAccount('BORROWER').isPrototype, true);
+    assert.equal(getMockAccount('LENDER').isPrototype, true);
+    assert.equal(getMockAccount('PARTICIPANT').isPrototype, true);
+    assert.equal(getMockAccount('NONE').isPrototype, true);
+    assert.equal(connectMockAccount('BORROWER').isPrototype, true);
+    assert.equal(connectMockAccount('LENDER').isPrototype, true);
+    assert.equal(disconnectMockAccount().isPrototype, true);
+  });
+
+  it('Test 96 (Commit #20): Prototype account explicitly reports isRealNetwork=false', () => {
+    const borrowerCtx = connectMockAccount('BORROWER');
+    assert.equal(borrowerCtx.isRealNetwork, false);
+    assert.equal(borrowerCtx.networkName, 'Local Prototype');
+
+    const lenderCtx = connectMockAccount('LENDER');
+    assert.equal(lenderCtx.isRealNetwork, false);
+    assert.equal(lenderCtx.networkName, 'Local Prototype');
+  });
+
+  it('Test 97 (Commit #20): Borrower authorization is correctly detected', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const borrowerAccount = getMockAccount('BORROWER');
+    const auth = getAccountAuthorization(loan, borrowerAccount);
+    assert.equal(auth.isBorrower, true, 'Should detect caller is borrower');
+    assert.equal(auth.isLender, false, 'Borrower should not be lender');
+  });
+
+  it('Test 98 (Commit #20): Lender authorization is correctly detected', () => {
+    const loan = MOCK_LOANS['loan-003'];
+    const lenderAccount = getMockAccount('LENDER');
+    const auth = getAccountAuthorization(loan, lenderAccount);
+    assert.equal(auth.isBorrower, false, 'Lender should not be borrower');
+    assert.equal(auth.isLender, true, 'Should detect caller is lender');
+  });
+
+  it('Test 99 (Commit #20): Third-party account is rejected from participant actions', () => {
+    const thirdPartyAccount = getMockAccount('PARTICIPANT');
+    for (const loanId of ['loan-001', 'loan-002', 'loan-003', 'loan-004']) {
+      const loan = MOCK_LOANS[loanId];
+      const auth = getAccountAuthorization(loan, thirdPartyAccount);
+      assert.equal(auth.isBorrower, false, 'Third party is not borrower');
+      assert.equal(auth.isLender, false, 'Third party is not lender');
+      assert.equal(auth.canVerifyEligibility, false, 'Third party cannot verify eligibility');
+      assert.equal(auth.canFundLoan, false, 'Third party cannot fund');
+      assert.equal(auth.canRepayLoan, false, 'Third party cannot repay');
+      assert.equal(auth.canSettleLoan, false, 'Third party cannot settle');
+    }
+  });
+
+  it('Test 100 (Commit #20): Borrower can repay only when loan is funded', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const fundedBorrower = getMockAccount('BORROWER', fundedLoan);
+    const authFunded = getAccountAuthorization(fundedLoan, fundedBorrower);
+    assert.equal(authFunded.canRepayLoan, true, 'Borrower can repay funded loan');
+
+    const requestedLoan = MOCK_LOANS['loan-001'];
+    const reqBorrower = getMockAccount('BORROWER', requestedLoan);
+    const authRequested = getAccountAuthorization(requestedLoan, reqBorrower);
+    assert.equal(authRequested.canRepayLoan, false, 'Cannot repay unverified requested loan');
+
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const verBorrower = getMockAccount('BORROWER', verifiedLoan);
+    const authVerified = getAccountAuthorization(verifiedLoan, verBorrower);
+    assert.equal(authVerified.canRepayLoan, false, 'Cannot repay verified requested loan');
+
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const repBorrower = getMockAccount('BORROWER', repaidLoan);
+    const authRepaid = getAccountAuthorization(repaidLoan, repBorrower);
+    assert.equal(authRepaid.canRepayLoan, false, 'Cannot repay already repaid loan');
+
+    const settledLoan = MOCK_LOANS['loan-005'];
+    const setBorrower = getMockAccount('BORROWER', settledLoan);
+    const authSettled = getAccountAuthorization(settledLoan, setBorrower);
+    assert.equal(authSettled.canRepayLoan, false, 'Cannot repay settled loan');
+  });
+
+  it('Test 101 (Commit #20): Lender can fund only when canonical canFundLoan permits it', () => {
+    const lenderAccount = getMockAccount('LENDER');
+
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const authVerified = getAccountAuthorization(verifiedLoan, lenderAccount);
+    assert.equal(authVerified.canFundLoan, true, 'Lender can fund verified requested loan');
+
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const authUnverified = getAccountAuthorization(unverifiedLoan, lenderAccount);
+    assert.equal(authUnverified.canFundLoan, false, 'Lender cannot fund unverified loan');
+
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const authFunded = getAccountAuthorization(fundedLoan, lenderAccount);
+    assert.equal(authFunded.canFundLoan, false, 'Lender cannot fund already funded loan');
+
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const authRepaid = getAccountAuthorization(repaidLoan, lenderAccount);
+    assert.equal(authRepaid.canFundLoan, false, 'Lender cannot fund repaid loan');
+
+    const borrowerAccount = getMockAccount('BORROWER', verifiedLoan);
+    const authBorrower = getAccountAuthorization(verifiedLoan, borrowerAccount);
+    assert.equal(authBorrower.canFundLoan, false, 'Borrower cannot fund own loan');
+  });
+
+  it('Test 102 (Commit #20): Borrower can settle a repaid loan', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const borrowerAccount = getMockAccount('BORROWER', repaidLoan);
+    const auth = getAccountAuthorization(repaidLoan, borrowerAccount);
+    assert.equal(auth.isBorrower, true);
+    assert.equal(auth.canSettleLoan, true, 'Borrower can settle repaid loan');
+  });
+
+  it('Test 103 (Commit #20): Lender can settle a repaid loan', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const lenderAccount = getMockAccount('LENDER', repaidLoan);
+    const auth = getAccountAuthorization(repaidLoan, lenderAccount);
+    assert.equal(auth.isLender, true);
+    assert.equal(auth.canSettleLoan, true, 'Lender can settle repaid loan');
+  });
+
+  it('Test 104 (Commit #20): Settled loan exposes no executable lifecycle actions', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    for (const role of ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE']) {
+      const account = getMockAccount(role, settledLoan);
+      const auth = getAccountAuthorization(settledLoan, account);
+      assert.equal(auth.canVerifyEligibility, false, `${role} cannot verify settled loan`);
+      assert.equal(auth.canFundLoan, false, `${role} cannot fund settled loan`);
+      assert.equal(auth.canRepayLoan, false, `${role} cannot repay settled loan`);
+      assert.equal(auth.canSettleLoan, false, `${role} cannot settle already settled loan`);
+    }
+  });
+
+  it('Test 105 (Commit #20 & Strict Privacy Audit): Frontend account layer contains zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 31, 'Must audit all frontend source files including account abstraction modules');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+
+    const switcherPath = path.join(srcDir, 'components', 'AccountSwitcher.tsx');
+    const switcherContent = fs.readFileSync(switcherPath, 'utf8');
+    assert.ok(switcherContent.includes('Local Prototype Account'), 'Must render prototype account header');
+    assert.ok(switcherContent.includes('Simulation Only'), 'Must declare simulation only');
+    assert.ok(switcherContent.includes('No Real Wallet Connected'), 'Must declare no real wallet');
+
+    const statusPanelPath = path.join(srcDir, 'components', 'AccountStatusPanel.tsx');
+    const statusPanelContent = fs.readFileSync(statusPanelPath, 'utf8');
+    assert.ok(statusPanelContent.includes('Agreement Permissions'), 'Must render permissions title');
+    assert.ok(statusPanelContent.includes('Local Prototype Account'), 'Must render local prototype disclaimer');
+  });
 });
+
 
 

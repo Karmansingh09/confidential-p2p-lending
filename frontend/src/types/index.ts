@@ -86,3 +86,12 @@ export type {
   SettlementResult,
 } from './settlement.js';
 
+export type {
+  AccountConnectionStatus,
+  AccountRole,
+  AccountIdentity,
+  AccountContext,
+  AccountAuthorization,
+} from './account.js';
+
+

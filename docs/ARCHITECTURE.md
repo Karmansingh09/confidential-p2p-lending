@@ -1110,4 +1110,88 @@ In accordance with protocol design standards, no real blockchain transactions or
 - Settlement results record `assetTransferStatus: "Not executed — local prototype mode"`.
 - Live on-chain settlement will be integrated in subsequent milestones via Midnight.js and Lace Wallet signing.
 
+---
+
+## 20. Wallet / Account Identity Abstraction & Authorization (Commit #20)
+
+Commit #20 introduces a strongly typed, modular account and identity abstraction layer in the frontend and client layers. This architecture enables the application to reason cleanly about the active participant (Borrower, Lender, Third-Party, or Disconnected) and enforce dynamic authorization rules without prematurely coupling UI components to Lace Wallet or Midnight Network infrastructure.
+
+### 20.1 Account Identity Model & Architecture Boundary
+
+The account layer establishes an explicit architectural boundary separating user interface components from the underlying wallet and cryptographic provider.
+
+```
+React UI Components (Dashboard, Panels, Forms)
+                    │
+                    ▼
+Account Abstraction Layer (AccountContext, AccountIdentity, Authorization)
+                    │
+                    ▼
+       ┌────────────────────────┐
+       │ Future Integration     │
+       │ Midnight / Lace Wallet │
+       └────────────────────────┘
+                    │
+                    ▼
+       Midnight Blockchain Node
+```
+
+In Commit #20, this boundary is backed by a local prototype adapter (`frontend/src/lib/account-service.ts`) providing deterministic public account identities.
+
+### 20.2 Prototype Account Personas
+
+The service models 4 distinct account states:
+
+| Persona | Public Key (Hex) | Role | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Mock Borrower Account** | `0x0101...01` | `BORROWER` | Simulates the loan originator requesting and repaying micro-loans |
+| **Mock Lender Account** | `0x0a0a...0a` | `LENDER` | Simulates a liquidity provider inspecting, evaluating, and funding loans |
+| **Mock Third-Party Account** | `0x6363...63` | `PARTICIPANT` | Simulates an arbitrary observer account with zero participant rights |
+| **Disconnected State** | `null` | `NONE` | Simulates an unauthenticated session prompting account connection |
+
+All prototype identities explicitly declare `isPrototype: true`, `isRealNetwork: false`, and `networkName: 'Local Prototype'`.
+
+### 20.3 Contract-Guarded Authorization Engine
+
+Action permissions are evaluated dynamically via `getAccountAuthorization(loan, account)` in `frontend/src/lib/account-authorization.ts`. Rather than duplicating lifecycle logic, the authorization engine directly queries canonical lifecycle guards from `@contracts`:
+
+- **Borrower Permissions**:
+  - `canVerifyEligibility`: Permitted only if the active account matches `loan.borrowerBytes`, the agreement is in `requested` state, and eligibility is unverified (`canVerifyEligibility`).
+  - `canRepayLoan`: Permitted only if the active account matches `loan.borrowerBytes` and the loan is `funded` (`canRepayLoan`).
+  - `canSettleLoan`: Permitted if the active account matches `loan.borrowerBytes` and the loan is `repaid` (`canSettleLoan`).
+- **Lender Permissions**:
+  - `canFundLoan`: Permitted only if the active account is in `LENDER` persona, does not match borrower, and the loan is verified + requested (`canFundLoan`).
+  - `canSettleLoan`: Permitted if the active account matches `loan.lenderBytes` and the loan is `repaid` (`canSettleLoan`).
+- **Third-Party Restrictions**:
+  - Accounts with `PARTICIPANT` persona or keys matching neither participant are unconditionally barred from all state-changing actions (`canVerifyEligibility = false`, `canFundLoan = false`, `canRepayLoan = false`, `canSettleLoan = false`).
+- **Terminal Settled State**:
+  - Agreements with status `settled` disable all participant actions universally.
+
+### 20.4 UI Presentation & Authorization Awareness
+
+1. **`AccountSwitcher.tsx`**: Renders an interactive persona switcher in the dashboard, enabling evaluators to seamlessly toggle between Borrower, Lender, Third-Party, and Disconnected states.
+2. **`AccountStatusPanel.tsx`**: Renders an agreement-specific status panel displaying the active public key, persona role, and a live permission matrix (`✓` / `✕`) with human-readable rationale.
+3. **`LoanActionPanel.tsx`**: Dynamically adapts the primary action button based on the combined authorization matrix:
+   - Unverified Requested + Borrower: `"Execute ZK Proof (Off-Chain Prototype)"`
+   - Verified Requested + Lender: `"Provide Loan Funding"`
+   - Funded + Borrower: `"Repay Loan (Prototype Action)"`
+   - Repaid + (Borrower / Lender): `"Settle Loan (Prototype Action)"`
+   - Third Party: `"No Participant Action Available"` (disabled)
+   - Disconnected: `"Connect Prototype Account"`
+   - Settled: `"Loan Fully Settled"` (disabled)
+
+### 20.5 Public Identity vs Cryptographic Secrets
+
+The account abstraction strictly observes the protocol privacy invariant:
+- Only public 32-byte account keys (`Uint8Array`) and hexadecimal strings are exposed to frontend components.
+- Private signing keys, seed phrases, and confidential underwriting credentials are intentionally absent from all models, state, DOM, logs, and storage.
+- Comprehensive automated regex audits scan all 31+ frontend source files to guarantee zero credential leakage.
+
+### 20.6 Honest Prototype Disclosures
+
+The application transparently communicates that no real wallet connection or network transaction is taking place:
+- Badges explicitly declare `"Simulation Only • Offline Mode"` and `"Local Prototype"`.
+- Warning banners state: `"No Real Wallet Connected: Operating in local prototype account mode. Public account identities are simulated deterministically."`
+
+
 

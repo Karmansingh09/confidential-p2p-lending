@@ -1,6 +1,9 @@
 import React from 'react';
 import type { LoanDetailsModel } from '../types/index.js';
+import type { AccountContext, AccountRole } from '../types/account.js';
+import { LoanStatus } from '../types/index.js';
 import { getLifecycleActionDescriptor } from '../lib/marketplace.js';
+import { getAccountAuthorization } from '../lib/account-authorization.js';
 
 interface LoanActionPanelProps {
   loan: LoanDetailsModel;
@@ -10,6 +13,9 @@ interface LoanActionPanelProps {
   onStartVerification?: () => void;
   onStartRepayment?: () => void;
   onStartSettlement?: () => void;
+  onStartFunding?: () => void;
+  accountContext?: AccountContext;
+  onConnectAccount?: (role?: AccountRole) => void;
 }
 
 export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
@@ -20,8 +26,174 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
   onStartVerification,
   onStartRepayment,
   onStartSettlement,
+  onStartFunding,
+  accountContext,
+  onConnectAccount,
 }) => {
-  const action = getLifecycleActionDescriptor(loan);
+  // If account context is provided, derive account-aware action
+  const isConnected =
+    accountContext?.connectionStatus === 'CONNECTED' && accountContext.identity !== null;
+  const auth = accountContext ? getAccountAuthorization(loan, accountContext) : null;
+
+  let roleBadge = 'Lifecycle Action';
+  let actionTitle = '';
+  let actionDesc = '';
+  let buttonLabel = '';
+  let noticeText = '';
+  let canExecute = false;
+  let actionKind: 'connect' | 'verify' | 'fund' | 'repay' | 'settle' | 'none' = 'none';
+
+  if (!accountContext) {
+    const defaultDescriptor = getLifecycleActionDescriptor(loan);
+    roleBadge = defaultDescriptor.role;
+    actionTitle = defaultDescriptor.title;
+    actionDesc = defaultDescriptor.description;
+    buttonLabel = defaultDescriptor.buttonText;
+    noticeText = defaultDescriptor.notice;
+    canExecute = defaultDescriptor.canExecute;
+    actionKind = defaultDescriptor.actionType as any;
+  } else if (!isConnected) {
+    roleBadge = 'Account Disconnected';
+    actionTitle = 'Connect Prototype Account';
+    actionDesc =
+      'Connect a local prototype account persona (Borrower, Lender, or Third-Party) to evaluate lifecycle transitions.';
+    buttonLabel = 'Connect Prototype Account';
+    noticeText = 'Select a prototype account persona to execute contract-guarded actions.';
+    canExecute = true;
+    actionKind = 'connect';
+  } else if (loan.status === LoanStatus.settled) {
+    roleBadge = 'Protocol Terminal State';
+    actionTitle = 'Agreement Concluded';
+    actionDesc =
+      'This loan has completed its full lifecycle. All obligations were mathematically proven and finalized.';
+    buttonLabel = 'Loan Fully Settled';
+    noticeText = 'Agreement is concluded in terminal settled state. Terms are immutable.';
+    canExecute = false;
+    actionKind = 'none';
+  } else if (accountContext.selectedRole === 'PARTICIPANT' || (!auth?.isBorrower && !auth?.isLender && accountContext.selectedRole !== 'LENDER')) {
+    roleBadge = 'Third-Party Account';
+    actionTitle = 'No Participant Action Available';
+    actionDesc =
+      'Your active account is neither the designated borrower nor the lender for this agreement. Third-party observers cannot execute state transitions.';
+    buttonLabel = 'No Participant Action Available';
+    noticeText = 'Switch to the Borrower or Lender prototype account to execute lifecycle transitions.';
+    canExecute = false;
+    actionKind = 'none';
+  } else if (loan.status === LoanStatus.requested && !loan.isEligibilityVerified) {
+    if (auth?.canVerifyEligibility) {
+      roleBadge = 'Borrower Action';
+      actionTitle = 'Generate Confidential Eligibility Proof';
+      actionDesc =
+        'Executes local zero-knowledge prover to disclose that financial witness satisfies threshold without revealing secret values.';
+      buttonLabel = 'Execute ZK Proof (Off-Chain Prototype)';
+      noticeText = 'Eligibility verification required before funding. Private data remains off-chain.';
+      canExecute = true;
+      actionKind = 'verify';
+    } else {
+      roleBadge = 'Borrower Verification Required';
+      actionTitle = 'Awaiting Borrower Eligibility Verification';
+      actionDesc =
+        'This agreement requires borrower zero-knowledge qualification before lenders can evaluate or fund it.';
+      buttonLabel = 'Awaiting Borrower Verification';
+      noticeText = auth?.reasons.verify || 'Borrower action required before funding.';
+      canExecute = false;
+      actionKind = 'none';
+    }
+  } else if (loan.status === LoanStatus.requested && loan.isEligibilityVerified) {
+    if (auth?.canFundLoan) {
+      roleBadge = 'Lender Action';
+      actionTitle = 'Provide Loan Funding';
+      actionDesc =
+        'Lender commits capital to the verified loan request and transitions agreement status to funded.';
+      buttonLabel = 'Provide Loan Funding';
+      noticeText = 'Loan is verified in zero-knowledge and ready for lender capital commitment.';
+      canExecute = true;
+      actionKind = 'fund';
+    } else {
+      roleBadge = 'Lender Funding Required';
+      actionTitle = 'Awaiting Lender Capital Commitment';
+      actionDesc =
+        'Eligibility is verified in zero-knowledge. This loan is open for lender evaluation and funding.';
+      buttonLabel = 'Awaiting Lender Funding';
+      noticeText = auth?.reasons.fund || 'Lender capital commitment required.';
+      canExecute = false;
+      actionKind = 'none';
+    }
+  } else if (loan.status === LoanStatus.funded) {
+    if (auth?.canRepayLoan) {
+      roleBadge = 'Borrower Action';
+      actionTitle = 'Repay Principal & Interest Obligation';
+      actionDesc =
+        'Borrower satisfies total debt obligation. Contract validates Euclidean division interest calculation in ZK.';
+      buttonLabel = 'Repay Loan (Prototype Action)';
+      noticeText = 'Awaiting borrower repayment of principal + simple interest obligation.';
+      canExecute = true;
+      actionKind = 'repay';
+    } else {
+      roleBadge = 'Borrower Repayment Awaited';
+      actionTitle = 'Awaiting Borrower Repayment';
+      actionDesc =
+        'This loan has been funded and is awaiting borrower repayment of principal and simple interest.';
+      buttonLabel = 'Awaiting Borrower Repayment';
+      noticeText = auth?.reasons.repay || 'Only the borrower can repay this loan.';
+      canExecute = false;
+      actionKind = 'none';
+    }
+  } else if (loan.status === LoanStatus.repaid) {
+    if (auth?.canSettleLoan) {
+      roleBadge = 'Borrower or Lender Action';
+      actionTitle = 'Settle Loan Agreement';
+      actionDesc =
+        'Finalizes the loan agreement into terminal closed state. Concludes all participant obligations.';
+      buttonLabel = 'Settle Loan (Prototype Action)';
+      noticeText = 'Loan has been repaid and is ready for terminal settlement closure.';
+      canExecute = true;
+      actionKind = 'settle';
+    } else {
+      roleBadge = 'Participant Settlement Awaited';
+      actionTitle = 'Awaiting Participant Settlement';
+      actionDesc =
+        'Repayment is complete. The borrower or designated lender may settle this agreement.';
+      buttonLabel = 'Awaiting Settlement';
+      noticeText = auth?.reasons.settle || 'Only authorized participants can settle.';
+      canExecute = false;
+      actionKind = 'none';
+    }
+  }
+
+  const handleActionClick = () => {
+    if (actionKind === 'connect') {
+      if (onConnectAccount) {
+        onConnectAccount('BORROWER');
+      }
+      return;
+    }
+    if (actionKind === 'verify' && onStartVerification) {
+      onStartVerification();
+      return;
+    }
+    if (actionKind === 'fund') {
+      if (onStartFunding) {
+        onStartFunding();
+      } else {
+        alert(
+          `Provide Loan Funding: Please use the Lender Evaluation Panel in the right column to review and fund agreement #${activeLoanId}.`
+        );
+      }
+      return;
+    }
+    if (actionKind === 'repay' && onStartRepayment) {
+      onStartRepayment();
+      return;
+    }
+    if (actionKind === 'settle' && onStartSettlement) {
+      onStartSettlement();
+      return;
+    }
+    alert(
+      `Prototype Action: ${buttonLabel}\n\nNotice: Operating in Local Mock Mode (Commit #20). Actions derive from canonical LoanDesk contract guards. No real blockchain transactions or wallet signatures are fabricated.`
+    );
+  };
 
   return (
     <div className="action-panel-card" aria-label="Lifecycle Actions Panel">
@@ -58,39 +230,23 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
 
       <div className="action-body">
         <div className="action-info">
-          <div className="action-role-badge">{action.role}</div>
-          <h4>{action.title}</h4>
-          <p>{action.description}</p>
+          <div className="action-role-badge">{roleBadge}</div>
+          <h4>{actionTitle}</h4>
+          <p>{actionDesc}</p>
           <div className="action-notice-box">
             <span className="notice-icon">ℹ️</span>
-            <span className="notice-content">{action.notice}</span>
+            <span className="notice-content">{noticeText}</span>
           </div>
         </div>
 
         <div className="action-button-wrapper">
           <button
             type="button"
-            className={`action-btn ${action.canExecute ? 'primary-action' : 'concluded-action'}`}
-            disabled={!action.canExecute}
-            onClick={() => {
-              if (loan.status === 0 && !loan.isEligibilityVerified && onStartVerification) {
-                onStartVerification();
-                return;
-              }
-              if (loan.status === 1 && onStartRepayment) {
-                onStartRepayment();
-                return;
-              }
-              if (loan.status === 2 && onStartSettlement) {
-                onStartSettlement();
-                return;
-              }
-              alert(
-                `Prototype Action: ${action.buttonText}\n\nNotice: The frontend is currently operating in Local Mock Mode (Commit #19). This action is derived from canonical LoanDesk contract guards (canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan). No fake blockchain transactions or wallet signatures are fabricated.`
-              );
-            }}
+            className={`action-btn ${canExecute ? 'primary-action' : 'concluded-action'}`}
+            disabled={!canExecute}
+            onClick={handleActionClick}
           >
-            {action.buttonText}
+            {buttonLabel}
           </button>
         </div>
       </div>
@@ -99,10 +255,9 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
         <span className="notice-dot"></span>
         <span className="notice-text">
           <strong>Architecture Bridge:</strong> This action panel derives state directly from{' '}
-          <code>LoanDesk.can*</code> guards (Commit #12). Live Midnight.js wallet signing and proof sidecars will be attached in upcoming milestones.
+          <code>LoanDesk.can*</code> guards and the active account abstraction. Live Midnight.js wallet signing will be attached in upcoming milestones.
         </span>
       </div>
     </div>
   );
 };
-

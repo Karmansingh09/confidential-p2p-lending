@@ -1277,5 +1277,99 @@ The application clearly discloses the nature of local storage and simulated stat
 - The footer and UI badges explicitly declare: `"Commit #21 Prototype • In-Memory / Local Storage State Engine • Zero simulated blockchain transactions"`.
 - All operations are acknowledged as local prototype state transitions without live Midnight Network consensus or token movements.
 
+---
+
+## 22. Midnight Network & Wallet Provider Abstraction (Commit #22)
+
+Commit #22 establishes a clean, production-oriented architectural boundary between the frontend application and actual Midnight Network / wallet infrastructure. Rather than coupling business logic directly to mock identities, the application introduces a strongly typed provider abstraction layer (`WalletProvider`, `midnight-provider`), separating application-level account management from cryptographic and network providers.
+
+### 22.1 Architectural Boundary & Layer Separation
+
+```
+React UI (Dashboard, Panels, Forms)
+    │
+    ▼
+Application State & Registry (LoanRegistry, ApplicationStore)
+    │
+    ▼
+Account Service Layer (AccountContext, AccountAuthorization)
+    │
+    ▼
+Wallet Provider Interface (WalletProvider)
+    │
+    ├────────────────────────────────────────┐
+    ▼                                        ▼
+Local Prototype Provider             [FUTURE INTEGRATION]
+(LocalPrototypeWalletProvider)       Midnight.js / Lace Wallet Adapter
+    │                                        │
+    ▼                                        ▼
+Local In-Memory Simulation           Midnight Blockchain Node
+```
+
+This multi-tiered architecture ensures:
+1. **Clean Separation of Concerns**: The React UI and loan registry interact only with the `AccountService` and `WalletProvider` interfaces.
+2. **Pluggable Providers**: Future wallet integrations (e.g. Lace Wallet via Midnight.js) can be plugged in by implementing `WalletProvider` without altering component logic or lifecycle state machines.
+3. **Honest Environment Reporting**: When running offline or in prototype mode, the provider explicitly declares `isPrototype: true`, `isRealNetwork: false`, and `environment: 'LOCAL'`, preventing false claims of live blockchain connectivity.
+
+### 22.2 Strongly Typed Network & Provider Models
+
+Domain types in `frontend/src/types/network.ts` and `frontend/src/types/transaction.ts` establish formal infrastructure models:
+
+- **`NetworkEnvironment`**: `'LOCAL' | 'TESTNET' | 'MAINNET'`
+- **`NetworkConnectionStatus` / `WalletConnectionStatus`**: `'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'`
+- **`NetworkContext`**: Captures active environment, network name, connection status, and prototype flags.
+- **`NetworkAccount`**: Public identity containing 32-byte public key, hex string, public address, and role.
+- **`ProviderError`**: Typed domain error hierarchy with codes (`PROVIDER_UNAVAILABLE`, `WALLET_NOT_CONNECTED`, `UNSUPPORTED_OPERATION`, `NETWORK_UNAVAILABLE`, `USER_REJECTED`, `INVALID_PROVIDER_STATE`).
+
+### 22.3 Provider Capability Matrix
+
+To cleanly demarcate what operations are genuinely available versus what requires future network infrastructure, the provider exposes an atomic capability matrix:
+
+```typescript
+export type ProviderCapability =
+  | 'READ_PUBLIC_LEDGER'
+  | 'CREATE_PROOF'
+  | 'SIGN_TRANSACTION'
+  | 'SUBMIT_TRANSACTION'
+  | 'READ_TRANSACTION_STATUS'
+  | 'READ_BALANCE';
+```
+
+In `LocalPrototypeWalletProvider`, capabilities are reported truthfully:
+
+| Capability | Supported in Prototype? | Technical Basis |
+| :--- | :--- | :--- |
+| `READ_PUBLIC_LEDGER` | **Yes (true)** | Public agreement metadata queried from local authoritative `LoanRegistry` |
+| `CREATE_PROOF` | **Yes (true)** | Supported via client-side Compact zero-knowledge prover workflow |
+| `SIGN_TRANSACTION` | **No (false)** | Unavailable; no simulated or fake cryptographic signatures are created |
+| `SUBMIT_TRANSACTION` | **No (false)** | Unavailable; zero fake on-chain transactions or simulated block confirmations |
+| `READ_TRANSACTION_STATUS` | **No (false)** | Unavailable; no simulated transaction pool or block explorer queries |
+| `READ_BALANCE` | **No (false)** | Unavailable; zero simulated native token balances |
+
+### 22.4 Transaction Boundary & Anti-Fabrication Invariant
+
+The `TransactionRequest` and `TransactionResult` models establish the future interface for on-chain state mutations. However, in accordance with protocol integrity rules:
+- Attempting to submit a transaction via `LocalPrototypeWalletProvider.submitTransaction(request)` throws a typed `ProviderError('UNSUPPORTED_OPERATION')`.
+- The user is informed: `"Live wallet transactions are unavailable in prototype mode."`
+- **Zero fake transaction hashes, confirmations, or blocks are ever generated.**
+
+### 22.5 ZK Witness Privacy Boundary
+
+The zero-knowledge eligibility verification workflow remains strictly partitioned:
+$$\text{Private Financial Witness} \longrightarrow \text{Local Compact Prover} \longrightarrow \text{ZK Proof} \longrightarrow \text{Wallet / Network Provider}$$
+- The private financial value and off-chain underwriting witness **never cross the provider boundary**.
+- `WalletProvider` methods accept and expose only public keys, public addresses, and public agreement IDs.
+- Automated static analysis guarantees zero occurrences of confidential underwriting terms across all provider modules.
+
+### 22.6 Network Status UI Component & Disclosures
+
+`NetworkStatusPanel.tsx` renders a dedicated infrastructure card in the dashboard:
+- **Environment**: `"Local Prototype (LOCAL)"`
+- **Provider**: `"Local Prototype Provider"`
+- **Status**: `"PROTOTYPE ACCOUNT ACTIVE"` or `"PROVIDER NOT CONNECTED"`
+- **Capabilities**: Live badges for each capability in the matrix (Green `✓` for available local features, Red `✕` for unavailable network operations).
+- **Honest Disclosure**: `"Notice: Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active."`
+
+
 
 

@@ -13,6 +13,7 @@ import { RepaymentPanel } from '../components/RepaymentPanel.js';
 import { SettlementPanel } from '../components/SettlementPanel.js';
 import { AccountSwitcher } from '../components/AccountSwitcher.js';
 import { AccountStatusPanel } from '../components/AccountStatusPanel.js';
+import { NetworkStatusPanel } from '../components/NetworkStatusPanel.js';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -185,6 +186,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           )}
         </div>
+
+        {/* Network & Provider Status Panel (Commit #22) */}
+        <section className="network-status-section">
+          <NetworkStatusPanel
+            accountContext={effectiveAccountContext}
+            onDisconnect={handleDisconnect}
+            onConnect={handleConnect}
+          />
+        </section>
 
         {/* Prototype Account Switcher (Commit #20) */}
         <section className="account-switcher-section">
@@ -435,7 +445,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #21
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #22 Prototype
         </p>
       </footer>
     </div>

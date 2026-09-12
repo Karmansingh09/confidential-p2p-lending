@@ -100,7 +100,23 @@ export {
   type LoanRegistryState,
   type LoanRegistryPersistence,
   type LoanRegistryFilterCounts,
-} from './application-state.js';
+} from './application-state.ts';
 
+export {
+  ProviderError,
+  type NetworkEnvironment,
+  type NetworkConnectionStatus,
+  type WalletConnectionStatus,
+  type ProviderCapability,
+  type ProviderCapabilities,
+  type NetworkAccount,
+  type NetworkContext,
+  type ProviderErrorCode,
+} from './network.ts';
 
-
+export type {
+  TransactionStatus,
+  TransactionCapability,
+  TransactionRequest,
+  TransactionResult,
+} from './transaction.ts';

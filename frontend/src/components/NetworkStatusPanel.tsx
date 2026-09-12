@@ -1,0 +1,284 @@
+import React from 'react';
+import type { NetworkContext, ProviderCapabilities } from '../types/network.ts';
+import type { AccountContext } from '../types/account.ts';
+import { getWalletProvider } from '../lib/account-service.ts';
+
+export interface NetworkStatusPanelProps {
+  networkContext?: NetworkContext;
+  capabilities?: ProviderCapabilities;
+  accountContext?: AccountContext;
+  onDisconnect?: () => void;
+  onConnect?: () => void;
+}
+
+/**
+ * Network & Provider Status Panel.
+ *
+ * Displays active infrastructure boundaries, connection status, and provider capabilities.
+ * STRICT DISCLOSURE:
+ * Clearly communicates when operating in local prototype mode without real Midnight connections.
+ */
+export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
+  networkContext,
+  capabilities,
+  accountContext,
+  onDisconnect,
+  onConnect,
+}) => {
+  const provider = getWalletProvider();
+  const netContext = networkContext ?? provider.getNetworkContext();
+  const caps = capabilities ?? provider.getCapabilities();
+  const isConnected = accountContext?.connectionStatus === 'CONNECTED';
+
+  return (
+    <div
+      style={{
+        background: '#1e293b',
+        border: '1px solid #334155',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '20px',
+        color: '#f8fafc',
+      }}
+      data-testid="network-status-panel"
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '12px',
+          borderBottom: '1px solid #334155',
+          paddingBottom: '10px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '18px' }}>🌐</span>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
+              Network & Wallet Infrastructure
+            </h3>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Commit #22 • Midnight Provider Adapter Boundary
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              letterSpacing: '0.05em',
+              background: netContext.isPrototype ? '#854d0e' : '#1e3a8a',
+              color: '#fef08a',
+            }}
+          >
+            {netContext.isPrototype ? 'SIMULATION ONLY' : 'LIVE NETWORK'}
+          </span>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              background: isConnected ? '#14532d' : '#7f1d1d',
+              color: isConnected ? '#bbf7d0' : '#fecaca',
+            }}
+          >
+            {isConnected ? 'PROTOTYPE ACCOUNT ACTIVE' : 'PROVIDER NOT CONNECTED'}
+          </span>
+        </div>
+      </div>
+
+      {/* Infrastructure Details Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+          marginBottom: '14px',
+        }}
+      >
+        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
+            Network Environment
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
+            {netContext.networkName} ({netContext.environment})
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
+            Provider Adapter
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
+            {provider.name}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
+            Account Persona
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
+            {accountContext?.identity?.displayName ?? 'No Account Connected'}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
+            On-Chain Transactions
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#f87171' }}>
+            Unavailable in Prototype Mode
+          </div>
+        </div>
+      </div>
+
+      {/* Provider Capabilities Summary */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '11px',
+            color: '#94a3b8',
+            textTransform: 'uppercase',
+            marginBottom: '8px',
+            fontWeight: 600,
+          }}
+        >
+          Provider Capabilities Matrix
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            fontSize: '11px',
+          }}
+        >
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: caps.READ_PUBLIC_LEDGER ? '#064e3b' : '#334155',
+              color: caps.READ_PUBLIC_LEDGER ? '#a7f3d0' : '#64748b',
+            }}
+          >
+            {caps.READ_PUBLIC_LEDGER ? '✓' : '✕'} Public Ledger (Local)
+          </span>
+
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: caps.CREATE_PROOF ? '#064e3b' : '#334155',
+              color: caps.CREATE_PROOF ? '#a7f3d0' : '#64748b',
+            }}
+          >
+            {caps.CREATE_PROOF ? '✓' : '✕'} Client ZK Proof
+          </span>
+
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: caps.SIGN_TRANSACTION ? '#064e3b' : '#450a0a',
+              color: caps.SIGN_TRANSACTION ? '#a7f3d0' : '#fca5a5',
+            }}
+          >
+            {caps.SIGN_TRANSACTION ? '✓' : '✕'} Transaction Signing
+          </span>
+
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: caps.SUBMIT_TRANSACTION ? '#064e3b' : '#450a0a',
+              color: caps.SUBMIT_TRANSACTION ? '#a7f3d0' : '#fca5a5',
+            }}
+          >
+            {caps.SUBMIT_TRANSACTION ? '✓' : '✕'} Transaction Submission
+          </span>
+
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: caps.READ_BALANCE ? '#064e3b' : '#450a0a',
+              color: caps.READ_BALANCE ? '#a7f3d0' : '#fca5a5',
+            }}
+          >
+            {caps.READ_BALANCE ? '✓' : '✕'} Native Asset Balance
+          </span>
+        </div>
+      </div>
+
+      {/* Honest Prototype Notice */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: '12px',
+          color: '#cbd5e1',
+          background: 'rgba(234, 179, 8, 0.1)',
+          border: '1px solid rgba(234, 179, 8, 0.2)',
+          padding: '8px 12px',
+          borderRadius: '6px',
+        }}
+      >
+        <div>
+          <span style={{ color: '#facc15', fontWeight: 600 }}>Notice: </span>
+          Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active.
+        </div>
+        {isConnected && onDisconnect && (
+          <button
+            onClick={onDisconnect}
+            style={{
+              background: '#334155',
+              border: 'none',
+              color: '#e2e8f0',
+              padding: '4px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              marginLeft: '12px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Disconnect Provider
+          </button>
+        )}
+        {!isConnected && onConnect && (
+          <button
+            onClick={onConnect}
+            style={{
+              background: '#2563eb',
+              border: 'none',
+              color: '#ffffff',
+              padding: '4px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              marginLeft: '12px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Connect Prototype
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};

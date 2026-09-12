@@ -1,21 +1,57 @@
-import type { LoanDetailsModel } from '../types/index.js';
+import type { LoanDetailsModel } from '../types/index.ts';
 import type {
   AccountConnectionStatus,
   AccountRole,
   AccountIdentity,
   AccountContext,
-} from '../types/account.js';
+} from '../types/account.ts';
+import type { WalletProvider } from './wallet-provider.ts';
+import {
+  LocalPrototypeWalletProvider,
+  createDefaultWalletProvider,
+  PROTOTYPE_BORROWER_PK,
+  PROTOTYPE_LENDER_PK,
+  PROTOTYPE_THIRD_PARTY_PK,
+} from './midnight-provider.ts';
 
-export const MOCK_BORROWER_PK = new Uint8Array(32).fill(1);
-export const MOCK_LENDER_PK = new Uint8Array(32).fill(10);
-export const MOCK_THIRD_PARTY_PK = new Uint8Array(32).fill(99);
+export const MOCK_BORROWER_PK = PROTOTYPE_BORROWER_PK;
+export const MOCK_LENDER_PK = PROTOTYPE_LENDER_PK;
+export const MOCK_THIRD_PARTY_PK = PROTOTYPE_THIRD_PARTY_PK;
 
 export function bytesToHex(bytes: Uint8Array): string {
   return '0x' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
- * Returns a strongly typed prototype account identity for the given role.
+ * Active provider instance mediating all wallet and network identity behaviors.
+ * Conceptual Architecture (Commit #22):
+ * Account Service → WalletProvider Interface → LocalPrototypeWalletProvider (or MidnightWalletProvider)
+ */
+let activeProvider: WalletProvider = createDefaultWalletProvider();
+
+/**
+ * Returns the currently active wallet provider adapter.
+ */
+export function getWalletProvider(): WalletProvider {
+  return activeProvider;
+}
+
+/**
+ * Sets or injects a wallet provider adapter (useful for testing or future provider switching).
+ */
+export function setWalletProvider(provider: WalletProvider): void {
+  activeProvider = provider;
+}
+
+/**
+ * Resets the wallet provider adapter to the default local prototype provider.
+ */
+export function resetWalletProvider(): void {
+  activeProvider = createDefaultWalletProvider();
+}
+
+/**
+ * Returns a strongly typed account identity by translating provider state.
  * STRICT PRIVACY GUARANTEE:
  * Operates purely on public account identities.
  * No cryptographic credentials or confidential user inputs are ever created or stored.
@@ -32,7 +68,7 @@ export function getMockAccount(
       displayName: 'Disconnected',
       shortLabel: 'No Account Connected',
       role: 'NONE',
-      isPrototype: true,
+      isPrototype: activeProvider.isPrototype,
     };
   }
 
@@ -69,17 +105,24 @@ export function getMockAccount(
     displayName,
     shortLabel: `${labelPrefix} (${shortHex})`,
     role,
-    isPrototype: true,
+    isPrototype: activeProvider.isPrototype,
   };
 }
 
 /**
- * Connects to a prototype account context with the designated role.
+ * Connects to a prototype account context with the designated role via the active provider.
  */
 export function connectMockAccount(
   role: AccountRole = 'BORROWER',
   customLoan?: LoanDetailsModel
 ): AccountContext {
+  if (activeProvider instanceof LocalPrototypeWalletProvider) {
+    activeProvider.connectSync(role, customLoan);
+  } else {
+    void activeProvider.connect(role, customLoan);
+  }
+
+  const netContext = activeProvider.getNetworkContext();
   const identity = getMockAccount(role, customLoan);
   const connectionStatus: AccountConnectionStatus =
     role === 'NONE' ? 'DISCONNECTED' : 'CONNECTED';
@@ -89,21 +132,26 @@ export function connectMockAccount(
     selectedRole: role,
     availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
     connectionStatus,
-    networkName: 'Local Prototype',
-    isRealNetwork: false,
-    isPrototype: true,
+    networkName: netContext.networkName,
+    isRealNetwork: netContext.isRealNetwork,
+    isPrototype: netContext.isPrototype,
   };
 }
 
 /**
- * Disconnects the active prototype account.
+ * Disconnects the active prototype account via the wallet provider.
  */
 export function disconnectMockAccount(): AccountContext {
+  if (activeProvider instanceof LocalPrototypeWalletProvider) {
+    activeProvider.disconnectSync();
+  } else {
+    void activeProvider.disconnect();
+  }
   return connectMockAccount('NONE');
 }
 
 /**
- * Switches the active prototype role.
+ * Switches the active prototype role via the wallet provider.
  */
 export function switchMockRole(
   role: AccountRole,
@@ -124,4 +172,3 @@ export function getAvailableMockIdentities(
     getMockAccount('PARTICIPANT', customLoan),
   ];
 }
-

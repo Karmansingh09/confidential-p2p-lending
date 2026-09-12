@@ -76,6 +76,19 @@ import {
   createDefaultLoanRegistry,
 } from '../frontend/src/lib/application-store.ts';
 import { LoanRegistryError } from '../frontend/src/types/application-state.ts';
+import {
+  LocalPrototypeWalletProvider,
+  createDefaultWalletProvider,
+  PROTOTYPE_BORROWER_PK,
+  PROTOTYPE_LENDER_PK,
+  PROTOTYPE_THIRD_PARTY_PK,
+} from '../frontend/src/lib/midnight-provider.ts';
+import { ProviderError } from '../frontend/src/types/network.ts';
+import {
+  getWalletProvider,
+  setWalletProvider,
+  resetWalletProvider,
+} from '../frontend/src/lib/account-service.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -99,6 +112,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/settlement.ts',
       'src/types/account.ts',
       'src/types/application-state.ts',
+      'src/types/network.ts',
+      'src/types/transaction.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -112,6 +127,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/account-authorization.ts',
       'src/lib/loan-registry.ts',
       'src/lib/application-store.ts',
+      'src/lib/wallet-provider.ts',
+      'src/lib/midnight-provider.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -123,6 +140,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/LoanActionPanel.tsx',
       'src/components/LoanRequestForm.tsx',
       'src/components/LoanPreview.tsx',
+      'src/components/NetworkStatusPanel.tsx',
       'src/components/ValidationMessage.tsx',
       'src/components/LoanMarketplace.tsx',
       'src/components/LenderEvaluationPanel.tsx',
@@ -2294,6 +2312,313 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 34, `Must audit all frontend source files including registry and store modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  it('Test 126 (Commit #22): WalletProvider interface and factory create valid provider', () => {
+    const provider = createDefaultWalletProvider();
+    assert.ok(provider);
+    assert.equal(provider.id, 'midnight-local-prototype');
+    assert.equal(provider.name, 'Local Prototype Provider');
+    assert.equal(provider.isPrototype, true);
+    assert.equal(typeof provider.getConnectionStatus, 'function');
+    assert.equal(typeof provider.getCapabilities, 'function');
+    assert.equal(typeof provider.getNetworkContext, 'function');
+    assert.equal(typeof provider.getAccount, 'function');
+    assert.equal(typeof provider.connect, 'function');
+    assert.equal(typeof provider.disconnect, 'function');
+  });
+
+  it('Test 127 (Commit #22): LocalPrototypeWalletProvider initializes correctly with default borrower persona', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    assert.equal(provider.getConnectionStatus(), 'CONNECTED');
+    const account = provider.getAccount();
+    assert.ok(account);
+    assert.equal(account.role, 'BORROWER');
+    assert.equal(account.displayName, 'Mock Borrower Account');
+    assert.deepEqual(account.publicKey, PROTOTYPE_BORROWER_PK);
+  });
+
+  it('Test 128 (Commit #22): Prototype provider reports local simulation environment', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const netContext = provider.getNetworkContext();
+    assert.equal(netContext.environment, 'LOCAL');
+    assert.equal(netContext.networkName, 'Local Prototype');
+    assert.equal(netContext.isPrototype, true);
+    assert.equal(netContext.isRealNetwork, false);
+    assert.equal(netContext.isConnected, true);
+  });
+
+  it('Test 129 (Commit #22): Prototype provider exposes deterministic public identity', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const account = provider.getAccount();
+    assert.ok(account);
+    assert.ok(account.publicKey instanceof Uint8Array);
+    assert.equal(account.publicKey.length, 32);
+    assert.ok(account.publicKeyHex.startsWith('0x'));
+    assert.equal(account.publicKeyHex.length, 66);
+    assert.deepEqual(account.publicKey, provider.getPublicKey());
+  });
+
+  it('Test 130 (Commit #22): Prototype provider does not expose private credentials', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const account = provider.getAccount();
+    assert.ok(account);
+    assert.equal('privateKey' in account, false);
+    assert.equal('seedPhrase' in account, false);
+    assert.equal('secret' in account, false);
+    assert.equal('witness' in account, false);
+    assert.equal('privateFinancialValue' in account, false);
+  });
+
+  it('Test 131 (Commit #22): Disconnected state is represented correctly', () => {
+    const provider = new LocalPrototypeWalletProvider('NONE');
+    assert.equal(provider.getConnectionStatus(), 'DISCONNECTED');
+    assert.equal(provider.getAccount(), null);
+    assert.equal(provider.getPublicKey(), null);
+    const netContext = provider.getNetworkContext();
+    assert.equal(netContext.connectionStatus, 'DISCONNECTED');
+    assert.equal(netContext.isConnected, false);
+  });
+
+  it('Test 132 (Commit #22): Connect operation transitions prototype provider to connected simulation state', async () => {
+    const provider = new LocalPrototypeWalletProvider('NONE');
+    assert.equal(provider.getConnectionStatus(), 'DISCONNECTED');
+
+    const account = await provider.connect('LENDER');
+    assert.equal(provider.getConnectionStatus(), 'CONNECTED');
+    assert.equal(account.role, 'LENDER');
+    assert.deepEqual(account.publicKey, PROTOTYPE_LENDER_PK);
+    assert.equal(account.displayName, 'Mock Lender Account');
+  });
+
+  it('Test 133 (Commit #22): Disconnect operation works correctly', async () => {
+    const provider = new LocalPrototypeWalletProvider('BORROWER');
+    assert.equal(provider.getConnectionStatus(), 'CONNECTED');
+
+    await provider.disconnect();
+    assert.equal(provider.getConnectionStatus(), 'DISCONNECTED');
+    assert.equal(provider.getAccount(), null);
+    assert.equal(provider.getPublicKey(), null);
+  });
+
+  it('Test 134 (Commit #22): Network context is dynamically available from provider', () => {
+    const provider = new LocalPrototypeWalletProvider('BORROWER');
+    let netContext = provider.getNetworkContext();
+    assert.equal(netContext.connectionStatus, 'CONNECTED');
+    assert.equal(netContext.isConnected, true);
+
+    provider.disconnectSync();
+    netContext = provider.getNetworkContext();
+    assert.equal(netContext.connectionStatus, 'DISCONNECTED');
+    assert.equal(netContext.isConnected, false);
+  });
+
+  it('Test 135 (Commit #22): Capability matrix accurately reports local vs remote capabilities', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const caps = provider.getCapabilities();
+    assert.equal(caps.READ_PUBLIC_LEDGER, true);
+    assert.equal(caps.CREATE_PROOF, true);
+    assert.equal(caps.SIGN_TRANSACTION, false);
+    assert.equal(caps.SUBMIT_TRANSACTION, false);
+    assert.equal(caps.READ_TRANSACTION_STATUS, false);
+    assert.equal(caps.READ_BALANCE, false);
+  });
+
+  it('Test 136 (Commit #22): SIGN_TRANSACTION capability is strictly false in prototype mode', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    assert.equal(provider.getCapabilities().SIGN_TRANSACTION, false);
+  });
+
+  it('Test 137 (Commit #22): SUBMIT_TRANSACTION capability is strictly false in prototype mode', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    assert.equal(provider.getCapabilities().SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 138 (Commit #22): Unsupported transaction submission returns typed ProviderError', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    await assert.rejects(
+      async () => {
+        await provider.submitTransaction({
+          loanId: 'loan-001',
+          action: 'FUND',
+          callerPublicKey: PROTOTYPE_LENDER_PK,
+        });
+      },
+      (err) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.code, 'UNSUPPORTED_OPERATION');
+        assert.ok(err.message.includes('unavailable in prototype mode'));
+        return true;
+      }
+    );
+  });
+
+  it('Test 139 (Commit #22): No fake transaction hash or confirmation is generated', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    let result = null;
+    try {
+      result = await provider.submitTransaction({
+        loanId: 'loan-001',
+        action: 'FUND',
+        callerPublicKey: PROTOTYPE_LENDER_PK,
+      });
+    } catch (e) {
+      // Expected rejection
+    }
+    assert.equal(result, null);
+  });
+
+  it('Test 140 (Commit #22): AccountService obtains identity through provider abstraction', () => {
+    resetWalletProvider();
+    const defaultAccount = getMockAccount('BORROWER');
+    assert.deepEqual(defaultAccount.publicKey, PROTOTYPE_BORROWER_PK);
+
+    const customProvider = new LocalPrototypeWalletProvider('THIRD_PARTY');
+    setWalletProvider(customProvider);
+    assert.equal(getWalletProvider().id, 'midnight-local-prototype');
+    resetWalletProvider();
+  });
+
+  it('Test 141 (Commit #22): Existing borrower permissions remain correct through provider-backed account', () => {
+    resetWalletProvider();
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const borrowerContext = connectMockAccount('BORROWER', fundedLoan);
+    const auth = getAccountAuthorization(fundedLoan, borrowerContext);
+    assert.equal(auth.isBorrower, true);
+    assert.equal(auth.canRepayLoan, true);
+    assert.equal(auth.canFundLoan, false);
+  });
+
+  it('Test 142 (Commit #22): Existing lender permissions remain correct through provider-backed account', () => {
+    resetWalletProvider();
+    const lenderContext = connectMockAccount('LENDER');
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const auth = getAccountAuthorization(verifiedLoan, lenderContext);
+    assert.equal(auth.isLender, true);
+    assert.equal(auth.canFundLoan, true);
+    assert.equal(auth.canRepayLoan, false);
+  });
+
+  it('Test 143 (Commit #22): Third-party permissions remain denied through provider-backed account', () => {
+    resetWalletProvider();
+    const thirdPartyContext = connectMockAccount('PARTICIPANT');
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const auth = getAccountAuthorization(fundedLoan, thirdPartyContext);
+    assert.equal(auth.canFundLoan, false);
+    assert.equal(auth.canRepayLoan, false);
+    assert.equal(auth.canSettleLoan, false);
+    assert.equal(auth.canVerifyEligibility, false);
+  });
+
+  it('Test 144 (Commit #22): Existing canonical lifecycle guards remain authoritative', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    assert.equal(canVerifyEligibility(loan, PROTOTYPE_BORROWER_PK).canExecute, true);
+    assert.equal(canFundLoan(loan, PROTOTYPE_LENDER_PK).canExecute, false);
+    assert.equal(canRepayLoan(loan, PROTOTYPE_BORROWER_PK).canExecute, false);
+    assert.equal(canSettleLoan(loan, PROTOTYPE_BORROWER_PK).canExecute, false);
+  });
+
+  it('Test 145 (Commit #22): Eligibility witness never crosses provider boundary', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const providerMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(provider));
+    for (const method of providerMethods) {
+      assert.equal(method.toLowerCase().includes('witness'), false);
+      assert.equal(method.toLowerCase().includes('financialvalue'), false);
+    }
+  });
+
+  it('Test 146 (Commit #22): Browser storage contains zero private credentials or provider secrets', () => {
+    const persistence = new LocalStorageLoanRegistryPersistence();
+    persistence.save(MOCK_LOANS);
+    const loaded = persistence.load();
+    assert.ok(loaded);
+    for (const [id, loan] of Object.entries(loaded)) {
+      assert.equal('privateKey' in loan, false);
+      assert.equal('seedPhrase' in loan, false);
+      assert.equal('secret' in loan, false);
+    }
+  });
+
+  it('Test 147 (Commit #22): NetworkStatusPanel exposes prototype status and capabilities honestly', () => {
+    const panelPath = path.join(srcDir, 'components', 'NetworkStatusPanel.tsx');
+    assert.ok(fs.existsSync(panelPath));
+    const content = fs.readFileSync(panelPath, 'utf8');
+    assert.ok(content.includes('SIMULATION ONLY'));
+    assert.ok(content.includes('PROTOTYPE ACCOUNT ACTIVE'));
+    assert.ok(content.includes('Unavailable in Prototype Mode'));
+    assert.ok(content.includes('Commit #22'));
+  });
+
+  it('Test 148 (Commit #22): Disconnected state is represented with honest disclosure in the UI', () => {
+    const panelPath = path.join(srcDir, 'components', 'NetworkStatusPanel.tsx');
+    const content = fs.readFileSync(panelPath, 'utf8');
+    assert.ok(content.includes('PROVIDER NOT CONNECTED'));
+  });
+
+  it('Test 149 (Commit #22): Existing loan registry workflows continue to work seamlessly with provider abstraction', () => {
+    const registry = createDefaultLoanRegistry();
+    const allLoans = registry.getOrderedLoans();
+    assert.equal(allLoans.length, 5);
+
+    const verified = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK);
+    assert.equal(verified.getLoan('loan-001').isEligibilityVerified, true);
+
+    const funded = verified.fundLoan('loan-001', PROTOTYPE_LENDER_PK);
+    assert.equal(funded.getLoan('loan-001').status, LoanStatus.funded);
+
+    const repaid = funded.repayLoan('loan-001', PROTOTYPE_BORROWER_PK);
+    assert.equal(repaid.getLoan('loan-001').status, LoanStatus.repaid);
+
+    const settled = repaid.settleLoan('loan-001', PROTOTYPE_BORROWER_PK);
+    assert.equal(settled.getLoan('loan-001').status, LoanStatus.settled);
+  });
+
+  it('Test 150 (Commit #22 & Strict Privacy Audit): Frontend provider and network layer contain zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 39, `Must audit all frontend source files including network provider modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

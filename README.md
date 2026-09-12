@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 180 passing tests across 8 test suites
+# 205 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,15 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #21)
+### Current Status & Features (Commit #22)
+- **Midnight Network & Wallet Provider Abstraction (Commit #22)**:
+  - **Strongly Typed Infrastructure Models**: Comprehensive typing (`frontend/src/types/network.ts`, `frontend/src/types/transaction.ts`) defining network environments (`LOCAL`, `TESTNET`, `MAINNET`), connection states, provider capability matrices, network account representations, and typed domain errors (`ProviderError`).
+  - **Modular Wallet Provider Interface**: `WalletProvider` boundary (`frontend/src/lib/wallet-provider.ts`) abstracting connection lifecycle, public key resolution, network context, capability queries, and transaction submission.
+  - **Local Prototype Provider Implementation**: `LocalPrototypeWalletProvider` (`frontend/src/lib/midnight-provider.ts`) implementing the provider interface for local simulation, exposing deterministic public identities (`BORROWER`, `LENDER`, `THIRD_PARTY`, `NONE`) with explicit offline markers (`isPrototype: true`, `isRealNetwork: false`, `environment: 'LOCAL'`).
+  - **Decoupled Account Service**: Refactored `frontend/src/lib/account-service.ts` to consume the active `WalletProvider` adapter rather than hardcoding identity behaviors, allowing future Midnight.js/Lace providers to be plugged in seamlessly.
+  - **Truthful Atomic Capability Matrix**: Transparently exposes what is genuinely supported locally (`READ_PUBLIC_LEDGER: true`, `CREATE_PROOF: true`) versus network operations that require future live infrastructure (`SIGN_TRANSACTION: false`, `SUBMIT_TRANSACTION: false`, `READ_TRANSACTION_STATUS: false`, `READ_BALANCE: false`).
+  - **Anti-Fabrication Transaction Boundary**: Transaction submission via prototype provider throws typed `ProviderError('UNSUPPORTED_OPERATION')` with sanitized user-facing messages. Zero fake transaction hashes or simulated confirmations are fabricated.
+  - **Network & Provider Status UI**: Interactive status panel (`NetworkStatusPanel.tsx`) in the dashboard providing full visibility into active environment, provider adapter, connection state, and live capability matrices with honest prototype disclosures.
 - **Centralized Loan Registry & Application State Engine (Commit #21)**:
   - **Authoritative Single Source of Truth**: Introduces `LoanRegistry` (`frontend/src/lib/loan-registry.ts`) as the single central store for all public loan agreements, completely eliminating duplicate component-level state and cross-component synchronization discrepancies.
   - **Deterministic Ordering & Deduplication**: Preserves deterministic loan insertion ordering and strictly rejects duplicate loan IDs with typed domain errors (`LoanRegistryError('DUPLICATE_LOAN_ID')`).
@@ -149,10 +157,8 @@ npm run build:frontend
   - **Account-Aware Authorization Sync**: Synchronizes seamlessly with `getAccountAuthorization` from Commit #20 so that all dynamic permissions reflect registry transitions in real-time.
 - **Wallet / Account Identity Abstraction & Dynamic Authorization (Commit #20)**:
   - **Typed Account Domain Models**: Strongly typed definitions (`frontend/src/types/account.ts`) for connection status, roles (`BORROWER`, `LENDER`, `PARTICIPANT`, `NONE`), public identity models, and contextual authorization matrices.
-  - **Local Prototype Account Adapter**: Clean account service (`frontend/src/lib/account-service.ts`) providing deterministic mock identities (`Mock Borrower Account`, `Mock Lender Account`, `Mock Third-Party Account`, and Disconnected) without coupling the UI to live wallet infrastructure.
   - **Contract-Guarded Authorization Engine**: Pure evaluation engine (`frontend/src/lib/account-authorization.ts`) querying canonical Compact guards (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`) against the active account's public key.
   - **Interactive Account Switcher**: UI component (`AccountSwitcher.tsx`) enabling evaluators to seamlessly toggle personas and test authorization boundaries with explicit `"Simulation Only"` notices.
-  - **Real-Time Permissions Matrix**: Agreement-specific status panel (`AccountStatusPanel.tsx`) and dynamic action button adaptation in `LoanActionPanel.tsx`.
 - **Settlement Frontend Workflow & Protocol Finality (Commit #19)**:
   - **Typed Settlement Domain Models**: Comprehensive typing (`frontend/src/types/settlement.ts`) defining settlement readiness states, multi-party authorization models, audit records, and settlement results.
   - **Symmetrical Participant Authorization**: Governed by canonical contract rules (`settleLoan`), authorizing either the verified borrower (`loan.borrowerBytes`) or the assigned lender (`loan.lenderBytes`) to trigger protocol closure while rejecting unauthorized third parties (`UNAUTHORIZED_PARTICIPANT`).
@@ -180,4 +186,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #21). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #22). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

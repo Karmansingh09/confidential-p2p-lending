@@ -6,17 +6,49 @@ import { LifecycleStepper } from '../components/LifecycleStepper.js';
 import { LoanSummaryCard } from '../components/LoanSummaryCard.js';
 import { PrivacyIndicator } from '../components/PrivacyIndicator.js';
 import { LoanActionPanel } from '../components/LoanActionPanel.js';
+import type { LoanDetailsModel } from '../types/index.js';
 
-export const DashboardPage: React.FC = () => {
+interface DashboardPageProps {
+  onNavigateToCreateLoan?: () => void;
+  loansMap?: Record<string, LoanDetailsModel>;
+}
+
+export const DashboardPage: React.FC<DashboardPageProps> = ({
+  onNavigateToCreateLoan,
+  loansMap = MOCK_LOANS,
+}) => {
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
-  const currentLoan = MOCK_LOANS[selectedLoanId] ?? MOCK_LOANS[DEFAULT_LOAN_ID];
+  const currentLoan = loansMap[selectedLoanId] ?? loansMap[DEFAULT_LOAN_ID] ?? MOCK_LOANS[DEFAULT_LOAN_ID];
 
   return (
     <div className="dashboard-container">
       <StateBanner />
-      <Header />
+      <Header
+        currentView="dashboard"
+        onNavigate={(view) => {
+          if (view === 'create-loan' && onNavigateToCreateLoan) {
+            onNavigateToCreateLoan();
+          }
+        }}
+      />
 
       <main className="dashboard-content">
+        <div className="dashboard-top-bar">
+          <div>
+            <h2>Lending Desk Overview</h2>
+            <p className="top-bar-sub">Inspect active micro-loans across protocol lifecycle stages</p>
+          </div>
+          {onNavigateToCreateLoan && (
+            <button
+              type="button"
+              className="btn-create-loan-cta"
+              onClick={onNavigateToCreateLoan}
+            >
+              + Create Loan Request
+            </button>
+          )}
+        </div>
+
         <section className="stepper-section">
           <LifecycleStepper loan={currentLoan} />
         </section>
@@ -60,7 +92,7 @@ export const DashboardPage: React.FC = () => {
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Frontend Prototype Commit #13
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #14
         </p>
       </footer>
     </div>

@@ -138,14 +138,16 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #13)
-- **Lifecycle Stepper**: Visualizes the 5-phase protocol lifecycle (`REQUESTED` &rarr; `ELIGIBILITY VERIFIED` &rarr; `FUNDED` &rarr; `REPAID` &rarr; `SETTLED`).
-- **Public Terms Summary**: Renders principal amount, interest rate in basis points, total calculated repayment obligation, term duration, and shortened public keys.
-- **ZK Privacy Boundary Indicator**: Communicates that borrower credit qualification is proven in zero-knowledge while keeping exact income, bank balances, and secret witnesses strictly off-chain.
-- **Scenario Dispatcher**: Interactive inspector to preview loan agreements in all 5 lifecycle stages (`loan-001` through `loan-005`).
+### Current Status & Features (Commit #14)
+- **Borrower Loan Request UI**: Interactive form to propose new confidential micro-loans with custom values or quick presets (Micro 10k, Standard 25k, Growth 50k).
+- **Safe Basis Point Conversion**: High-precision string arithmetic converts percentage rates (e.g. `5.00%`) into integer basis points (`500 bps`) with zero floating-point drift.
+- **Live Agreement Preview**: Real-time loan card computing estimated simple interest, total repayment obligation, consensus duration, and initial `REQUESTED` / `NOT VERIFIED` status pills.
+- **Zero-Knowledge Privacy Safeguard**: Strict separation of concerns ensuring borrower financial credentials, bank statements, income, and wallet secrets are never requested or stored.
+- **Lifecycle Stepper & Dashboard**: Visualizes the 5-phase protocol lifecycle (`REQUESTED` &rarr; `ELIGIBILITY VERIFIED` &rarr; `FUNDED` &rarr; `REPAID` &rarr; `SETTLED`) and seamlessly displays newly created loan requests.
+- **Defensive Client Validation**: Real-time feedback for amounts, durations, rates, and thresholds, preventing invalid submissions before contract dispatch.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend currently operates in **Local Mock UI Mode** (Commit #13). Live Midnight.js wallet integration (e.g. Lace Wallet) and transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Simulation / Prototype Mode** (Commit #14). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
 
 
 

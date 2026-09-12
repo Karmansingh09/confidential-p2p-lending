@@ -640,6 +640,101 @@ In Commit #13:
 - No wallet transactions or blockchain settlements are faked or simulated as real.
 - The UI exposes an interactive scenario selector (`loan-001` through `loan-005`) enabling reviewers and developers to inspect all 5 lifecycle states in complete safety.
 
+---
+
+## 14. Borrower Loan Request UI
+
+### 14.1 Architecture & Information Flow
+The Borrower Loan Request UI (`frontend/src/pages/CreateLoanPage.tsx` and `frontend/src/components/LoanRequestForm.tsx`) allows a prospective borrower to draft, validate, and preview public loan terms before publishing them to the Midnight ledger.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                         BORROWER LOAN REQUEST UI                          |
+|                 (frontend/src/components/LoanRequestForm.tsx)             |
+|                                                                           |
+|  Inputs (Public Terms ONLY):                                              |
+|    - Principal Amount (e.g. 25,000 units)                                 |
+|    - Annual Interest Rate (e.g. 5.00% -> 500 bps)                        |
+|    - Duration (e.g. 100 blocks)                                           |
+|    - Eligibility Threshold (e.g. 30,000 units)                            |
+|                                                                           |
+|  Live UX Validation & Safe Basis Points Math                              |
+|    (frontend/src/lib/validation.ts)                                       |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼ [Public Terms Preview]
++───────────────────────────────────────────────────────────────────────────+
+|                           LIVE LOAN PREVIEW                               |
+|                    (frontend/src/components/LoanPreview.tsx)              |
+|                                                                           |
+|  - Estimated simple interest & total repayment obligation                 |
+|  - Initial status: REQUESTED                                              |
+|  - Initial attestation: NOT VERIFIED                                      |
+|  - Privacy Notice: Zero private credentials collected                     |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼ [Local Simulation in Prototype Mode]
++───────────────────────────────────────────────────────────────────────────+
+|                       LOCAL LOAN SERVICE / CLIENT API                     |
+|                      (frontend/src/lib/loan-service.ts)                   |
+|                                                                           |
+|  - Produces typed LoanDetailsModel                                        |
+|  - Updates App state to reflect the new loan in Dashboard                 |
+|  - Prepares payload for upcoming Midnight.js contract deployment          |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 14.2 Public Terms vs. Private Financial Data
+The loan request form strictly separates public agreement parameters from private borrower data:
+
+1. **What Information the Borrower Enters (Public Terms Only)**:
+   - **Principal Amount**: The requested loan capital in micro-units (`amount > 0`).
+   - **Interest Rate**: Entered as an intuitive percentage (e.g. `5.00%`, max 2 decimal places), automatically converted into exact integer basis points (`500 bps`, where `10000 bps = 100.00%`).
+   - **Duration**: The loan term in consensus blocks (`durationBlocks > 0`).
+   - **Eligibility Threshold**: The public qualification benchmark specified by the protocol or underwriter (`threshold > 0`).
+
+2. **What Becomes Public Ledger State**:
+   - Once submitted to the Midnight contract, the agreement terms become transparently verifiable to potential lenders on the Midnight ledger:
+     - `amount`
+     - `interestRateBasisPoints`
+     - `durationBlocks`
+     - `eligibilityThreshold`
+     - `status = REQUESTED`
+     - `isEligibilityVerified = false`
+     - `borrower = <PublicKey>`
+
+3. **What Remains Strictly Private**:
+   - **Private Financial Credentials**: Income, bank account balances, tax records, net worth, and proof witnesses are **never** entered, requested, stored, or transmitted by this form.
+   - **Private Keys / Wallet Secrets**: Signing keys remain isolated in wallet enclaves (or local mock identity stores in development) and are never exposed to the application form.
+
+### 14.3 Frontend Validation vs. Compact Contract Validation
+Validation is applied at two distinct layers with complementary roles:
+
+- **Frontend Validation (`frontend/src/lib/validation.ts`) — UX Ergonomics**:
+  - Catches typing errors, illegal characters, negative amounts, out-of-range rates, and zero durations in real time.
+  - Converts decimal percentages to exact integer basis points using string-based integer arithmetic (`whole * 100n + frac`) to avoid IEEE-754 floating point precision errors.
+  - Provides instantaneous field-level error messages and disables submission until all inputs are valid.
+  - *Frontend validation is purely advisory and exists to prevent bad user input.*
+
+- **Compact Contract Validation (`contracts/src/index.compact`) — Cryptographic Authority**:
+  - The Compact smart contract is the ultimate, immutable source of truth.
+  - Independently enforces invariant assertions (`amount > 0`, `duration > 0`, `threshold > 0`, `caller == borrower`).
+  - Ensures that even if a malicious client bypasses frontend validation, invalid parameters or unauthorized state transitions are rejected deterministically by the consensus engine.
+
+### 14.4 Separation of Loan Request and Zero-Knowledge Eligibility Verification
+Why is eligibility verification not executed simultaneously inside the loan creation form?
+1. **Architectural Separation of Concerns**:
+   - Creating a loan request establishes the public terms of the agreement on the public ledger.
+   - Proving eligibility requires generating a zero-knowledge proof off-chain using the borrower's private witness (`privateFinancialValue >= eligibilityThreshold`).
+2. **User Privacy & Sovereign Control**:
+   - The borrower retains complete control over when and how their private witness is injected.
+   - Drafting and inspecting the public terms should never require exposing or processing secret credentials.
+3. **Proof Generation Overhead**:
+   - Zero-knowledge proof generation in Midnight takes compute resources and proof-server coordination. Decoupling the steps prevents UI freezing, allows async proof generation, and facilitates clear error handling if proof criteria are not met.
+4. **Lifecycle State Integrity**:
+   - A loan request in state `REQUESTED` and `isEligibilityVerified = false` provides a clear signal to lenders that terms have been proposed but credit qualification is pending.
+
+
 
 
 

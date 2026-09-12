@@ -504,6 +504,57 @@ export function verifyLoanEligibilityWithWitness(
   });
 }
 
+/**
+ * Parameters for repaying a loan agreement model.
+ */
+export interface RepayLoanAgreementParams {
+  loan: LoanDetailsModel;
+  repaymentAmount?: bigint;
+  callerPk?: Uint8Array;
+  contractState?: ContractState;
+}
+
+/**
+ * Executes borrower repayment on a loan model, initializing or reusing contract state.
+ */
+export function repayLoanAgreement(params: RepayLoanAgreementParams): RepayLoanResult {
+  const callerPk = params.callerPk ?? params.loan.borrowerBytes;
+  const guard = canRepayLoan(params.loan, callerPk);
+  if (!guard.canExecute) {
+    throw new LoanApiError(LoanErrorCode.INVALID_STATE, guard.reason ?? 'Cannot repay loan');
+  }
+
+  let activeState = params.contractState;
+  if (!activeState) {
+    const init = initializeLoanContract({
+      borrowerPk: params.loan.borrowerBytes,
+      principalAmount: params.loan.amount,
+      interestRateBasisPoints: params.loan.interestRateBasisPoints,
+      durationBlocks: params.loan.durationBlocks,
+      eligibilityThreshold: params.loan.eligibilityThreshold,
+    });
+    const verified = executeEligibilityProof({
+      contractState: init.contractState,
+      borrowerPk: params.loan.borrowerBytes,
+      privateFinancialValue: params.loan.eligibilityThreshold,
+    });
+    const lenderPk = params.loan.lenderBytes ?? new Uint8Array(32).fill(10);
+    const funded = executeFundLoan({
+      contractState: verified.updatedContractState,
+      lenderPk,
+      callerPk: lenderPk,
+    });
+    activeState = funded.updatedContractState;
+  }
+
+  return repayLoan({
+    contractState: activeState,
+    borrowerPk: params.loan.borrowerBytes,
+    callerPk,
+    repaymentAmount: params.repaymentAmount,
+  });
+}
+
 // -----------------------------------------------------------------------------
 // 6. Unified LoanDesk Facade
 // -----------------------------------------------------------------------------
@@ -516,6 +567,7 @@ export const LoanDesk = {
   executeEligibilityProof,
   fundLoan,
   repayLoan,
+  repayLoanAgreement,
   settleLoan,
   getLoanStatus,
   getLoanDetails,

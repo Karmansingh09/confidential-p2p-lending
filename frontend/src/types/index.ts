@@ -66,3 +66,14 @@ export type {
   FundingExecutionResult,
 } from './lender.js';
 
+export type {
+  RepaymentState,
+  RepaymentReadinessStatus,
+  RepaymentReadiness,
+  RepaymentCalculation,
+  RepaymentRequest,
+  RepaymentPrivacyAttestation,
+  RepaymentResult,
+  RepaymentFailureReason,
+} from './repayment.js';
+

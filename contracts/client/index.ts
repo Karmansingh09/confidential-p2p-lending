@@ -27,6 +27,8 @@ export {
   verifyLoanEligibility,
   fundLoan,
   repayLoan,
+  type RepayLoanAgreementParams,
+  repayLoanAgreement,
   settleLoan,
   getLoanStatus,
   getLoanDetails,

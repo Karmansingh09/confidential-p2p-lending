@@ -42,7 +42,13 @@ import {
   createEligibilityAttestation,
   PROOF_GENERATION_STEPS,
 } from '../frontend/src/lib/eligibility-service.ts';
-import { canVerifyEligibility, canFundLoan } from '../contracts/dist/index.js';
+import {
+  calculateRepaymentPreview,
+  getRepaymentReadiness,
+  createRepaymentAttestation,
+  executeRepaymentPrototype,
+} from '../frontend/src/lib/repayment-service.ts';
+import { canVerifyEligibility, canFundLoan, canRepayLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
@@ -61,6 +67,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/index.ts',
       'src/types/lender.ts',
       'src/types/eligibility.ts',
+      'src/types/repayment.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -68,6 +75,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/marketplace.ts',
       'src/lib/lender-evaluation.ts',
       'src/lib/eligibility-service.ts',
+      'src/lib/repayment-service.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -86,6 +94,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/PrivateEligibilityInput.tsx',
       'src/components/EligibilityVerificationResult.tsx',
       'src/components/EligibilityVerificationPanel.tsx',
+      'src/components/RepaymentPanel.tsx',
+      'src/components/RepaymentConfirmation.tsx',
     ];
 
     for (const relPath of requiredFiles) {
@@ -1219,6 +1229,232 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 18, 'Must audit all frontend source files including eligibility modules');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // ===========================================================================
+  // Commit #18: Borrower Repayment Workflow & Contract-Guarded Repayment UI
+  // ===========================================================================
+
+  it('Test 61 (Commit #18): calculateRepaymentPreview executes exact BigInt integer math matching calculateRepaymentObligation', () => {
+    // 10,000 principal with 500 bps (5.00%)
+    const loan1 = {
+      ...MOCK_LOANS['loan-003'],
+      amount: 10000n,
+      interestRateBasisPoints: 500,
+    };
+    const preview = calculateRepaymentPreview(loan1);
+    const contractObligation = calculateRepaymentObligation(10000n, 500n);
+    assert.equal(preview.principal, 10000n);
+    assert.equal(preview.interestRateBasisPoints, 500n);
+    assert.equal(preview.interestAmount, 500n);
+    assert.equal(preview.totalObligation, 10500n);
+    assert.equal(preview.totalObligation, contractObligation);
+
+    // 25,000 principal with 750 bps (7.50%)
+    const loan2 = {
+      ...MOCK_LOANS['loan-003'],
+      amount: 25000n,
+      interestRateBasisPoints: 750,
+    };
+    const preview2 = calculateRepaymentPreview(loan2);
+    const contractObligation2 = calculateRepaymentObligation(25000n, 750n);
+    assert.equal(preview2.interestAmount, 1875n);
+    assert.equal(preview2.totalObligation, 26875n);
+    assert.equal(preview2.totalObligation, contractObligation2);
+  });
+
+  it('Test 62 (Commit #18): calculateRepaymentPreview preserves Euclidean field division truncation for non-divisible numbers', () => {
+    // 1,234 principal with 333 bps -> (1234 * 333) / 10000 = 410922 / 10000 = 41n
+    const irregularLoan = {
+      ...MOCK_LOANS['loan-003'],
+      amount: 1234n,
+      interestRateBasisPoints: 333,
+    };
+    const preview = calculateRepaymentPreview(irregularLoan);
+    const contractObligation = calculateRepaymentObligation(1234n, 333n);
+    assert.equal(preview.interestAmount, 41n);
+    assert.equal(preview.totalObligation, 1275n);
+    assert.equal(preview.totalObligation, contractObligation);
+  });
+
+  it('Test 63 (Commit #18): getRepaymentReadiness returns READY_TO_REPAY for a funded loan matching borrower address', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    assert.equal(fundedLoan.status, LoanStatus.funded);
+    const readiness = getRepaymentReadiness(fundedLoan, fundedLoan.borrowerBytes);
+    assert.equal(readiness.canRepay, true);
+    assert.equal(readiness.status, 'READY_TO_REPAY');
+    assert.equal(readiness.reason, undefined);
+  });
+
+  it('Test 64 (Commit #18): getRepaymentReadiness returns LOAN_NOT_FUNDED when loan is in requested or verified state', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const unverifiedReadiness = getRepaymentReadiness(unverifiedLoan, unverifiedLoan.borrowerBytes);
+    assert.equal(unverifiedReadiness.canRepay, false);
+    assert.equal(unverifiedReadiness.status, 'LOAN_NOT_FUNDED');
+    assert.ok(unverifiedReadiness.reason.includes('not been funded'));
+
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const verifiedReadiness = getRepaymentReadiness(verifiedLoan, verifiedLoan.borrowerBytes);
+    assert.equal(verifiedReadiness.canRepay, false);
+    assert.equal(verifiedReadiness.status, 'LOAN_NOT_FUNDED');
+    assert.ok(verifiedReadiness.reason.includes('not been funded'));
+  });
+
+  it('Test 65 (Commit #18): getRepaymentReadiness returns ALREADY_REPAID when loan is in repaid state', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    assert.equal(repaidLoan.status, LoanStatus.repaid);
+    const readiness = getRepaymentReadiness(repaidLoan, repaidLoan.borrowerBytes);
+    assert.equal(readiness.canRepay, false);
+    assert.equal(readiness.status, 'ALREADY_REPAID');
+    assert.ok(readiness.reason.includes('already been repaid'));
+  });
+
+  it('Test 66 (Commit #18): getRepaymentReadiness returns AGREEMENT_CONCLUDED when loan is in settled state', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    assert.equal(settledLoan.status, LoanStatus.settled);
+    const readiness = getRepaymentReadiness(settledLoan, settledLoan.borrowerBytes);
+    assert.equal(readiness.canRepay, false);
+    assert.equal(readiness.status, 'AGREEMENT_CONCLUDED');
+    assert.ok(readiness.reason.includes('concluded and reached terminal settlement'));
+  });
+
+  it('Test 67 (Commit #18): getRepaymentReadiness rejects execution for unauthorized caller PK', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const unauthorizedPk = new Uint8Array(32).fill(99);
+    const readiness = getRepaymentReadiness(fundedLoan, unauthorizedPk);
+    assert.equal(readiness.canRepay, false);
+    assert.equal(readiness.status, 'UNAUTHORIZED_BORROWER');
+    assert.ok(readiness.reason.includes('not the borrower'));
+  });
+
+  it('Test 68 (Commit #18): getRepaymentReadiness handles null or undefined loan gracefully', () => {
+    const readiness = getRepaymentReadiness(null);
+    assert.equal(readiness.canRepay, false);
+    assert.equal(readiness.status, 'LOAN_NOT_AVAILABLE');
+    assert.ok(readiness.reason.includes('unavailable'));
+  });
+
+  it('Test 69 (Commit #18): createRepaymentAttestation generates privacy attestation containing obligation details', () => {
+    const attestation = createRepaymentAttestation('loan-003');
+    assert.equal(attestation.title, 'Immutable Repayment Calculation');
+    assert.ok(attestation.statement.includes('loan-003'));
+    assert.ok(attestation.statement.includes('public immutable contract parameters'));
+    assert.ok(attestation.notice.includes('No confidential'));
+  });
+
+  it('Test 70 (Commit #18): executeRepaymentPrototype executes state transition from funded to repaid', async () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const { updatedLoan, result } = await executeRepaymentPrototype({
+      loanId: 'loan-003',
+      loan: fundedLoan,
+    });
+    assert.equal(result.success, true);
+    assert.equal(updatedLoan.status, LoanStatus.repaid);
+    assert.equal(updatedLoan.statusText, 'repaid');
+    assert.equal(result.loanId, 'loan-003');
+    assert.equal(result.repaidAmount, 53000n);
+    assert.equal(result.assetTransferStatus, 'Not executed — local prototype mode');
+  });
+
+  it('Test 71 (Commit #18): executeRepaymentPrototype throws error when attempting to repay non-funded loan', async () => {
+    const requestedLoan = MOCK_LOANS['loan-001'];
+    await assert.rejects(
+      async () => executeRepaymentPrototype({ loanId: 'loan-001', loan: requestedLoan }),
+      /Cannot repay loan loan-001: Loan has not been funded/
+    );
+
+    const alreadyRepaidLoan = MOCK_LOANS['loan-004'];
+    await assert.rejects(
+      async () => executeRepaymentPrototype({ loanId: 'loan-004', loan: alreadyRepaidLoan }),
+      /Cannot repay loan loan-004: This loan has already been repaid/
+    );
+  });
+
+  it('Test 72 (Commit #18): executeRepaymentPrototype preserves all immutable agreement terms', async () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const { updatedLoan } = await executeRepaymentPrototype({
+      loanId: 'loan-003',
+      loan: fundedLoan,
+    });
+    assert.equal(updatedLoan.amount, fundedLoan.amount);
+    assert.equal(updatedLoan.interestRateBasisPoints, fundedLoan.interestRateBasisPoints);
+    assert.equal(updatedLoan.durationDays, fundedLoan.durationDays);
+    assert.equal(updatedLoan.eligibilityThreshold, fundedLoan.eligibilityThreshold);
+    assert.equal(updatedLoan.isEligibilityVerified, fundedLoan.isEligibilityVerified);
+    assert.deepEqual(updatedLoan.borrowerBytes, fundedLoan.borrowerBytes);
+    assert.deepEqual(updatedLoan.lenderBytes, fundedLoan.lenderBytes);
+  });
+
+  it('Test 73 (Commit #18): RepaymentPanel source contains breakdown drawer, formula explanation, and prototype disclaimers', () => {
+    const panelPath = path.join(srcDir, 'components', 'RepaymentPanel.tsx');
+    const panelContent = fs.readFileSync(panelPath, 'utf8');
+
+    // UI structure checks
+    assert.ok(panelContent.includes('Repayment Obligation Breakdown'), 'Must display obligation breakdown');
+    assert.ok(panelContent.includes('calculation-formula-box'), 'Must display formula box');
+    assert.ok(panelContent.includes('repayment-review-drawer'), 'Must contain review drawer');
+    assert.ok(panelContent.includes('repayment-readiness-banner'), 'Must show readiness banner');
+    assert.ok(panelContent.includes('In prototype mode, this updates local protocol state without transferring native network tokens'), 'Must display prototype notice');
+  });
+
+  it('Test 74 (Commit #18): RepaymentConfirmation source contains lifecycle progression and honest asset transfer disclaimer', () => {
+    const confPath = path.join(srcDir, 'components', 'RepaymentConfirmation.tsx');
+    const confContent = fs.readFileSync(confPath, 'utf8');
+
+    // Progression indicator checks
+    assert.ok(confContent.includes('repayment-flow-indicator'), 'Must contain flow indicator');
+    assert.ok(confContent.includes('FUNDED'), 'Must include FUNDED in flow');
+    assert.ok(confContent.includes('REPAID'), 'Must include REPAID in flow');
+    assert.ok(confContent.includes('SETTLED'), 'Must include SETTLED in flow');
+    assert.ok(confContent.includes('result.disclaimer'), 'Must render disclaimer property');
+    assert.ok(confContent.includes('Immutable Calculation Guarantee'), 'Must state calculation guarantee');
+  });
+
+  it('Test 75 (Commit #18 & Strict Privacy Audit): Zero references to private financial credentials across all frontend files including repayment modules', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 22, 'Must audit all frontend source files including new repayment modules');
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

@@ -9,6 +9,7 @@ import { LoanActionPanel } from '../components/LoanActionPanel.js';
 import { LoanMarketplace } from '../components/LoanMarketplace.js';
 import { LenderEvaluationPanel } from '../components/LenderEvaluationPanel.js';
 import { EligibilityVerificationPanel } from '../components/EligibilityVerificationPanel.js';
+import { RepaymentPanel } from '../components/RepaymentPanel.js';
 import type { LoanDetailsModel } from '../types/index.js';
 import { LoanStatus } from '../types/index.js';
 
@@ -17,6 +18,7 @@ interface DashboardPageProps {
   loansMap?: Record<string, LoanDetailsModel>;
   onLoanFunded?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanVerified?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
+  onLoanRepaid?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -24,18 +26,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   loansMap = MOCK_LOANS,
   onLoanFunded,
   onLoanVerified,
+  onLoanRepaid,
 }) => {
   const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
+  const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
 
   useEffect(() => {
     setInternalLoans(loansMap);
   }, [loansMap]);
 
-  // Reset verification drawer if selected loan changes
+  // Reset interactive panels if selected loan changes
   useEffect(() => {
     setIsVerifyingEligibility(false);
+    setIsRepayingLoan(false);
   }, [selectedLoanId]);
 
   const activeLoans = internalLoans;
@@ -64,6 +69,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }));
     if (onLoanVerified) {
       onLoanVerified(verifiedLoanId, updatedLoan);
+    }
+  };
+
+  const handleRepaymentSuccess = (repaidLoanId: string, updatedLoan: LoanDetailsModel) => {
+    setInternalLoans((prev) => ({
+      ...prev,
+      [repaidLoanId]: updatedLoan,
+    }));
+    if (onLoanRepaid) {
+      onLoanRepaid(repaidLoanId, updatedLoan);
     }
   };
 
@@ -177,12 +192,58 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </div>
                 )}
 
+                {/* Borrower Repayment CTA for funded loans */}
+                {currentLoan.status === LoanStatus.funded && !isRepayingLoan && (
+                  <div className="borrower-repayment-cta-card">
+                    <div className="cta-header">
+                      <span className="cta-icon">💳</span>
+                      <div className="cta-text">
+                        <h4>Active Loan Awaiting Repayment</h4>
+                        <p>
+                          This loan has been funded by a lender. You may review and execute your principal + simple interest repayment obligation.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-start-repayment"
+                      onClick={() => setIsRepayingLoan(true)}
+                    >
+                      Repay Principal &amp; Interest Obligation
+                    </button>
+                  </div>
+                )}
+
+                {/* Active Borrower Repayment Panel */}
+                {isRepayingLoan && currentLoan.status === LoanStatus.funded && (
+                  <RepaymentPanel
+                    loan={currentLoan}
+                    loanId={effectiveLoanId}
+                    onLoanRepaid={handleRepaymentSuccess}
+                    onClose={() => setIsRepayingLoan(false)}
+                  />
+                )}
+
+                {/* Repaid Confirmation Banner */}
+                {currentLoan.status === LoanStatus.repaid && (
+                  <div className="repaid-attestation-banner">
+                    <span className="banner-icon">✓</span>
+                    <div className="banner-content">
+                      <strong>Loan Repaid Successfully</strong>
+                      <p>
+                        Principal and interest obligation have been cleared. This agreement is awaiting terminal settlement closure.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <LoanActionPanel
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
                   onSelectLoan={setSelectedLoanId}
                   loansMap={activeLoans}
                   onStartVerification={() => setIsVerifyingEligibility(true)}
+                  onStartRepayment={() => setIsRepayingLoan(true)}
                 />
               </div>
 
@@ -230,7 +291,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #17
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #18
         </p>
       </footer>
     </div>

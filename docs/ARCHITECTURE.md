@@ -980,3 +980,67 @@ The Compact smart contract circuit (`contracts/src/index.compact`) is the sole a
 - **Current Prototype Mode**: Proof generation executes locally in the browser/Node runtime via the `@midnight-ntwrk/compact-runtime` prover and updates local application state.
 - **Honest Prototype Notice**: The UI explicitly informs users: `"Local prototype proof execution — state updated locally, no live network transaction."`
 - **Future Milestone**: Live Midnight Network integration will submit the generated `proofData` to a Midnight validator node via Midnight.js and Lace Wallet transaction submission.
+
+---
+
+## 18. Borrower Repayment Frontend Workflow & Contract-Guarded UI (Commit #18)
+
+Commit #18 implements the complete borrower repayment workflow across the client and React frontend layers, enabling borrowers of funded loans to review their immutable obligation and execute the state transition from `FUNDED` to `REPAID`.
+
+### 18.1 Workflow Architecture & Component Structure
+
+```
+frontend/src/
+├── types/
+│   └── repayment.ts               # Domain types for repayment calculations, readiness, and results
+├── lib/
+│   └── repayment-service.ts       # Service delegating to canonical contract arithmetic and guards
+├── components/
+│   ├── RepaymentPanel.tsx         # Interactive repayment panel with review drawer & formula breakdown
+│   ├── RepaymentConfirmation.tsx  # Confirmation card with lifecycle stepper & asset transfer disclaimers
+│   └── LoanActionPanel.tsx        # Action panel wired to launch repayment panel for funded loans
+├── pages/
+│   └── DashboardPage.tsx          # Renders repayment CTA card, panel drawer, and repaid attestation banner
+└── App.tsx                        # Global state management updating active loan registry upon repayment
+```
+
+### 18.2 Exact BigInt Arithmetic & Mathematical Parity
+
+To ensure 100% mathematical parity with the underlying Midnight Compact circuit (`repayLoan`), the repayment workflow strictly avoids JavaScript floating-point calculations:
+- **Basis Points Scale**: Interest rates are represented in basis points ($100\text{ bps} = 1.00\%$, $10000\text{ bps} = 100.00\%$).
+- **Euclidean Integer Truncation**: Simple interest is computed as:
+  $$\text{interestAmount} = \frac{\text{principal} \times \text{rateBasisPoints}}{10000\text{n}}$$
+- **Canonical Obligation Invocation**: The total obligation calculation calls `calculateRepaymentObligation(principal, rateBasisPoints)` directly from the compiled contract workspace (`contracts/dist/index.js`), guaranteeing mathematical identity with on-chain consensus logic:
+  $$\text{totalObligation} = \text{principal} + \text{interestAmount}$$
+
+### 18.3 Contract-Guarded Repayment Readiness
+
+Repayment execution is guarded by canonical lifecycle checks via `getRepaymentReadiness()`:
+- **`READY_TO_REPAY`**: Loan status is `LoanStatus.funded` ($1$) and caller matches `loan.borrowerBytes`.
+- **`LOAN_NOT_FUNDED`**: Rejected if loan status is `requested` ($0$).
+- **`ALREADY_REPAID`**: Rejected if loan status is already `repaid` ($2$).
+- **`AGREEMENT_CONCLUDED`**: Rejected if loan status is terminal `settled` ($3$).
+- **`UNAUTHORIZED_BORROWER`**: Rejected if caller public key does not match borrower public key.
+- **`LOAN_NOT_AVAILABLE`**: Handled gracefully if agreement data is missing or undefined.
+
+### 18.4 Repayment User Experience & Two-Step Confirmation
+
+1. **Active Loan Discovery**: When viewing a funded loan, the dashboard presents a prominent "Active Loan Awaiting Repayment" CTA banner.
+2. **Review Drawer**: Clicking "Review Repayment" opens an obligation review drawer that clearly displays the mathematical breakdown:
+   $$\text{Principal} + \text{Agreed Simple Interest} = \text{Total Repayment Obligation}$$
+3. **Execution & Stepper Confirmation**: Confirming repayment triggers `executeRepaymentPrototype`, transitioning agreement status to `REPAID`, rendering the `RepaymentConfirmation` card with an updated lifecycle stepper (`REQUESTED → VERIFIED → FUNDED → REPAID → SETTLED`).
+
+### 18.5 Privacy Guarantees & Zero Leakage
+
+Unlike the initial eligibility verification phase (which executes an ephemeral zero-knowledge proof over confidential underwriting inputs), the repayment phase is **entirely public and deterministic**:
+- Obligation is derived strictly from public immutable terms (`amount`, `interestRateBasisPoints`).
+- No private witnesses, secrets, or off-chain credentials are required or accepted.
+- A strict privacy audit ensures zero sensitive terminology or credential leakage throughout all repayment modules.
+
+### 18.6 Honest Asset Transfer Disclosure
+
+In local prototype mode, token escrow and cross-party asset transfers are not simulated or faked:
+- The UI explicitly renders: `"Asset transfer is not executed in local prototype mode. State machine transition only."`
+- The `assetTransferStatus` property explicitly reads `"Not executed — local prototype mode"`.
+- Live token settlement will be integrated in upcoming milestones via Midnight Native Tokens and Lace Wallet signing.
+

@@ -9,6 +9,7 @@
   "scripts": {
     "compile:contracts": "npm run compile --workspace=contracts",
     "build:contracts": "npm run build --workspace=contracts",
-    "typecheck:contracts": "npm run typecheck --workspace=contracts"
+    "typecheck:contracts": "npm run typecheck --workspace=contracts",
+    "test": "node --test tests/eligibility.test.js"
   }
 }

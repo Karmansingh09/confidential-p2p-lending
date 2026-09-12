@@ -97,6 +97,36 @@ constructor(
 }
 
 // -----------------------------------------------------------------------------
+// Verification Circuit
+// -----------------------------------------------------------------------------
+
+/**
+ * Verifies that the borrower's confidential financial value satisfies
+ * the public eligibility threshold without disclosing the private value.
+ *
+ * Security & Lifecycle Rules:
+ * 1. Loan must be in `requested` state.
+ * 2. Eligibility must not already be verified.
+ * 3. Caller must be the borrower (`ownPublicKey().bytes == borrower`).
+ * 4. Private value from witness must meet or exceed `eligibilityThreshold`.
+ *
+ * Privacy Guarantees:
+ * - `privateValue` is fetched off-chain and NEVER written to ledger or returned.
+ * - Only the boolean state transition `isEligibilityVerified = true` is committed.
+ */
+export circuit verifyEligibility(): [] {
+  assert(status == LoanStatus.requested, "Loan is not in requested state");
+  assert(!isEligibilityVerified, "Eligibility is already verified");
+  assert(ownPublicKey().bytes == borrower, "Caller is not the borrower");
+
+  const privateValue = getPrivateFinancialValue();
+  const isEligible = privateValue >= eligibilityThreshold;
+  assert(isEligible, "Borrower does not meet the required eligibility threshold");
+
+  isEligibilityVerified = true;
+}
+
+// -----------------------------------------------------------------------------
 // Inspection Circuits
 // -----------------------------------------------------------------------------
 

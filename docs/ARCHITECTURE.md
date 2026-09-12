@@ -112,3 +112,36 @@ In the next implementation phase, this model connects to Midnight Compact primit
 1. **Witness Declaration**: The contract declares `witness getPrivateFinancialValue(): Uint<64>;` as the interface to the caller's private wallet data.
 2. **Circuit Evaluation**: The upcoming proof circuit will invoke the witness off-chain, evaluate `privateValue >= eligibilityThreshold`, and use Midnight Compact's `disclose(...)` primitive solely on the boolean comparison output.
 3. **State Transition**: The circuit will assert that the loan is in `LoanStatus.requested` state and that the caller is the borrower, setting `isEligibilityVerified = true` upon valid proof submission.
+
+---
+
+## 6. The `verifyEligibility` Circuit Implementation
+
+The `verifyEligibility()` circuit implemented in `contracts/src/index.compact` realizes the private eligibility model within the Midnight ZK environment.
+
+### 6.1 Circuit Workflow
+1. **Lifecycle Check**: Asserts `status == LoanStatus.requested`. Verification cannot be performed on loans that have already transitioned to `funded`, `repaid`, or `settled`.
+2. **Replay / Redundancy Prevention**: Asserts `!isEligibilityVerified`. Prevents redundant or duplicate verification calls once verified.
+3. **Caller Authorization Binding**: Asserts `ownPublicKey().bytes == borrower`. Cryptographically verifies that the transacting party is the actual borrower designated for this loan agreement.
+4. **Private Witness Evaluation**: Invokes `getPrivateFinancialValue()`. This executes off-chain on the borrower's client machine; the returned `privateValue` never leaves the prover.
+5. **Zero-Knowledge Threshold Verification**: Computes `isEligible = privateValue >= eligibilityThreshold` and asserts `isEligible`. If the threshold is not satisfied, the circuit execution halts and no transaction state change is generated.
+6. **Ledger Transition**: Upon satisfying all constraints, the contract updates `isEligibilityVerified = true` on the immutable ledger.
+
+### 6.2 Privacy Analysis
+- **What Remains Private**:
+  - The actual numeric value of `privateFinancialValue` (e.g., $42{,}000$).
+  - Prover execution trace, witness inputs, and intermediate calculations.
+  - The margin by which the borrower exceeded the threshold.
+- **What Becomes Public**:
+  - The boolean attestation flag `isEligibilityVerified: true` on the public ledger.
+- **What the Verifier / Lender Learns**:
+  - The verifier learns only that the statement $\text{privateValue} \ge \text{eligibilityThreshold}$ is mathematically true for the borrower. The verifier learns nothing else about the borrower's asset portfolio, exact balance, or financial history.
+
+### 6.3 Security Considerations & Anti-Manipulation
+- **No Arbitrary Setting**: There is no public administrative function or circuit parameter allowing a caller to pass `isEligibilityVerified = true`. The flag is mutated strictly within `verifyEligibility()` as an atomic consequence of passing all circuit assertions.
+- **Caller Binding**: Binding `ownPublicKey().bytes == borrower` ensures that third parties cannot trigger or claim eligibility on behalf of someone else's loan.
+- **Atomic Failure**: If `privateValue < eligibilityThreshold`, the circuit assert triggers a contract runtime error, preventing any state modification.
+
+### 6.4 Current Limitations
+1. **Self-Reported Witness Model**: In this initial phase, the witness value is supplied by the borrower's local wallet environment. In subsequent iterations, this can be combined with zero-knowledge attestations from signed credentials (e.g. zk-SBTs or verified financial oracles).
+2. **Binary Threshold Evaluation**: The model currently evaluates a single scalar threshold. Complex multi-criteria underwriting (e.g. debt-to-income and collateral ratios simultaneously) will build on this foundational pattern.

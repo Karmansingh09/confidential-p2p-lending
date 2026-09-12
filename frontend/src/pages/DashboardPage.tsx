@@ -8,25 +8,35 @@ import { PrivacyIndicator } from '../components/PrivacyIndicator.js';
 import { LoanActionPanel } from '../components/LoanActionPanel.js';
 import { LoanMarketplace } from '../components/LoanMarketplace.js';
 import { LenderEvaluationPanel } from '../components/LenderEvaluationPanel.js';
+import { EligibilityVerificationPanel } from '../components/EligibilityVerificationPanel.js';
 import type { LoanDetailsModel } from '../types/index.js';
+import { LoanStatus } from '../types/index.js';
 
 interface DashboardPageProps {
   onNavigateToCreateLoan?: () => void;
   loansMap?: Record<string, LoanDetailsModel>;
   onLoanFunded?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
+  onLoanVerified?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToCreateLoan,
   loansMap = MOCK_LOANS,
   onLoanFunded,
+  onLoanVerified,
 }) => {
   const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
+  const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
 
   useEffect(() => {
     setInternalLoans(loansMap);
   }, [loansMap]);
+
+  // Reset verification drawer if selected loan changes
+  useEffect(() => {
+    setIsVerifyingEligibility(false);
+  }, [selectedLoanId]);
 
   const activeLoans = internalLoans;
   const availableKeys = Object.keys(activeLoans);
@@ -44,6 +54,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }));
     if (onLoanFunded) {
       onLoanFunded(fundedLoanId, updatedLoan);
+    }
+  };
+
+  const handleVerificationSuccess = (verifiedLoanId: string, updatedLoan: LoanDetailsModel) => {
+    setInternalLoans((prev) => ({
+      ...prev,
+      [verifiedLoanId]: updatedLoan,
+    }));
+    if (onLoanVerified) {
+      onLoanVerified(verifiedLoanId, updatedLoan);
     }
   };
 
@@ -111,11 +131,58 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <section className="main-grid-section">
               <div className="left-column">
                 <LoanSummaryCard loan={currentLoan} loanId={effectiveLoanId} />
+
+                {/* Borrower Confidential Verification CTA for unverified requests */}
+                {currentLoan.status === LoanStatus.requested && !currentLoan.isEligibilityVerified && !isVerifyingEligibility && (
+                  <div className="borrower-verification-cta-card">
+                    <div className="cta-header">
+                      <span className="cta-icon">🛡️</span>
+                      <div className="cta-text">
+                        <h4>Borrower Verification Required</h4>
+                        <p>
+                          This loan request requires off-chain zero-knowledge qualification before lenders can evaluate and fund it.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-start-verification"
+                      onClick={() => setIsVerifyingEligibility(true)}
+                    >
+                      Generate Confidential Eligibility Proof
+                    </button>
+                  </div>
+                )}
+
+                {/* Active Borrower Verification Panel */}
+                {isVerifyingEligibility && currentLoan.status === LoanStatus.requested && (
+                  <EligibilityVerificationPanel
+                    loan={currentLoan}
+                    loanId={effectiveLoanId}
+                    onLoanVerified={handleVerificationSuccess}
+                    onClose={() => setIsVerifyingEligibility(false)}
+                  />
+                )}
+
+                {/* Verified Confirmation Banner for verified requests */}
+                {currentLoan.status === LoanStatus.requested && currentLoan.isEligibilityVerified && (
+                  <div className="verified-attestation-banner">
+                    <span className="banner-icon">✓</span>
+                    <div className="banner-content">
+                      <strong>Eligibility Verified</strong>
+                      <p>
+                        Borrower qualification has been proven in Zero-Knowledge. This loan is open for lender evaluation and capital commitment.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <LoanActionPanel
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
                   onSelectLoan={setSelectedLoanId}
                   loansMap={activeLoans}
+                  onStartVerification={() => setIsVerifyingEligibility(true)}
                 />
               </div>
 
@@ -163,7 +230,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #16
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #17
         </p>
       </footer>
     </div>

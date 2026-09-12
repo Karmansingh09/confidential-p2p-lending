@@ -14,6 +14,7 @@ import {
   repayLoan as executeRepayLoan,
   settleLoan as executeSettleLoan,
   calculateRepaymentObligation,
+  initializeLoanContract,
   type CreateLoanRequestParams,
   type ExecuteEligibilityProofParams,
   type FundLoanParams,
@@ -460,6 +461,49 @@ export function getLoanDetails(contractState: ContractState): LoanDetailsModel {
   }
 }
 
+/**
+ * Parameters for executing zero-knowledge eligibility verification with an off-chain witness.
+ */
+export interface VerifyEligibilityWithWitnessParams {
+  loan: LoanDetailsModel;
+  witnessAmount: bigint;
+  contractState?: ContractState;
+  callerPk?: Uint8Array;
+}
+
+/**
+ * Executes zero-knowledge eligibility verification using an off-chain witness amount.
+ * Binds the loan terms to the Compact eligibility circuit and executes the proof.
+ */
+export function verifyLoanEligibilityWithWitness(
+  params: VerifyEligibilityWithWitnessParams
+): VerifyLoanEligibilityResult {
+  const callerPk = params.callerPk ?? params.loan.borrowerBytes;
+
+  const guard = canVerifyEligibility(params.loan, callerPk);
+  if (!guard.canExecute) {
+    throw new LoanApiError(LoanErrorCode.INVALID_STATE, guard.reason ?? 'Cannot verify eligibility');
+  }
+
+  let activeState = params.contractState;
+  if (!activeState) {
+    const init = initializeLoanContract({
+      borrowerPk: params.loan.borrowerBytes,
+      principalAmount: params.loan.amount,
+      interestRateBasisPoints: params.loan.interestRateBasisPoints,
+      durationBlocks: params.loan.durationBlocks,
+      eligibilityThreshold: params.loan.eligibilityThreshold,
+    });
+    activeState = init.contractState;
+  }
+
+  return verifyLoanEligibility({
+    contractState: activeState,
+    borrowerPk: callerPk,
+    privateFinancialValue: params.witnessAmount,
+  });
+}
+
 // -----------------------------------------------------------------------------
 // 6. Unified LoanDesk Facade
 // -----------------------------------------------------------------------------
@@ -468,6 +512,7 @@ export const LoanDesk = {
   createLoan,
   createLoanRequest,
   verifyLoanEligibility,
+  verifyLoanEligibilityWithWitness,
   executeEligibilityProof,
   fundLoan,
   repayLoan,

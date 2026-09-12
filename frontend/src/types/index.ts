@@ -47,3 +47,22 @@ export type {
   LifecycleActionDescriptor,
 } from '../lib/marketplace.js';
 
+export type {
+  EligibilityVerificationState,
+  EligibilityFailureReason,
+  EligibilityVerificationRequest,
+  EligibilityPrivacyAttestation,
+  EligibilityVerificationResult,
+  ProofGenerationStep,
+} from './eligibility.js';
+
+export type {
+  FundingReadinessStatus,
+  LenderDecisionState,
+  FundingReadiness,
+  EvaluationWarning,
+  PrivacyAttestation,
+  LenderLoanEvaluation,
+  FundingExecutionResult,
+} from './lender.js';
+

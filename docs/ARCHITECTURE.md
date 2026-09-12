@@ -896,3 +896,87 @@ The evaluation interface provides prospective lenders with cryptographic confide
    - Lender Account Key: Hex commitment
    - Asset Transfer Status: **`"Not executed — local prototype mode"`**
    - Zero fabricated network transactions or simulated cryptographic hashes
+
+---
+
+## 17. Borrower Confidential Eligibility Verification (Commit #17)
+
+Commit #17 completes the borrower-side confidential eligibility verification workflow, connecting the user interface directly to the Compact zero-knowledge prover architecture established in Commit #6 and Commit #7.
+
+### 17.1 Workflow Architecture & Component Hierarchy
+
+```
+frontend/src/
+├── types/
+│   └── eligibility.ts                  # Strongly typed state machine, requests & results
+├── lib/
+│   └── eligibility-service.ts          # ZK circuit invocation, error sanitization & attestations
+├── components/
+│   ├── PrivateEligibilityInput.tsx      # Ephemeral password-style witness input with warnings
+│   ├── EligibilityVerificationResult.tsx# Success/failure views with explicit privacy badges
+│   └── EligibilityVerificationPanel.tsx # 5-step prover progression & summary terms
+└── pages/
+    └── DashboardPage.tsx               # Orchestrates borrower CTA, panel toggle & marketplace updates
+```
+
+### 17.2 The Strict Witness / Prover Boundary
+
+The core security invariant of the borrower verification flow is that **confidential underwriting metrics never leave the local prover context**:
+
+```
++-----------------------------------------------------------------------------------+
+|                        BORROWER LOCAL ENVIRONMENT                                 |
+|                                                                                   |
+|  1. Ephemeral Input (PrivateEligibilityInput):                                    |
+|     - Masked password input, never persisted, cleared immediately on submit       |
+|                                                                                   |
+|  2. Off-Chain Witness Provider (contracts/client/eligibility-client.ts):          |
+|     - createEligibilityWitnessProvider(witnessAmount)                             |
+|                                                                                   |
+|  3. Local Circuit Prover Execution:                                               |
+|     - Contract.circuits.verifyEligibility(circuitContext)                         |
+|     - Verifies: witnessAmount >= eligibilityThreshold                             |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         | [Outputs ZK Proof + Public Flag]
+                                         v
++-----------------------------------------------------------------------------------+
+|                            PUBLIC LEDGER STATE                                    |
+|                                                                                   |
+|  - status: LoanStatus.requested                                                   |
+|  - isEligibilityVerified: true                                                    |
+|  - Zero confidential witness data or underwriting metrics written to consensus    |
++-----------------------------------------------------------------------------------+
+```
+
+### 17.3 Transient Input Handling & Zero Persistence
+
+To ensure borrower privacy is inviolable across the frontend stack:
+1. **Password-Style Masking**: Input values are rendered with `type="password"`, `autoComplete="off"`, and `spellCheck={false}`.
+2. **Immediate Erasure**: Upon clicking "Generate Confidential Proof", the input value is immediately cleared from React component state.
+3. **Zero Browser Persistence**: Values are strictly forbidden from being stored in `localStorage`, `sessionStorage`, cookies, query parameters, or URL fragments.
+4. **Zero Console Logging**: Neither the frontend UI nor the client service logs confidential values or witness structures.
+5. **Sanitized Results**: `EligibilityVerificationResult` contains exclusively public metadata (`loanId`, `isVerified`, `updatedStatus`, `privacyAttestation`). The private input is omitted from the return payload.
+
+### 17.4 Five-Phase Prover Execution Pipeline
+
+When the borrower initiates verification, the UI visualizes the deterministic 5-stage cryptographic progression:
+1. **Preparing private witness**: Binding off-chain confidential input to the local prover context.
+2. **Generating zero-knowledge proof**: Constructing arithmetic constraints and blinding factors.
+3. **Executing eligibility circuit**: Running the Compact `verifyEligibility` circuit to prove threshold satisfaction.
+4. **Verifying result**: Checking proof validity locally before updating ledger state.
+5. **Eligibility attested**: Updating the public `isEligibilityVerified` flag to `true`.
+
+### 17.5 Compact Circuit Authority & Rejection Handling
+
+The Compact smart contract circuit (`contracts/src/index.compact`) is the sole arbiter of eligibility. The frontend does not use JavaScript comparisons (`amount >= threshold`) as a substitute for cryptographic proofs:
+- **Under-Threshold Rejection**: If the witness fails `witnessAmount >= eligibilityThreshold`, the Compact circuit throws an assertion error, which the service sanitizes to `"Eligibility requirement not satisfied."`.
+- **Pre-Verified Prevention**: Re-verification attempts on already-verified agreements are rejected with `"Eligibility has already been verified for this agreement."`.
+- **Invalid State Prevention**: Non-requested loans are blocked via canonical lifecycle guards with `"Eligibility verification is unavailable in the current loan state."`.
+- **Unauthorized Borrower**: Callers who do not match the loan borrower key are rejected with `"Caller is not authorized to verify this loan request."`.
+
+### 17.6 Local Prototype Limitations & Future Live Network Integration
+
+- **Current Prototype Mode**: Proof generation executes locally in the browser/Node runtime via the `@midnight-ntwrk/compact-runtime` prover and updates local application state.
+- **Honest Prototype Notice**: The UI explicitly informs users: `"Local prototype proof execution — state updated locally, no live network transaction."`
+- **Future Milestone**: Live Midnight Network integration will submit the generated `proofData` to a Midnight validator node via Midnight.js and Lace Wallet transaction submission.

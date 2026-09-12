@@ -13,6 +13,8 @@ export {
   mapLedgerToLoanDetails,
   type CreateLoanResult,
   type VerifyLoanEligibilityResult,
+  type VerifyEligibilityWithWitnessParams,
+  verifyLoanEligibilityWithWitness,
   type FundLoanResult,
   type RepayLoanResult,
   type SettleLoanResult,

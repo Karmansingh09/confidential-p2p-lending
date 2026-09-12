@@ -2386,5 +2386,543 @@
   box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
 }
 
+/* ==========================================================================
+   Commit #17: Borrower Confidential Eligibility Verification Styles
+   ========================================================================== */
 
+.borrower-verification-cta-card {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
+.cta-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cta-icon {
+  font-size: 1.5rem;
+}
+
+.cta-text h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin-bottom: 4px;
+}
+
+.cta-text p {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.btn-start-verification {
+  align-self: flex-start;
+  background: var(--accent-cyan);
+  color: #000;
+  font-weight: 700;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-start-verification:hover {
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+}
+
+.verified-attestation-banner {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.verified-attestation-banner .banner-icon {
+  font-size: 1.2rem;
+  color: #10b981;
+  font-weight: bold;
+}
+
+.verified-attestation-banner strong {
+  color: #10b981;
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 2px;
+}
+
+.verified-attestation-banner p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.eligibility-verification-panel {
+  background: var(--bg-card);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.panel-title-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.panel-icon {
+  font-size: 1.6rem;
+}
+
+.panel-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.panel-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-secondary);
+}
+
+.eligibility-privacy-explanation {
+  background: var(--bg-card-secondary);
+  border-left: 3px solid var(--accent-cyan);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 20px;
+}
+
+.eligibility-privacy-explanation p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.agreement-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.summary-item {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item.highlight-threshold {
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(6, 182, 212, 0.04);
+}
+
+.summary-item .item-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-item .item-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Private Input Form Styles */
+.private-eligibility-input-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.input-security-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.security-icon {
+  font-size: 1.3rem;
+}
+
+.security-text strong {
+  font-size: 0.88rem;
+  color: var(--accent-cyan);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.security-text p {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.security-warning-note {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.password-input-wrapper {
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.witness-password-input {
+  width: 100%;
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.witness-password-input:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.25);
+}
+
+.synthetic-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.presets-label {
+  color: var(--text-muted);
+}
+
+.preset-btn {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+.preset-btn-danger:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.btn-generate-proof {
+  background: var(--accent-cyan);
+  color: #000;
+  font-weight: 700;
+}
+
+/* Proof Stepper Visualizer */
+.proof-progress-container {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.progress-header {
+  margin-bottom: 18px;
+}
+
+.progress-header h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.prototype-badge {
+  font-size: 0.75rem;
+  color: #fbbf24;
+}
+
+.progress-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stepper-step {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  opacity: 0.45;
+  transition: all 0.2s ease;
+}
+
+.stepper-step.step-active {
+  opacity: 1;
+}
+
+.stepper-step.step-done {
+  opacity: 0.85;
+}
+
+.step-indicator {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.step-active .step-indicator {
+  background: var(--accent-cyan);
+  color: #000;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+}
+
+.step-done .step-indicator {
+  background: #10b981;
+  color: #000;
+}
+
+.step-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.step-desc {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* Result Card Styles */
+.eligibility-result-card {
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eligibility-result-card.result-success {
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.eligibility-result-card.result-failure {
+  background: rgba(239, 68, 68, 0.04);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.result-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.result-icon-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.result-icon-badge.badge-success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.result-icon-badge.badge-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.result-privacy-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.privacy-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.06em;
+}
+
+.privacy-callout {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.result-item {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.result-item-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.result-item-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.result-item-value.status-verified {
+  color: #10b981;
+}
+
+.result-item-value.highlight {
+  color: var(--accent-cyan);
+}
+
+.result-disclaimer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.result-error-box {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.result-error-box .error-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ef4444;
+  margin-bottom: 4px;
+}
+
+.result-error-box .error-message {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.already-verified-state {
+  text-align: center;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.already-verified-state .verified-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: bold;
+}

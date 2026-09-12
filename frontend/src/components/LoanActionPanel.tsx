@@ -7,6 +7,7 @@ interface LoanActionPanelProps {
   activeLoanId: string;
   onSelectLoan: (loanId: string) => void;
   loansMap?: Record<string, LoanDetailsModel>;
+  onStartVerification?: () => void;
 }
 
 export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
@@ -14,6 +15,7 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
   activeLoanId,
   onSelectLoan,
   loansMap,
+  onStartVerification,
 }) => {
   const action = getLifecycleActionDescriptor(loan);
 
@@ -67,8 +69,12 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
             className={`action-btn ${action.canExecute ? 'primary-action' : 'concluded-action'}`}
             disabled={!action.canExecute}
             onClick={() => {
+              if (loan.status === 0 && !loan.isEligibilityVerified && onStartVerification) {
+                onStartVerification();
+                return;
+              }
               alert(
-                `Prototype Action: ${action.buttonText}\n\nNotice: The frontend is currently operating in Local Mock Mode (Commit #15). This action is derived from canonical LoanDesk contract guards (canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan). No fake blockchain transactions or wallet signatures are fabricated.`
+                `Prototype Action: ${action.buttonText}\n\nNotice: The frontend is currently operating in Local Mock Mode (Commit #16). This action is derived from canonical LoanDesk contract guards (canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan). No fake blockchain transactions or wallet signatures are fabricated.`
               );
             }}
           >

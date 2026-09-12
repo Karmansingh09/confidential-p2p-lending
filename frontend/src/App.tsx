@@ -26,6 +26,13 @@ export const App: React.FC = () => {
     }));
   };
 
+  const handleLoanVerified = (loanId: string, updatedLoan: LoanDetailsModel) => {
+    setLoans((prev) => ({
+      ...prev,
+      [loanId]: updatedLoan,
+    }));
+  };
+
   return (
     <div className="app-root">
       {currentView === 'dashboard' ? (
@@ -33,6 +40,7 @@ export const App: React.FC = () => {
           onNavigateToCreateLoan={() => setCurrentView('create-loan')}
           loansMap={loans}
           onLoanFunded={handleLoanFunded}
+          onLoanVerified={handleLoanVerified}
         />
       ) : (
         <CreateLoanPage

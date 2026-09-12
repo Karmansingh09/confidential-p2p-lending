@@ -35,6 +35,14 @@ import {
   ALTERNATIVE_LENDER_PK_BYTES,
   ALTERNATIVE_LENDER_PK_HEX,
 } from '../frontend/src/lib/lender-evaluation.ts';
+import {
+  getEligibilityVerificationState,
+  verifyBorrowerEligibility,
+  sanitizeEligibilityError,
+  createEligibilityAttestation,
+  PROOF_GENERATION_STEPS,
+} from '../frontend/src/lib/eligibility-service.ts';
+import { canVerifyEligibility, canFundLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
@@ -52,12 +60,14 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/index.css',
       'src/types/index.ts',
       'src/types/lender.ts',
+      'src/types/eligibility.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
       'src/lib/loan-service.ts',
       'src/lib/marketplace.ts',
       'src/lib/lender-evaluation.ts',
+      'src/lib/eligibility-service.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -73,9 +83,10 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/LoanMarketplace.tsx',
       'src/components/LenderEvaluationPanel.tsx',
       'src/components/FundingConfirmation.tsx',
+      'src/components/PrivateEligibilityInput.tsx',
+      'src/components/EligibilityVerificationResult.tsx',
+      'src/components/EligibilityVerificationPanel.tsx',
     ];
-
-
 
     for (const relPath of requiredFiles) {
       const fullPath = path.join(frontendDir, relPath);
@@ -911,6 +922,303 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 15, 'Must audit all frontend source files including lender modules');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Commit #17: Borrower Confidential Eligibility Verification Workflow Tests
+  // ---------------------------------------------------------------------------
+
+  it('Test 43 (Commit #17 - Req 1): Unverified requested loan requires eligibility verification', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    assert.equal(unverifiedLoan.status, LoanStatus.requested);
+    assert.equal(unverifiedLoan.isEligibilityVerified, false);
+
+    const state = getEligibilityVerificationState(unverifiedLoan);
+    assert.equal(state, 'READY');
+
+    const guard = canVerifyEligibility(unverifiedLoan);
+    assert.equal(guard.canExecute, true);
+  });
+
+  it('Test 44 (Commit #17 - Req 2): Verified requested loan does not require verification again', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    assert.equal(verifiedLoan.status, LoanStatus.requested);
+    assert.equal(verifiedLoan.isEligibilityVerified, true);
+
+    const state = getEligibilityVerificationState(verifiedLoan);
+    assert.equal(state, 'VERIFIED');
+
+    const guard = canVerifyEligibility(verifiedLoan);
+    assert.equal(guard.canExecute, false);
+    assert.ok(guard.reason?.includes('already verified'));
+  });
+
+  it('Test 45 (Commit #17 - Req 3): Funded loan cannot initiate eligibility verification', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    assert.equal(fundedLoan.status, LoanStatus.funded);
+
+    const state = getEligibilityVerificationState(fundedLoan);
+    assert.equal(state, 'NOT_REQUIRED');
+
+    const guard = canVerifyEligibility(fundedLoan);
+    assert.equal(guard.canExecute, false);
+    assert.ok(guard.reason?.includes('not in requested state'));
+  });
+
+  it('Test 46 (Commit #17 - Req 4): Repaid loan cannot initiate eligibility verification', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    assert.equal(repaidLoan.status, LoanStatus.repaid);
+
+    const state = getEligibilityVerificationState(repaidLoan);
+    assert.equal(state, 'NOT_REQUIRED');
+
+    const guard = canVerifyEligibility(repaidLoan);
+    assert.equal(guard.canExecute, false);
+  });
+
+  it('Test 47 (Commit #17 - Req 5): Settled loan cannot initiate eligibility verification', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    assert.equal(settledLoan.status, LoanStatus.settled);
+
+    const state = getEligibilityVerificationState(settledLoan);
+    assert.equal(state, 'NOT_REQUIRED');
+
+    const guard = canVerifyEligibility(settledLoan);
+    assert.equal(guard.canExecute, false);
+  });
+
+  it('Test 48 (Commit #17 - Req 6): Non-borrower caller is rejected by lifecycle guard', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const otherCallerPk = new Uint8Array(32).fill(99);
+
+    const guard = canVerifyEligibility(loan, otherCallerPk);
+    assert.equal(guard.canExecute, false);
+    assert.ok(guard.reason?.includes('not the borrower'));
+  });
+
+  it('Test 49 (Commit #17 - Req 7): Successful ZK verification transitions status to VERIFIED and isEligibilityVerified = true', async () => {
+    const loan = MOCK_LOANS['loan-001'];
+    // threshold is 30000n, so 35000n qualifies
+    const qualifyingWitness = 35000n;
+
+    const result = await verifyBorrowerEligibility({
+      loanId: 'loan-001',
+      loan,
+      witnessAmount: qualifyingWitness,
+    });
+
+    assert.equal(result.isVerified, true);
+    assert.equal(result.status, 'VERIFIED');
+    assert.equal(result.loanId, 'loan-001');
+    assert.equal(result.isPrototypeExecution, true);
+    assert.ok(result.privacyAttestation.statement.includes('meets the required eligibility threshold'));
+  });
+
+  it('Test 50 (Commit #17 - Req 8): Under-threshold private input is rejected by Compact ZK circuit with sanitized error', async () => {
+    const loan = MOCK_LOANS['loan-001'];
+    // threshold is 30000n, so 25000n fails
+    const failingWitness = 25000n;
+
+    const result = await verifyBorrowerEligibility({
+      loanId: 'loan-001',
+      loan,
+      witnessAmount: failingWitness,
+    });
+
+    assert.equal(result.isVerified, false);
+    assert.equal(result.status, 'REJECTED');
+    assert.equal(result.failureReason, 'UNDER_THRESHOLD');
+    assert.equal(result.errorMessage, 'Eligibility requirement not satisfied.');
+  });
+
+  it('Test 51 (Commit #17 - Req 9): Failed verification does NOT mark loan as verified', async () => {
+    const loan = { ...MOCK_LOANS['loan-001'] };
+    const failingWitness = 1000n;
+
+    const result = await verifyBorrowerEligibility({
+      loanId: 'loan-001',
+      loan,
+      witnessAmount: failingWitness,
+    });
+
+    assert.equal(result.isVerified, false);
+    assert.equal(loan.isEligibilityVerified, false);
+  });
+
+  it('Test 52 (Commit #17 - Req 10): Already verified loan returns sanitized already-verified notice', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const result = await verifyBorrowerEligibility({
+      loanId: 'loan-002',
+      loan: verifiedLoan,
+      witnessAmount: 50000n,
+    });
+
+    assert.equal(result.status, 'VERIFIED');
+    assert.equal(result.isVerified, true);
+    assert.equal(result.failureReason, 'ALREADY_VERIFIED');
+    assert.ok(result.errorMessage?.includes('already been verified'));
+  });
+
+  it('Test 53 (Commit #17 - Req 11): Verification result is strictly sanitized and contains ZERO private witness amounts or secrets', async () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const result = await verifyBorrowerEligibility({
+      loanId: 'loan-001',
+      loan,
+      witnessAmount: 45000n,
+    });
+
+    assert.equal('witnessAmount' in result, false);
+    assert.equal('secretAmount' in result, false);
+    assert.equal('witness' in result, false);
+    assert.equal('privateFinancialValue' in result, false);
+    assert.equal('privateState' in result, false);
+    assert.equal('income' in result, false);
+    assert.equal('bankBalance' in result, false);
+
+    // Verify result object values do not contain the number 45000 anywhere
+    const resultString = JSON.stringify(result);
+    assert.equal(resultString.includes('45000'), false);
+  });
+
+  it('Test 54 (Commit #17 - Req 12): Mock loan collection contains zero private financial values or secrets', () => {
+    for (const [id, loan] of Object.entries(MOCK_LOANS)) {
+      assert.equal('witnessAmount' in loan, false);
+      assert.equal('secret' in loan, false);
+      assert.equal('privateFinancialValue' in loan, false);
+      assert.equal('income' in loan, false);
+      assert.equal('balance' in loan, false);
+      assert.ok(typeof loan.isEligibilityVerified === 'boolean');
+      assert.ok(typeof loan.eligibilityThreshold === 'bigint');
+    }
+  });
+
+  it('Test 55 (Commit #17 - Req 13): Frontend code does not write private credentials to localStorage or sessionStorage', () => {
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      assert.equal(content.includes('localStorage.setItem'), false, `Found localStorage in ${file}`);
+      assert.equal(content.includes('sessionStorage.setItem'), false, `Found sessionStorage in ${file}`);
+    }
+  });
+
+  it('Test 56 (Commit #17 - Req 14): Verification UI components expose strictly public agreement information', () => {
+    const inputPath = path.join(srcDir, 'components', 'PrivateEligibilityInput.tsx');
+    const panelPath = path.join(srcDir, 'components', 'EligibilityVerificationPanel.tsx');
+    const resultPath = path.join(srcDir, 'components', 'EligibilityVerificationResult.tsx');
+
+    const inputContent = fs.readFileSync(inputPath, 'utf8');
+    const panelContent = fs.readFileSync(panelPath, 'utf8');
+    const resultContent = fs.readFileSync(resultPath, 'utf8');
+
+    // Asserts password input type is enforced
+    assert.ok(inputContent.includes('type="password"'));
+    assert.ok(inputContent.includes('autoComplete="off"'));
+
+    // Asserts clear privacy model copy
+    assert.ok(panelContent.includes('Confidential Eligibility Verification'));
+    assert.ok(panelContent.includes('The lender will receive proof that you meet the eligibility requirement'));
+    assert.ok(panelContent.includes('underlying financial value remains private'));
+
+    // Asserts security notes
+    assert.ok(inputContent.includes('Do not enter wallet signing credentials'));
+  });
+
+  it('Test 57 (Commit #17 - Req 15): Success result card displays "PRIVATE VALUE ≠ PUBLIC DATA" and never renders private value', () => {
+    const resultPath = path.join(srcDir, 'components', 'EligibilityVerificationResult.tsx');
+    const resultContent = fs.readFileSync(resultPath, 'utf8');
+
+    assert.ok(resultContent.includes('PRIVATE VALUE ≠ PUBLIC DATA'));
+    assert.ok(resultContent.includes('Hidden (Zero-Knowledge Protected)'));
+    assert.ok(resultContent.includes('isEligibilityVerified: true'));
+    assert.ok(resultContent.includes('Available for lender evaluation'));
+  });
+
+  it('Test 58 (Commit #17 - Req 16): PROOF_GENERATION_STEPS contains 5 distinct stages without fabricating progress percentages', () => {
+    assert.equal(PROOF_GENERATION_STEPS.length, 5);
+    const labels = PROOF_GENERATION_STEPS.map((s) => s.label);
+    assert.ok(labels.includes('Preparing private witness'));
+    assert.ok(labels.includes('Generating zero-knowledge proof'));
+    assert.ok(labels.includes('Executing eligibility circuit'));
+    assert.ok(labels.includes('Verifying result'));
+    assert.ok(labels.includes('Eligibility attested'));
+  });
+
+  it('Test 59 (Commit #17 - Req 17): Verified loan becomes immediately fundable by lender via canonical canFundLoan', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const lenderPk = new Uint8Array(32).fill(77);
+
+    // Prior to verification, lender cannot fund
+    const unverifiedGuard = canFundLoan(unverifiedLoan, lenderPk);
+    assert.equal(unverifiedGuard.canExecute, false);
+
+    // After verification, lender can fund
+    const verifiedLoan = {
+      ...unverifiedLoan,
+      isEligibilityVerified: true,
+    };
+    const verifiedGuard = canFundLoan(verifiedLoan, lenderPk);
+    assert.equal(verifiedGuard.canExecute, true);
+  });
+
+  it('Test 60 (Commit #17 - Req 20 & Strict Privacy Audit): Zero references to private financial credentials across all frontend files including new eligibility modules', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 18, 'Must audit all frontend source files including eligibility modules');
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

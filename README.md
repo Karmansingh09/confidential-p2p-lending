@@ -138,20 +138,25 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #16)
+### Current Status & Features (Commit #17)
+- **Borrower Confidential Eligibility Verification Workflow (Commit #17)**:
+  - **Typed Prover Integration**: Clean client service (`frontend/src/lib/eligibility-service.ts`) invoking the authentic Midnight Compact zero-knowledge circuit off-chain.
+  - **Strict Witness Boundary**: Ephemeral password-style input (`PrivateEligibilityInput.tsx`) cleared immediately upon proof initiation; zero storage in `localStorage`, `sessionStorage`, cookies, or URL queries.
+  - **5-Stage Prover Visualization**: Real-time progress indicators for witness preparation, constraint generation, circuit execution, local verification, and attestation.
+  - **Compact Circuit Authority**: Cryptographically rejects under-threshold inputs with sanitized errors without exposing secret amounts or internal stack traces.
+  - **Success & Privacy Attestation**: Result view (`EligibilityVerificationResult.tsx`) affirming `PRIVATE VALUE ≠ PUBLIC DATA` and transitioning the agreement to `REQUESTED + VERIFIED`.
+  - **Seamless Lifecycle Unlocking**: Moving an agreement to verified immediately unlocks the lender evaluation and capital funding workflow.
 - **Lender Loan Evaluation & Funding Workflow (Commit #16)**:
-  - **Typed Evaluation Engine**: Deterministic evaluation model (`frontend/src/lib/lender-evaluation.ts`) operating exclusively on public `LoanDetailsModel` properties.
-  - **Exact BigInt Arithmetic**: Computes expected interest earnings and total returns with zero IEEE-754 floating-point drift, delegating to canonical contract obligation rules.
-  - **Canonical Contract-Guarded Readiness**: Derives funding capability strictly from `canFundLoan`, enforcing prerequisite ZK eligibility verification, active requested state, and self-funding prevention.
-  - **Zero-Knowledge Underwriting Attestation**: Transparent UI panel assuring liquidity providers of verified borrower creditworthiness without disclosing confidential underwriting data.
-  - **Interactive 2-Step Funding Drawer**: Modal review flow displaying terms, simulated lender identity selection, and legal disclosures before committing.
-  - **Honest Post-Execution Confirmation Card**: Displays state transition (`REQUESTED → FUNDED`), lender assignment, and explicit prototype notice: `Asset Transfer Status: "Not executed — local prototype mode"`.
+  - Typed evaluation models operating exclusively on public `LoanDetailsModel` properties.
+  - Exact BigInt arithmetic for interest earnings and expected return without floating-point drift.
+  - Canonical contract-guarded readiness via `canFundLoan`.
+  - Two-step prototype funding drawer and confirmation card with honest disclosure: `Asset Transfer Status: "Not executed — local prototype mode"`.
 - **Public Loan Marketplace Discovery (Commit #15)**:
   - Search agreements by Loan ID, Borrower, or Lender.
   - Lifecycle filtering with verified state derivation (`status === requested && isEligibilityVerified === true`).
   - Deterministic 6-way BigInt sorting with tie-breaking.
 - **Borrower Loan Request UI (Commit #14)**: Propose confidential micro-loans with basis-point precision and real-time validation.
-- **Strict Privacy Separation**: Zero private financial data, secret witnesses, or confidential inputs accessible to the frontend or lenders.
+- **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #16). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #17). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

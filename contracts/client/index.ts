@@ -3,6 +3,7 @@ export {
   LoanErrorCode,
   LoanApiError,
   mapContractErrorToApiError,
+  LoanStatus,
   type LoanStatusText,
   type LoanDetailsModel,
   bytesToHex,

@@ -109,6 +109,7 @@ export function mapContractErrorToApiError(err: unknown): LoanApiError {
 // 2. Typed Loan Models
 // -----------------------------------------------------------------------------
 
+export { LoanStatus };
 export type LoanStatusText = 'requested' | 'funded' | 'repaid' | 'settled';
 
 /**

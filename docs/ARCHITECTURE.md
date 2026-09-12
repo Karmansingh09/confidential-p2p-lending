@@ -573,6 +573,74 @@ This client API is structured as an immediate drop-in dependency for the upcomin
 2. **Prover Sidecar Integration**: The witness provider passed to `verifyLoanEligibility` can seamlessly delegate to a local Midnight proof server sidecar or in-browser WASM prover.
 3. **State Observability**: Polling or subscription to on-chain ledger events can pipe contract states directly into `LoanDesk.getLoanDetails(state)` to trigger UI reactivity.
 
+---
+
+## 13. Frontend Architecture & Privacy Boundaries
+
+The frontend application (`frontend/`) provides an interactive React + TypeScript user interface designed to present the Confidential P2P Micro-Lending Desk lifecycle to borrowers and lenders.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                           REACT FRONTEND LAYER                            |
+|                     (frontend/src/pages/DashboardPage.tsx)                |
+|                                                                           |
+|  - Renders 5-phase lifecycle: REQUESTED -> VERIFIED -> FUNDED -> REPAID   |
+|                               -> SETTLED                                  |
+|  - Consumes ONLY public LoanDetailsModel (amount, rate, duration, status) |
+|  - Displays defensive LifecycleStepper & PrivacyIndicator                 |
+|  - Operates in Local Mock Mode (no fake transactions or wallet claims)    |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼ [Consumes Public Data Models Only]
++───────────────────────────────────────────────────────────────────────────+
+|                         CLIENT LIFECYCLE API LAYER                        |
+|                       (contracts/client/loan-api.ts)                      |
+|                                                                           |
+|  - Unified LoanDesk facade & canonical lifecycle dispatchers              |
+|  - Evaluates LifecycleGuardResult (canFundLoan, canRepayLoan, etc.)       |
+|  - Maps contract execution errors to typed LoanApiError instances         |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼ [Witness injected ONLY off-chain]
++───────────────────────────────────────────────────────────────────────────+
+|                     COMPACT ZERO-KNOWLEDGE CONTRACT                       |
+|                      (contracts/src/index.compact)                        |
+|                                                                           |
+|  - Sole cryptographic authority for state transitions                     |
+|  - Proves privateValue >= eligibilityThreshold in Zero Knowledge          |
+|  - Discloses ONLY the boolean verification attestation to the ledger      |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 13.1 Layer Responsibilities
+1. **Frontend Responsibility (`frontend/src/`)**:
+   - Visualizes agreement status and lifecycle progression across all 5 states.
+   - Formats public numbers (amounts, basis points, durations) and shortens public keys.
+   - Guides user actions with defensive UI prompts and disabled action buttons.
+   - Clearly flags prototype/mock operation mode to prevent misleading users.
+2. **Client API Responsibility (`contracts/client/loan-api.ts`)**:
+   - Encapsulates low-level Compact runtime state queries and proof context creation.
+   - Enforces parameter preconditions before dispatching transactions.
+   - Standardizes error classification (`LoanErrorCode`).
+3. **Compact Contract Responsibility (`contracts/src/index.compact`)**:
+   - Sole cryptographic authority. Enforces all invariant checks, caller bindings, and state transitions.
+
+### 13.2 Privacy Boundary: Why Private Financial Values Never Enter React State
+A central architectural pillar of this protocol is that **sensitive borrower financial credentials never enter the React application tree**:
+
+- **No Private State in UI Components**: React components receive only `LoanDetailsModel`, which contains exclusively public ledger fields (`amount`, `interestRateBasisPoints`, `durationBlocks`, `status`, `eligibilityThreshold`, `isEligibilityVerified`, `borrower`, `lender`).
+- **No Witness Leaks in Forms or State**: The React state holds only selected agreement identifiers and UI viewing flags.
+- **Local Prover Isolation**: When the ZK eligibility circuit executes, the borrower's private financial value is supplied directly to the witness provider in a local off-chain process or proof-server sidecar. The witness value never traverses React props, context, Redux/Zustand stores, or DOM attributes.
+- **Zero-Leakage Assurance**: Automated tests strictly scan all frontend source files to enforce that neither `getPrivateFinancialValue` nor private witness identifiers can be imported into UI components.
+
+### 13.3 Honest Local/Mock Mode State
+In Commit #13:
+- The frontend operates strictly in **Local Mock UI Mode**.
+- Network banners explicitly indicate disconnection from Midnight Network.
+- No wallet transactions or blockchain settlements are faked or simulated as real.
+- The UI exposes an interactive scenario selector (`loan-001` through `loan-005`) enabling reviewers and developers to inspect all 5 lifecycle states in complete safety.
+
+
 
 
 

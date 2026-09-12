@@ -117,10 +117,36 @@ console.log(settled.loanDetails.statusText); // 'settled'
 ```
 
 ### Running Tests
-Run the automated test suite covering all 5 lifecycle transitions and client API:
+Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
 ```
+
+## React + TypeScript Frontend Foundation (`frontend/`)
+
+A modern, privacy-respecting dashboard UI visualizing the protocol lifecycle for borrowers and lenders.
+
+### Starting the Frontend
+```bash
+# Start local Vite development server
+npm run dev:frontend
+
+# Typecheck frontend TypeScript
+npm run typecheck:frontend
+
+# Build production distribution bundle
+npm run build:frontend
+```
+
+### Current Status & Features (Commit #13)
+- **Lifecycle Stepper**: Visualizes the 5-phase protocol lifecycle (`REQUESTED` &rarr; `ELIGIBILITY VERIFIED` &rarr; `FUNDED` &rarr; `REPAID` &rarr; `SETTLED`).
+- **Public Terms Summary**: Renders principal amount, interest rate in basis points, total calculated repayment obligation, term duration, and shortened public keys.
+- **ZK Privacy Boundary Indicator**: Communicates that borrower credit qualification is proven in zero-knowledge while keeping exact income, bank balances, and secret witnesses strictly off-chain.
+- **Scenario Dispatcher**: Interactive inspector to preview loan agreements in all 5 lifecycle stages (`loan-001` through `loan-005`).
+
+> [!WARNING]
+> **Network & Wallet Status**: The frontend currently operates in **Local Mock UI Mode** (Commit #13). Live Midnight.js wallet integration (e.g. Lace Wallet) and transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+
 
 
 

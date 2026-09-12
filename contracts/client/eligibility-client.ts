@@ -29,12 +29,19 @@ export interface InitializeLoanParams {
 }
 
 /**
- * Result of contract initialization.
+ * Parameters for creating a loan request.
+ */
+export type CreateLoanRequestParams = InitializeLoanParams;
+
+/**
+ * Result of contract initialization or loan request creation.
  */
 export interface InitializeLoanResult {
   contractState: ContractState;
   initialLedger: Ledger;
 }
+
+export type CreateLoanRequestResult = InitializeLoanResult;
 
 /**
  * Parameters for executing the confidential eligibility proof.
@@ -116,6 +123,30 @@ export function initializeLoanContract(params: InitializeLoanParams): Initialize
     contractState: initResult.currentContractState,
     initialLedger,
   };
+}
+
+/**
+ * Creates a valid loan request on the local runtime after verifying parameter constraints.
+ * Enforces protocol bounds:
+ * - principalAmount > 0
+ * - durationBlocks > 0
+ * - interestRateBasisPoints between 1 and 10000 (0.01% to 100.00%)
+ * - eligibilityThreshold > 0
+ */
+export function createLoanRequest(params: CreateLoanRequestParams): CreateLoanRequestResult {
+  if (params.principalAmount <= 0n) {
+    throw new Error("Loan amount must be greater than zero");
+  }
+  if (params.durationBlocks <= 0n) {
+    throw new Error("Loan duration must be greater than zero");
+  }
+  if (params.interestRateBasisPoints <= 0n || params.interestRateBasisPoints > 10000n) {
+    throw new Error("Interest rate must be between 1 and 10000 basis points");
+  }
+  if (params.eligibilityThreshold <= 0n) {
+    throw new Error("Eligibility threshold must be greater than zero");
+  }
+  return initializeLoanContract(params);
 }
 
 /**

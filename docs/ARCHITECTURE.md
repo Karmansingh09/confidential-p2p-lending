@@ -200,3 +200,71 @@ The client module enforces cryptographic hygiene invariants:
 
 ### 7.3 Local Proving & Network Environment
 When running outside of a connected testnet/devnet (i.e. when a remote proof server or node is not running), the client module leverages the local execution engine in `@midnight-ntwrk/compact-runtime`. This evaluates the compiled ZKIR circuits against authentic prover contexts, producing valid `ProofData` and ledger mutations identically to on-chain execution.
+
+---
+
+## 8. Loan Request Lifecycle
+
+The loan request workflow marks the first operational lending transaction on the micro-lending desk. A borrower initiates a loan request by deploying/instantiating a contract with economic terms and underwriting requirements.
+
+### 8.1 Data Submission & Privacy Boundary
+During loan-request creation:
+- **What the Borrower Submits**:
+  - `borrowerPk` (`Bytes<32>`): Borrower account public key.
+  - `principalAmount` (`Uint<64>`): Principal sum requested.
+  - `interestRate` (`Uint<16>`): Proposed interest rate in basis points (1 bps = 0.01%).
+  - `termBlocks` (`Uint<32>`): Loan duration in network blocks.
+  - `minThreshold` (`Uint<64>`): Public underwriting threshold the borrower commits to meeting.
+- **What Becomes Public**:
+  - All submitted terms are disclosed and committed to public ledger storage (`borrower`, `amount`, `interestRateBasisPoints`, `durationBlocks`, `eligibilityThreshold`).
+  - Lenders discover and evaluate these terms on-chain via inspection circuits (`getLoanDetails()`, `getLoanStatus()`).
+- **What Remains Private**:
+  - The borrower's sensitive financial data (e.g. liquid net worth, income, bank balances) is **never** provided in the constructor or initial state.
+  - No pseudo-anonymous hashes or predictable commitments are published to the ledger.
+  - Financial data is evaluated exclusively off-chain during the subsequent ZK proof step.
+
+### 8.2 Initial State Guarantees
+Every newly created loan request guarantees:
+- `status = LoanStatus.requested`: A loan cannot be initialized in `funded`, `repaid`, or `settled`.
+- `isEligibilityVerified = false`: Eligibility cannot be pre-set or assumed; it requires a valid ZK circuit execution.
+- `lender = none<Bytes<32>>()`: No lender can be assigned at request time.
+
+### 8.3 Validation Rules
+Parameters are strictly enforced via on-chain Compact `assert()` statements and client-side pre-validation:
+1. **Principal Amount**: `principalAmount > 0` (prevents empty or zero-value loans).
+2. **Duration**: `durationBlocks > 0` (enforces positive loan maturity terms).
+3. **Interest Rate Range**: `interestRate > 0 && interestRate <= 10000` (ensures interest rates fall within a protocol-governed sensible micro-lending band of 0.01% to 100.00% APR).
+4. **Eligibility Threshold**: `minThreshold > 0` (guarantees a meaningful non-zero underwriting bar).
+
+### 8.4 Connection to Eligibility Verification
+```
++─────────────────────────────────────────+
+|         1. CREATE LOAN REQUEST          |
+|                                         |
+|  - Validates principal, rate, duration  |
+|  - Sets status = requested              |
+|  - Sets isEligibilityVerified = false   |
+|  - Commits eligibilityThreshold         |
++─────────────────────────────────────────+
+                     │
+                     ▼
++─────────────────────────────────────────+
+|         2. ZK PROOF EXECUTION           |
+|                                         |
+|  - Borrower calls verifyEligibility()   |
+|  - Circuit checks status == requested   |
+|  - Circuit checks !isEligibilityVerified|
+|  - Proves privateValue >= threshold     |
++─────────────────────────────────────────+
+                     │
+                     ▼
++─────────────────────────────────────────+
+|     3. ELIGIBLE REQUEST FOR LENDERS     |
+|                                         |
+|  - status remains requested             |
+|  - isEligibilityVerified = true         |
+|  - Discoverable by marketplace lenders  |
++─────────────────────────────────────────+
+```
+A newly created request is immediately compatible with the `verifyEligibility()` circuit. Once verified, the request is cryptographically stamped as eligible without disclosing the borrower's private financial value, paving the way for confidential lender funding in subsequent protocol phases.
+

@@ -85,6 +85,8 @@ constructor(
 ) {
   assert(principalAmount > 0, "Loan amount must be greater than zero");
   assert(termBlocks > 0, "Loan duration must be greater than zero");
+  assert(interestRate > 0 && interestRate <= 10000, "Interest rate must be between 1 and 10000 basis points");
+  assert(minThreshold > 0, "Eligibility threshold must be greater than zero");
 
   borrower = disclose(borrowerPk);
   lender = none<Bytes<32>>();

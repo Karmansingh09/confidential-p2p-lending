@@ -336,4 +336,65 @@ Upon circuit verification:
 - Borrower private financial values, account balances, and witness execution transcripts remain strictly local to the borrower's proving environment.
 - Lenders make funding decisions solely based on zero-knowledge public attestations.
 
+---
+
+## 10. Borrower Repayment Lifecycle
+
+The repayment workflow allows the borrower to satisfy their debt obligation on an active, funded loan, transitioning the contract state from `funded` to `repaid`.
+
+```
++──────────────────────────────────────────+
+|          1. REPAYMENT INVOCATION         |
+|                                          |
+|  Borrower calls repayLoan(amount):       |
+|  - checks status == funded               |
+|  - checks caller == borrower             |
+|  - checks repayment >= principal         |
++──────────────────────────────────────────+
+                      │
+                      ▼
++──────────────────────────────────────────+
+|     2. SAFE ARITHMETIC VERIFICATION      |
+|                                          |
+|  Evaluates in Field (BLS12-381, 254-bit):|
+|  - product = principal * rate            |
+|  - interestProduct = interest * 10000    |
+|  - remainder = product - interestProduct |
+|  - asserts remainder < 10000 (as Uint64) |
++──────────────────────────────────────────+
+                      │
+                      ▼
++──────────────────────────────────────────+
+|         3. REPAID LEDGER STATE           |
+|                                          |
+|  - status = LoanStatus.repaid            |
+|  - obligation mathematically fulfilled   |
+|  - zero leakage of borrower secrets      |
++──────────────────────────────────────────+
+```
+
+### 10.1 Repayment Calculation & Simple Interest Model
+The required repayment obligation is derived directly from the immutable loan terms stored on the ledger:
+$$\text{Obligation} = \text{Principal} + \left\lfloor \frac{\text{Principal} \times \text{interestRateBasisPoints}}{10000} \right\rfloor$$
+
+- **Absence of Timing Primitives in Compact**: Compact 0.31.1 does not expose a reliable on-chain block/clock/slot primitive. Consequently, the MVP specifies a deterministic simple-interest obligation based on the agreed basis points, rather than continuous time-accrued interest.
+- **Client Helper**: `calculateRepaymentObligation(principal, interestRateBasisPoints)` computes the exact expected total in TypeScript, allowing automated parameter deduction.
+
+### 10.2 Mathematical Non-Trusting Validation & Safe Field Arithmetic
+Because Compact circuits operate over algebraic zero-knowledge constraint systems, the language does not provide a native integer division `/` operator. Rather than blindly trusting an untrusted caller-supplied `repaymentAmount`, the contract proves Euclidean division in zero knowledge:
+1. **Field Promotion**: Intermediate values (`amount as Field`, `interestRateBasisPoints as Field`) are promoted to native `Field` (BLS12-381 scalar field elements). This eliminates intermediate integer overflow, since $2^{64} \times 10000 \ll 2^{254}$.
+2. **Euclidean Division Proof**:
+   $$\text{productField} = \text{interestField} \times 10000 + \text{remainderField}$$
+3. **Bounded Remainder Assertion**: Casting `remainderField as Uint<64>` asserts both non-negativity (rejecting overpayment) and bounds the remainder strictly to $[0, 9999]$ (rejecting underpayment).
+4. **Uniqueness**: By the Euclidean Division Theorem, exactly one integer value satisfies this constraint system, mathematically guaranteeing that the borrower repays the exact required interest.
+
+### 10.3 Caller Authorization & Lifecycle Constraints
+- **Borrower Binding**: `assert(ownPublicKey().bytes == borrower, "Caller is not the borrower")` prevents lenders or third parties from executing repayment on behalf of the borrower.
+- **Status Safeguards**: `assert(status == LoanStatus.funded, "Loan is not in funded state")` prevents repayments on un-funded requests (`requested`), already repaid contracts (`repaid`), or settled loans (`settled`).
+
+### 10.4 Asset Movement Status
+- In this milestone, the verified state machine transition (`repaid`) and cryptographic arithmetic proofs are executed locally.
+- Real token payments and native coin returns require Midnight shielded token ledger deployment (`zswap` / Native Tokens) and an active wallet connector, and are therefore explicitly reported as unexecuted (`isAssetTransferExecuted: false`).
+
+
 

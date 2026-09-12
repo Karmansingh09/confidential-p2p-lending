@@ -161,6 +161,47 @@ export circuit fundLoan(lenderPk: Bytes<32>): [] {
 }
 
 // -----------------------------------------------------------------------------
+// Repayment Circuit
+// -----------------------------------------------------------------------------
+
+/**
+ * Repays an active, funded loan.
+ *
+ * Security & Lifecycle Rules:
+ * 1. Loan must be in `funded` state.
+ * 2. Caller must be the original borrower (`ownPublicKey().bytes == borrower`).
+ *
+ * Repayment Calculation:
+ * - Calculates total repayment obligation = principal + (principal * interestRateBasisPoints) / 10000.
+ * - Simple interest model for the MVP.
+ *
+ * On success:
+ * - `status` transitions to `LoanStatus.repaid`.
+ */
+export circuit repayLoan(repaymentAmount: Uint<64>): Uint<64> {
+  assert(status == LoanStatus.funded, "Loan is not in funded state");
+  assert(ownPublicKey().bytes == borrower, "Caller is not the borrower");
+  assert(repaymentAmount >= amount, "Repayment amount must cover at least the principal");
+
+  // Prevent intermediate overflow by promoting operands to Uint<128>
+  // Product of Uint<64> amount and Uint<16> rate is at most 2^80, well within Uint<128> max (2^128 - 1).
+  const principalField = amount as Field;
+  const rateField = interestRateBasisPoints as Field;
+  const productField = principalField * rateField;
+
+  const interestField = (repaymentAmount - amount) as Field;
+  const interestProductField = interestField * 10000;
+
+  const remainderField = productField - interestProductField;
+  const remainder = remainderField as Uint<64>;
+  assert(remainder < 10000, "Repayment amount is insufficient for required interest");
+
+  status = LoanStatus.repaid;
+
+  return repaymentAmount;
+}
+
+// -----------------------------------------------------------------------------
 // Inspection Circuits
 // -----------------------------------------------------------------------------
 

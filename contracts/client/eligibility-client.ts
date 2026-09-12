@@ -120,6 +120,54 @@ export interface FundLoanResult {
 }
 
 /**
+ * Calculates the exact simple interest repayment obligation (principal + interest)
+ * based on the loan principal and interest rate in basis points.
+ */
+export function calculateRepaymentObligation(
+  principal: bigint,
+  interestRateBasisPoints: bigint
+): bigint {
+  const interest = (principal * interestRateBasisPoints) / 10000n;
+  return principal + interest;
+}
+
+/**
+ * Parameters for executing borrower repayment.
+ */
+export interface RepayLoanParams {
+  /** The current on-chain contract state */
+  contractState: ContractState;
+  /** The borrower's public account key */
+  borrowerPk: Uint8Array;
+  /** The repayment amount (defaults to the exact required principal + interest) */
+  repaymentAmount?: bigint;
+  /** The caller's public account key (defaults to borrowerPk for authentic borrower call) */
+  callerPk?: Uint8Array;
+  /** The contract address (defaults to dummyContractAddress for local simulation) */
+  contractAddress?: string;
+  /** Initial private state for circuit execution */
+  privateState?: any;
+  /** Optional token payment receipt/witness for future native asset integration */
+  paymentTransferDetails?: unknown;
+}
+
+/**
+ * Result of executing the repayLoan circuit.
+ */
+export interface RepayLoanResult {
+  /** The actual repayment amount processed and verified by the circuit */
+  repaidAmount: bigint;
+  /** Updated contract state ready for submission or further interaction */
+  updatedContractState: ContractState;
+  /** Public ledger view reflecting repaid status */
+  updatedLedger: Ledger;
+  /** The generated proof data from local circuit execution */
+  proofData: ProofData;
+  /** Whether real asset transfer occurred (false until network token infrastructure is active) */
+  isAssetTransferExecuted: boolean;
+}
+
+/**
  * Constructs a client-side witness provider that encapsulates the borrower's
  * private financial value. The value is accessed strictly during local prover
  * execution and never leaves the witness context.
@@ -310,6 +358,72 @@ export function fundLoan(params: FundLoanParams): FundLoanResult {
   const updatedLedger = ledger(circuitResult.context.currentQueryContext.state);
 
   return {
+    updatedContractState,
+    updatedLedger,
+    proofData: circuitResult.proofData,
+    isAssetTransferExecuted: false,
+  };
+}
+
+/**
+ * Executes the borrower repayment circuit against the active contract state.
+ *
+ * Verifies on-chain preconditions:
+ * 1. status == LoanStatus.funded
+ * 2. caller == borrower
+ * 3. repaymentAmount mathematically satisfies required principal + interest
+ *
+ * Updates:
+ * - status -> LoanStatus.repaid
+ */
+export function repayLoan(params: RepayLoanParams): RepayLoanResult {
+  if (!params.borrowerPk || params.borrowerPk.length !== 32) {
+    throw new Error("Borrower public key must be 32 bytes");
+  }
+
+  const currentLedger = ledger(params.contractState.data);
+
+  // Compute required repayment amount if not explicitly provided
+  const repaymentAmount =
+    params.repaymentAmount ??
+    calculateRepaymentObligation(
+      currentLedger.amount,
+      currentLedger.interestRateBasisPoints
+    );
+
+  const callerPk = params.callerPk ?? params.borrowerPk;
+
+  // Use null witnesses since repayLoan does not query private witnesses
+  const contract = new Contract({
+    getPrivateFinancialValue: (ctx) => [ctx.privateState, 0n],
+  });
+
+  const targetAddress = params.contractAddress ?? dummyContractAddress();
+  const circuitContext = createCircuitContext(
+    targetAddress,
+    { bytes: callerPk },
+    params.contractState.data,
+    params.privateState ?? {}
+  );
+
+  const circuitResult: CircuitResults<any, bigint> = contract.circuits.repayLoan(
+    circuitContext,
+    repaymentAmount
+  );
+
+  const updatedContractState = new ContractState();
+  updatedContractState.data = new ChargedState(circuitResult.context.currentQueryContext.state.state);
+  for (const opName of params.contractState.operations()) {
+    const op = params.contractState.operation(opName);
+    if (op) {
+      updatedContractState.setOperation(opName, op);
+    }
+  }
+
+  const updatedLedger = ledger(circuitResult.context.currentQueryContext.state);
+
+  return {
+    repaidAmount: circuitResult.result,
     updatedContractState,
     updatedLedger,
     proofData: circuitResult.proofData,

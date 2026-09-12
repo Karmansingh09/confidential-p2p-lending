@@ -1,0 +1,14 @@
+{
+  "name": "confidential-p2p-lending",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "contracts"
+  ],
+  "scripts": {
+    "compile:contracts": "npm run compile --workspace=contracts",
+    "build:contracts": "npm run build --workspace=contracts",
+    "typecheck:contracts": "npm run typecheck --workspace=contracts"
+  }
+}

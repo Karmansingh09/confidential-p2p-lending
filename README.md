@@ -13,3 +13,26 @@ A peer-to-peer micro-lending platform built with privacy-preserving zero-knowled
 ## Status
 
 > **Note**: This repository is currently under active development. Project structure and core modules are being initialized.
+
+## Development Setup
+
+### Prerequisites
+- **Compact Toolchain**: Installed and available in PATH (e.g. `compact 0.5.1` with compiler `0.31.1`).
+- **Node.js**: Node.js v20+ and npm.
+
+### Installation
+```bash
+npm install
+```
+
+### Compact Smart Contracts
+The Compact contracts reside in `contracts/`.
+- Compile Compact contracts to generated TypeScript and ZKIR artifacts:
+  ```bash
+  npm run compile:contracts
+  ```
+- Compile and typecheck contract bindings:
+  ```bash
+  npm run build:contracts
+  ```
+

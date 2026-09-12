@@ -168,6 +168,34 @@ export interface RepayLoanResult {
 }
 
 /**
+ * Parameters for executing loan settlement.
+ */
+export interface SettleLoanParams {
+  /** The current on-chain contract state */
+  contractState: ContractState;
+  /** The caller's public account key (must be borrower or lender) */
+  callerPk: Uint8Array;
+  /** The contract address (defaults to dummyContractAddress for local simulation) */
+  contractAddress?: string;
+  /** Initial private state for circuit execution */
+  privateState?: any;
+}
+
+/**
+ * Result of executing the settleLoan circuit.
+ */
+export interface SettleLoanResult {
+  /** Updated contract state ready for submission or further interaction */
+  updatedContractState: ContractState;
+  /** Public ledger view reflecting settled status */
+  updatedLedger: Ledger;
+  /** The generated proof data from local circuit execution */
+  proofData: ProofData;
+  /** Whether real asset transfer occurred (false until network token infrastructure is active) */
+  isAssetTransferExecuted: boolean;
+}
+
+/**
  * Constructs a client-side witness provider that encapsulates the borrower's
  * private financial value. The value is accessed strictly during local prover
  * execution and never leaves the witness context.
@@ -424,6 +452,55 @@ export function repayLoan(params: RepayLoanParams): RepayLoanResult {
 
   return {
     repaidAmount: circuitResult.result,
+    updatedContractState,
+    updatedLedger,
+    proofData: circuitResult.proofData,
+    isAssetTransferExecuted: false,
+  };
+}
+
+/**
+ * Executes the loan settlement circuit against the active contract state.
+ *
+ * Verifies on-chain preconditions:
+ * 1. status == LoanStatus.repaid
+ * 2. caller == borrower || caller == lender
+ *
+ * Updates:
+ * - status -> LoanStatus.settled
+ */
+export function settleLoan(params: SettleLoanParams): SettleLoanResult {
+  if (!params.callerPk || params.callerPk.length !== 32) {
+    throw new Error("Caller public key must be 32 bytes");
+  }
+
+  // Use null witnesses since settleLoan does not query private witnesses
+  const contract = new Contract({
+    getPrivateFinancialValue: (ctx) => [ctx.privateState, 0n],
+  });
+
+  const targetAddress = params.contractAddress ?? dummyContractAddress();
+  const circuitContext = createCircuitContext(
+    targetAddress,
+    { bytes: params.callerPk },
+    params.contractState.data,
+    params.privateState ?? {}
+  );
+
+  const circuitResult: CircuitResults<any, []> = contract.circuits.settleLoan(circuitContext);
+
+  const updatedContractState = new ContractState();
+  updatedContractState.data = new ChargedState(circuitResult.context.currentQueryContext.state.state);
+  for (const opName of params.contractState.operations()) {
+    const op = params.contractState.operation(opName);
+    if (op) {
+      updatedContractState.setOperation(opName, op);
+    }
+  }
+
+  const updatedLedger = ledger(circuitResult.context.currentQueryContext.state);
+
+  return {
     updatedContractState,
     updatedLedger,
     proofData: circuitResult.proofData,

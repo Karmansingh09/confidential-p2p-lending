@@ -396,5 +396,54 @@ Because Compact circuits operate over algebraic zero-knowledge constraint system
 - In this milestone, the verified state machine transition (`repaid`) and cryptographic arithmetic proofs are executed locally.
 - Real token payments and native coin returns require Midnight shielded token ledger deployment (`zswap` / Native Tokens) and an active wallet connector, and are therefore explicitly reported as unexecuted (`isAssetTransferExecuted: false`).
 
+---
+
+## 11. Loan Settlement Lifecycle
+
+Settlement represents the final lifecycle state transition of a loan agreement on the Confidential P2P Micro-Lending Desk, confirming that a fully repaid loan has reached its immutable terminal state.
+
+```
++───────────────────────────────────────────────────────────+
+|               COMPLETE 5-STAGE PROTOCOL LIFECYCLE         |
+|                                                           |
+|  1. REQUESTED:    Borrower creates loan request           |
+|         │         - Principal, rate, duration, threshold  |
+|         ▼                                                 |
+|  2. VERIFIED:     Borrower proves financial eligibility   |
+|         │         - Zero-knowledge proof (witness >= min) |
+|         ▼                                                 |
+|  3. FUNDED:       Lender deposits funds & accepts terms   |
+|         │         - Lender assigned, status = funded      |
+|         ▼                                                 |
+|  4. REPAID:       Borrower satisfies full debt obligation |
+|         │         - Principal + interest verified in ZK   |
+|         ▼                                                 |
+|  5. SETTLED:      Terminal agreement finalization         |
+|                   - Callable by borrower or lender        |
+|                   - status = settled (closed out)         |
++───────────────────────────────────────────────────────────+
+```
+
+### 11.1 Terminal State Guarantees
+- **Immutable Closure**: Once `status = LoanStatus.settled`, the loan has completed its entire economic and legal lifecycle.
+- **Circuit Guardrails**: A settled loan cannot be re-funded, cannot be re-repaid, and cannot be re-settled. All subsequent circuit calls attempting state mutation are rejected.
+
+### 11.2 Authorization Model & Anti-Deadlock Design
+The `settleLoan()` circuit enforces:
+$$\text{caller} = \text{borrower} \quad \lor \quad \text{caller} = \text{lender}$$
+
+```compact
+const caller = ownPublicKey().bytes;
+assert(caller == borrower || (lender.is_some && caller == lender.value), "Caller is not authorized to settle this loan");
+```
+
+- **Exclusion of Third Parties**: Unrelated addresses who are neither the borrower nor the lender cannot trigger settlement.
+- **Anti-Deadlock Rationale**: Because full repayment (principal + interest) is already mathematically proven and verified on-chain upon entering `LoanStatus.repaid`, requiring both parties to sign simultaneously or restricting settlement to only the lender would introduce griefing/deadlock risk (e.g. an unresponsive lender stranding the borrower's agreement in `repaid`). Allowing either legitimate agreement participant to close out the loan ensures protocol liveness while preserving access control.
+
+### 11.3 Asset Transfer Status
+- The settlement transaction marks the verified terminal state transition on the smart contract.
+- Similar to earlier phases, physical coin unlock and escrow release require active Midnight Network token infrastructure (`zswap` / Native Tokens), which is reported honestly as unexecuted (`isAssetTransferExecuted: false`).
+
+
 
 

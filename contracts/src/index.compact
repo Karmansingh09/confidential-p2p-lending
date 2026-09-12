@@ -202,6 +202,28 @@ export circuit repayLoan(repaymentAmount: Uint<64>): Uint<64> {
 }
 
 // -----------------------------------------------------------------------------
+// Settlement Circuit
+// -----------------------------------------------------------------------------
+
+/**
+ * Settles a repaid loan, transitioning it to the terminal state.
+ *
+ * Security & Lifecycle Rules:
+ * 1. Loan must be in `repaid` state.
+ * 2. Caller must be an authorized participant (borrower or lender).
+ *
+ * On success:
+ * - `status` transitions to `LoanStatus.settled`.
+ */
+export circuit settleLoan(): [] {
+  assert(status == LoanStatus.repaid, "Loan is not in repaid state");
+  const caller = ownPublicKey().bytes;
+  assert(caller == borrower || (lender.is_some && caller == lender.value), "Caller is not authorized to settle this loan");
+
+  status = LoanStatus.settled;
+}
+
+// -----------------------------------------------------------------------------
 // Inspection Circuits
 // -----------------------------------------------------------------------------
 

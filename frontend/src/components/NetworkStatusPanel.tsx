@@ -2,6 +2,7 @@ import React from 'react';
 import type { NetworkContext, ProviderCapabilities } from '../types/network.ts';
 import type { AccountContext } from '../types/account.ts';
 import { getWalletProvider } from '../lib/account-service.ts';
+import { getSupportedLifecycleActions } from '../lib/transaction-orchestrator.ts';
 
 export interface NetworkStatusPanelProps {
   networkContext?: NetworkContext;
@@ -14,7 +15,8 @@ export interface NetworkStatusPanelProps {
 /**
  * Network & Provider Status Panel.
  *
- * Displays active infrastructure boundaries, connection status, and provider capabilities.
+ * Displays active infrastructure boundaries, connection status, provider capabilities,
+ * and transaction orchestration dispatch readiness.
  * STRICT DISCLOSURE:
  * Clearly communicates when operating in local prototype mode without real Midnight connections.
  */
@@ -29,6 +31,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
   const netContext = networkContext ?? provider.getNetworkContext();
   const caps = capabilities ?? provider.getCapabilities();
   const isConnected = accountContext?.connectionStatus === 'CONNECTED';
+  const { supported, unsupported } = getSupportedLifecycleActions(accountContext, provider);
 
   return (
     <div
@@ -59,7 +62,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
               Network & Wallet Infrastructure
             </h3>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Commit #22 • Midnight Provider Adapter Boundary
+              Commit #22 & #23 • Transaction Orchestration & Provider Boundary
             </span>
           </div>
         </div>
@@ -221,6 +224,45 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           >
             {caps.READ_BALANCE ? '✓' : '✕'} Native Asset Balance
           </span>
+        </div>
+      </div>
+
+      {/* Transaction Orchestration & Dispatch Readiness (Commit #23) */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '11px',
+            color: '#94a3b8',
+            textTransform: 'uppercase',
+            marginBottom: '8px',
+            fontWeight: 600,
+          }}
+        >
+          Lifecycle Transaction Dispatch (Commit #23)
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#a7f3d0', fontWeight: 600 }}>Supported Local Actions:</span>
+            <span style={{ color: '#e2e8f0' }}>
+              {supported.map((a) => (a === 'VERIFY_ELIGIBILITY' ? 'Eligibility Verification (Client ZK Proof)' : a)).join(', ')}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#fca5a5', fontWeight: 600 }}>Unsupported Network Actions:</span>
+            <span style={{ color: '#94a3b8' }}>
+              {unsupported.map((a) => (a === 'FUND_LOAN' ? 'Funding' : a === 'REPAY_LOAN' ? 'Repayment' : a === 'SETTLE_LOAN' ? 'Settlement' : a)).join(', ')} (Requires Live Midnight Provider)
+            </span>
+          </div>
+          <div style={{ color: '#f87171', fontStyle: 'italic', marginTop: '2px' }}>
+            Transaction submission unavailable in prototype mode.
+          </div>
         </div>
       </div>
 

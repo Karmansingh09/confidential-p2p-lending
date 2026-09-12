@@ -89,6 +89,18 @@ import {
   setWalletProvider,
   resetWalletProvider,
 } from '../frontend/src/lib/account-service.ts';
+import {
+  prepareLifecycleTransaction,
+  executeLifecycleTransaction,
+  getTransactionExecutionReadiness,
+  getSupportedLifecycleActions,
+  getCircuitNameForAction,
+  getRequiredCapabilitiesForAction,
+  ACTION_TO_CIRCUIT_MAP,
+  CIRCUIT_TO_ACTION_MAP,
+  ACTION_REQUIRED_CAPABILITIES,
+} from '../frontend/src/lib/transaction-orchestrator.ts';
+import { TransactionOrchestrationError } from '../frontend/src/types/transaction-orchestration.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -114,6 +126,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/application-state.ts',
       'src/types/network.ts',
       'src/types/transaction.ts',
+      'src/types/transaction-orchestration.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -129,6 +142,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/application-store.ts',
       'src/lib/wallet-provider.ts',
       'src/lib/midnight-provider.ts',
+      'src/lib/transaction-orchestrator.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -2557,7 +2571,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
     assert.ok(content.includes('SIMULATION ONLY'));
     assert.ok(content.includes('PROTOTYPE ACCOUNT ACTIVE'));
     assert.ok(content.includes('Unavailable in Prototype Mode'));
-    assert.ok(content.includes('Commit #22'));
+    assert.ok(content.includes('Commit #22') || content.includes('Commit #23'));
   });
 
   it('Test 148 (Commit #22): Disconnected state is represented with honest disclosure in the UI', () => {
@@ -2618,7 +2632,601 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
     };
 
     const files = walkDir(srcDir);
-    assert.ok(files.length >= 39, `Must audit all frontend source files including network provider modules (found ${files.length})`);
+    assert.ok(files.length >= 41, `Must audit all frontend source files including network provider modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  it('Test 151 (Commit #23): ACTION_TO_CIRCUIT_MAP and CIRCUIT_TO_ACTION_MAP maintain canonical 1:1 mapping with Compact circuits', () => {
+    assert.equal(ACTION_TO_CIRCUIT_MAP.VERIFY_ELIGIBILITY, 'verifyEligibility');
+    assert.equal(ACTION_TO_CIRCUIT_MAP.FUND_LOAN, 'fundLoan');
+    assert.equal(ACTION_TO_CIRCUIT_MAP.REPAY_LOAN, 'repayLoan');
+    assert.equal(ACTION_TO_CIRCUIT_MAP.SETTLE_LOAN, 'settleLoan');
+
+    assert.equal(CIRCUIT_TO_ACTION_MAP['verifyEligibility'], 'VERIFY_ELIGIBILITY');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['fundLoan'], 'FUND_LOAN');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['repayLoan'], 'REPAY_LOAN');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['settleLoan'], 'SETTLE_LOAN');
+
+    assert.equal(getCircuitNameForAction('VERIFY_ELIGIBILITY'), 'verifyEligibility');
+    assert.equal(getCircuitNameForAction('FUND_LOAN'), 'fundLoan');
+    assert.equal(getCircuitNameForAction('REPAY_LOAN'), 'repayLoan');
+    assert.equal(getCircuitNameForAction('SETTLE_LOAN'), 'settleLoan');
+  });
+
+  it('Test 152 (Commit #23): ACTION_REQUIRED_CAPABILITIES declares exact provider capabilities per action', () => {
+    const verifyCaps = getRequiredCapabilitiesForAction('VERIFY_ELIGIBILITY');
+    assert.deepEqual(verifyCaps, ['CREATE_PROOF']);
+
+    const fundCaps = getRequiredCapabilitiesForAction('FUND_LOAN');
+    assert.deepEqual(fundCaps, ['SIGN_TRANSACTION', 'SUBMIT_TRANSACTION']);
+
+    const repayCaps = getRequiredCapabilitiesForAction('REPAY_LOAN');
+    assert.deepEqual(repayCaps, ['SIGN_TRANSACTION', 'SUBMIT_TRANSACTION']);
+
+    const settleCaps = getRequiredCapabilitiesForAction('SETTLE_LOAN');
+    assert.deepEqual(settleCaps, ['SIGN_TRANSACTION', 'SUBMIT_TRANSACTION']);
+  });
+
+  it('Test 153 (Commit #23): prepareLifecycleTransaction prepares VERIFY_ELIGIBILITY with READY status for borrower', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    assert.equal(loan.isEligibilityVerified, false);
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: loan.borrowerBytes,
+      publicKeyHex: loan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const prep = prepareLifecycleTransaction(loan, borrowerContext, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep.status, 'READY');
+    assert.equal(prep.isAuthorized, true);
+    assert.equal(prep.circuitName, 'verifyEligibility');
+    assert.equal(prep.action, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep.callerPublicKeyHex, loan.borrower);
+    assert.equal(prep.isExecutionSupported, true);
+    assert.equal(prep.missingCapabilities.length, 0);
+  });
+
+  it('Test 154 (Commit #23): prepareLifecycleTransaction prepares FUND_LOAN with UNSUPPORTED capability status in prototype mode', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    assert.equal(loan.isEligibilityVerified, true);
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const prep = prepareLifecycleTransaction(loan, lenderContext, 'FUND_LOAN');
+    assert.equal(prep.isAuthorized, true, 'Lender is authorized by contract rules');
+    assert.equal(prep.status, 'UNSUPPORTED', 'Status must be UNSUPPORTED due to missing wallet signing in prototype');
+    assert.equal(prep.circuitName, 'fundLoan');
+    assert.equal(prep.isExecutionSupported, false);
+    assert.ok(prep.missingCapabilities.includes('SIGN_TRANSACTION'));
+    assert.ok(prep.missingCapabilities.includes('SUBMIT_TRANSACTION'));
+  });
+
+  it('Test 155 (Commit #23): prepareLifecycleTransaction prepares REPAY_LOAN with authorization validation for funded loan', () => {
+    const loan = MOCK_LOANS['loan-003'];
+    assert.equal(loan.status, LoanStatus.funded);
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: loan.borrowerBytes,
+      publicKeyHex: loan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const prep = prepareLifecycleTransaction(loan, borrowerContext, 'REPAY_LOAN');
+    assert.equal(prep.isAuthorized, true);
+    assert.equal(prep.circuitName, 'repayLoan');
+    assert.equal(prep.status, 'UNSUPPORTED');
+  });
+
+  it('Test 156 (Commit #23): prepareLifecycleTransaction prepares SETTLE_LOAN for repaid loan participants', () => {
+    const loan = MOCK_LOANS['loan-004'];
+    assert.equal(loan.status, LoanStatus.repaid);
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: loan.borrowerBytes,
+      publicKeyHex: loan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const prep = prepareLifecycleTransaction(loan, borrowerContext, 'SETTLE_LOAN');
+    assert.equal(prep.isAuthorized, true);
+    assert.equal(prep.circuitName, 'settleLoan');
+    assert.equal(prep.status, 'UNSUPPORTED');
+  });
+
+  it('Test 157 (Commit #23): prepareLifecycleTransaction enforces role authorization boundaries', () => {
+    const requestedLoan = MOCK_LOANS['loan-001'];
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    // Lender cannot verify borrower eligibility
+    const prepVerify = prepareLifecycleTransaction(requestedLoan, lenderContext, 'VERIFY_ELIGIBILITY');
+    assert.equal(prepVerify.isAuthorized, false);
+    assert.equal(prepVerify.status, 'BLOCKED');
+    assert.ok(prepVerify.authorizationReason);
+
+    // Borrower cannot fund their own loan
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: verifiedLoan.borrowerBytes,
+      publicKeyHex: verifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+    const prepFund = prepareLifecycleTransaction(verifiedLoan, borrowerContext, 'FUND_LOAN');
+    assert.equal(prepFund.isAuthorized, false);
+    assert.equal(prepFund.status, 'BLOCKED');
+
+    // Lender cannot repay loan
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const prepRepay = prepareLifecycleTransaction(fundedLoan, lenderContext, 'REPAY_LOAN');
+    assert.equal(prepRepay.isAuthorized, false);
+    assert.equal(prepRepay.status, 'BLOCKED');
+
+    // Third party cannot settle loan
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const thirdPartyContext = {
+      persona: 'THIRD_PARTY',
+      activeRole: 'THIRD_PARTY',
+      publicKey: new Uint8Array(32).fill(99),
+      publicKeyHex: PROTOTYPE_THIRD_PARTY_PK,
+      connectionStatus: 'CONNECTED',
+    };
+    const prepSettle = prepareLifecycleTransaction(repaidLoan, thirdPartyContext, 'SETTLE_LOAN');
+    assert.equal(prepSettle.isAuthorized, false);
+    assert.equal(prepSettle.status, 'BLOCKED');
+  });
+
+  it('Test 158 (Commit #23): prepareLifecycleTransaction enforces Compact lifecycle sequence', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    // Cannot fund unverified loan
+    const prepFund = prepareLifecycleTransaction(unverifiedLoan, lenderContext, 'FUND_LOAN');
+    assert.equal(prepFund.isAuthorized, false);
+    assert.equal(prepFund.status, 'BLOCKED');
+
+    // Cannot repay unverified loan
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: unverifiedLoan.borrowerBytes,
+      publicKeyHex: unverifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+    const prepRepay = prepareLifecycleTransaction(unverifiedLoan, borrowerContext, 'REPAY_LOAN');
+    assert.equal(prepRepay.isAuthorized, false);
+    assert.equal(prepRepay.status, 'BLOCKED');
+
+    // Cannot settle funded loan
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const prepSettle = prepareLifecycleTransaction(fundedLoan, borrowerContext, 'SETTLE_LOAN');
+    assert.equal(prepSettle.isAuthorized, false);
+    assert.equal(prepSettle.status, 'BLOCKED');
+
+    // Settled loan blocks all lifecycle actions
+    const settledLoan = MOCK_LOANS['loan-005'];
+    assert.equal(prepareLifecycleTransaction(settledLoan, borrowerContext, 'VERIFY_ELIGIBILITY').status, 'BLOCKED');
+    assert.equal(prepareLifecycleTransaction(settledLoan, lenderContext, 'FUND_LOAN').status, 'BLOCKED');
+    assert.equal(prepareLifecycleTransaction(settledLoan, borrowerContext, 'REPAY_LOAN').status, 'BLOCKED');
+    assert.equal(prepareLifecycleTransaction(settledLoan, borrowerContext, 'SETTLE_LOAN').status, 'BLOCKED');
+  });
+
+  it('Test 159 (Commit #23): prepareLifecycleTransaction rejects disconnected account contexts', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const disconnectedContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: null,
+      publicKeyHex: '',
+      connectionStatus: 'DISCONNECTED',
+    };
+
+    const prep1 = prepareLifecycleTransaction(loan, disconnectedContext, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep1.status, 'BLOCKED');
+    assert.equal(prep1.isAuthorized, false);
+    assert.ok(prep1.authorizationReason?.includes('Wallet connection required'));
+
+    const prep2 = prepareLifecycleTransaction(loan, undefined, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep2.status, 'BLOCKED');
+    assert.equal(prep2.isAuthorized, false);
+  });
+
+  it('Test 160 (Commit #23): getTransactionExecutionReadiness identifies supported vs unsupported provider capabilities', () => {
+    const provider = new LocalPrototypeWalletProvider();
+
+    // VERIFY_ELIGIBILITY: supported
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: unverifiedLoan.borrowerBytes,
+      publicKeyHex: unverifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+    const readinessVerify = getTransactionExecutionReadiness(unverifiedLoan, borrowerContext, 'VERIFY_ELIGIBILITY', provider);
+    assert.equal(readinessVerify.isReady, true);
+    assert.equal(readinessVerify.status, 'READY');
+    assert.equal(readinessVerify.circuitName, 'verifyEligibility');
+
+    // FUND_LOAN: unsupported
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+    const readinessFund = getTransactionExecutionReadiness(verifiedLoan, lenderContext, 'FUND_LOAN', provider);
+    assert.equal(readinessFund.isReady, false);
+    assert.equal(readinessFund.status, 'UNSUPPORTED');
+    assert.ok(readinessFund.reason.includes('prototype mode'));
+
+    // REPAY_LOAN: unsupported
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const fundedBorrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: fundedLoan.borrowerBytes,
+      publicKeyHex: fundedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+    const readinessRepay = getTransactionExecutionReadiness(fundedLoan, fundedBorrowerContext, 'REPAY_LOAN', provider);
+    assert.equal(readinessRepay.isReady, false);
+    assert.equal(readinessRepay.status, 'UNSUPPORTED');
+
+    // SETTLE_LOAN: unsupported
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const repaidBorrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: repaidLoan.borrowerBytes,
+      publicKeyHex: repaidLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+    const readinessSettle = getTransactionExecutionReadiness(repaidLoan, repaidBorrowerContext, 'SETTLE_LOAN', provider);
+    assert.equal(readinessSettle.isReady, false);
+    assert.equal(readinessSettle.status, 'UNSUPPORTED');
+  });
+
+  it('Test 161 (Commit #23): executeLifecycleTransaction succeeds for local VERIFY_ELIGIBILITY without fake hashes', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: unverifiedLoan.borrowerBytes,
+      publicKeyHex: unverifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(unverifiedLoan, borrowerContext, 'VERIFY_ELIGIBILITY', provider);
+    assert.equal(result.success, true);
+    assert.equal(result.status, 'CONFIRMED');
+    assert.equal(result.action, 'VERIFY_ELIGIBILITY');
+    assert.equal(result.circuitName, 'verifyEligibility');
+    assert.equal(result.transactionId, undefined, 'Must NEVER fabricate transaction hash in prototype mode');
+  });
+
+  it('Test 162 (Commit #23): executeLifecycleTransaction for FUND_LOAN returns typed UNSUPPORTED result', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(verifiedLoan, lenderContext, 'FUND_LOAN', provider);
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.ok(result.message.includes('unavailable in prototype mode'));
+    assert.equal(result.action, 'FUND_LOAN');
+    assert.equal(result.circuitName, 'fundLoan');
+    assert.equal(result.transactionId, undefined);
+    assert.ok(result.unsupportedReason?.includes('SIGN_TRANSACTION'));
+  });
+
+  it('Test 163 (Commit #23): executeLifecycleTransaction for REPAY_LOAN returns typed UNSUPPORTED result', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: fundedLoan.borrowerBytes,
+      publicKeyHex: fundedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(fundedLoan, borrowerContext, 'REPAY_LOAN', provider);
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.equal(result.action, 'REPAY_LOAN');
+    assert.equal(result.circuitName, 'repayLoan');
+    assert.equal(result.transactionId, undefined);
+  });
+
+  it('Test 164 (Commit #23): executeLifecycleTransaction for SETTLE_LOAN returns typed UNSUPPORTED result', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: repaidLoan.borrowerBytes,
+      publicKeyHex: repaidLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(repaidLoan, borrowerContext, 'SETTLE_LOAN', provider);
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.equal(result.action, 'SETTLE_LOAN');
+    assert.equal(result.circuitName, 'settleLoan');
+    assert.equal(result.transactionId, undefined);
+  });
+
+  it('Test 165 (Commit #23 & Critical Invariant): Unsupported transaction execution NEVER mutates LoanRegistry state', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loan001Initial = registry.getLoan('loan-001');
+    assert.equal(loan001Initial.status, LoanStatus.requested);
+
+    // Verify eligibility directly on registry so it is ready for funding
+    const verifiedRegistry = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK);
+    const verifiedLoan = verifiedRegistry.getLoan('loan-001');
+    assert.equal(verifiedLoan.status, LoanStatus.requested);
+    assert.equal(verifiedLoan.isEligibilityVerified, true);
+
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    // Attempt funding transaction via orchestrator
+    const provider = new LocalPrototypeWalletProvider();
+    const result = await executeLifecycleTransaction(verifiedLoan, lenderContext, 'FUND_LOAN', provider);
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+
+    // CRITICAL ASSERTION: The registry must NOT have been mutated!
+    const loanAfterAttempt = verifiedRegistry.getLoan('loan-001');
+    assert.equal(loanAfterAttempt.status, LoanStatus.requested, 'Loan must still be REQUESTED, not funded!');
+    assert.equal(loanAfterAttempt.lender, null, 'Lender must not be recorded on unconfirmed transaction!');
+  });
+
+  it('Test 166 (Commit #23 & Invariant): Transaction preparation is strictly read-only and never mutates loan state', () => {
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001');
+    const beforeStatus = loan.status;
+    const beforeAmount = loan.amount;
+    const beforeBorrower = loan.borrower;
+    const beforeVerified = loan.isEligibilityVerified;
+
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: loan.borrowerBytes,
+      publicKeyHex: loan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    // Call preparation multiple times
+    prepareLifecycleTransaction(loan, borrowerContext, 'VERIFY_ELIGIBILITY');
+    prepareLifecycleTransaction(loan, borrowerContext, 'REPAY_LOAN');
+    prepareLifecycleTransaction(loan, undefined, 'VERIFY_ELIGIBILITY');
+
+    // Verify original loan object and registry remain identical
+    const afterLoan = registry.getLoan('loan-001');
+    assert.equal(afterLoan.status, beforeStatus);
+    assert.equal(afterLoan.amount, beforeAmount);
+    assert.equal(afterLoan.borrower, beforeBorrower);
+    assert.equal(afterLoan.isEligibilityVerified, beforeVerified);
+  });
+
+  it('Test 167 (Commit #23): getSupportedLifecycleActions accurately categorizes actions by environment', () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: new Uint8Array(32).fill(1),
+      publicKeyHex: PROTOTYPE_BORROWER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const { supported, unsupported } = getSupportedLifecycleActions(borrowerContext, provider);
+    assert.ok(supported.includes('VERIFY_ELIGIBILITY'));
+    assert.ok(unsupported.includes('FUND_LOAN'));
+    assert.ok(unsupported.includes('REPAY_LOAN'));
+    assert.ok(unsupported.includes('SETTLE_LOAN'));
+    assert.equal(supported.length, 1);
+    assert.equal(unsupported.length, 3);
+  });
+
+  it('Test 168 (Commit #23): executeLifecycleTransaction handles local proof executor failures gracefully', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: unverifiedLoan.borrowerBytes,
+      publicKeyHex: unverifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const failingOptions = {
+      localProofExecutor: async () => {
+        throw new Error('Simulated off-chain prover constraint evaluation error');
+      },
+    };
+
+    const result = await executeLifecycleTransaction(
+      unverifiedLoan,
+      borrowerContext,
+      'VERIFY_ELIGIBILITY',
+      provider,
+      failingOptions
+    );
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'FAILED');
+    assert.ok(result.message.includes('Simulated off-chain prover constraint evaluation error'));
+  });
+
+  it('Test 169 (Commit #23): TransactionOrchestrationError formats correctly with error code', () => {
+    const error = new TransactionOrchestrationError(
+      'UNAUTHORIZED',
+      'Caller is not authorized to execute this circuit'
+    );
+
+    assert.equal(error.name, 'TransactionOrchestrationError');
+    assert.equal(error.code, 'UNAUTHORIZED');
+    assert.equal(error.message, 'Caller is not authorized to execute this circuit');
+    assert.ok(error instanceof Error);
+  });
+
+  it('Test 170 (Commit #23): prepareLifecycleTransaction handles invalid loan input defensively', () => {
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: new Uint8Array(32).fill(1),
+      publicKeyHex: PROTOTYPE_BORROWER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const prep = prepareLifecycleTransaction(null, borrowerContext, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep.status, 'INVALID');
+    assert.equal(prep.isAuthorized, false);
+    assert.ok(prep.authorizationReason?.includes('missing or unavailable'));
+  });
+
+  it('Test 171 (Commit #23): executeLifecycleTransaction handles invalid loan input cleanly', async () => {
+    const borrowerContext = {
+      persona: 'BORROWER',
+      activeRole: 'BORROWER',
+      publicKey: new Uint8Array(32).fill(1),
+      publicKeyHex: PROTOTYPE_BORROWER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(null, borrowerContext, 'VERIFY_ELIGIBILITY');
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'FAILED');
+    assert.ok(result.message.includes('missing or unavailable'));
+  });
+
+  it('Test 172 (Commit #23): NetworkStatusPanel integrates lifecycle action dispatch section', () => {
+    const panelPath = path.join(srcDir, 'components', 'NetworkStatusPanel.tsx');
+    const content = fs.readFileSync(panelPath, 'utf8');
+
+    assert.ok(content.includes('getSupportedLifecycleActions'));
+    assert.ok(content.includes('Lifecycle Transaction Dispatch'));
+    assert.ok(content.includes('Supported Local Actions'));
+    assert.ok(content.includes('Unsupported Network Actions'));
+    assert.ok(content.includes('VERIFY_ELIGIBILITY'));
+    assert.ok(content.includes('FUND_LOAN'));
+    assert.ok(content.includes('REPAY_LOAN'));
+    assert.ok(content.includes('SETTLE_LOAN'));
+  });
+
+  it('Test 173 (Commit #23): types/index.ts re-exports all transaction orchestration types', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('LifecycleTransactionAction'));
+    assert.ok(content.includes('TransactionPreparationStatus'));
+    assert.ok(content.includes('TransactionExecutionStatus'));
+    assert.ok(content.includes('TransactionPreparation'));
+    assert.ok(content.includes('TransactionExecution'));
+    assert.ok(content.includes('TransactionOrchestrationResult'));
+    assert.ok(content.includes('TransactionOrchestrationError'));
+    assert.ok(content.includes('TransactionOrchestrationErrorCode'));
+  });
+
+  it('Test 174 (Commit #23 & Anti-Fabrication Invariant): Prototype execution returns null/undefined for blockchain primitives', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: new Uint8Array(32).fill(10),
+      publicKeyHex: PROTOTYPE_LENDER_PK,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const result = await executeLifecycleTransaction(verifiedLoan, lenderContext, 'FUND_LOAN', provider);
+    assert.equal(result.transactionId, undefined, 'transactionId must NEVER be synthesized in prototype mode');
+    assert.equal(result.blockHeight, undefined, 'blockHeight must not be fabricated');
+  });
+
+  it('Test 175 (Commit #23 & Strict Privacy Audit): All frontend files (>= 41 files) contain zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 41, `Must audit all frontend source files including orchestration modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

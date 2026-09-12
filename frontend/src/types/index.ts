@@ -120,3 +120,14 @@ export type {
   TransactionRequest,
   TransactionResult,
 } from './transaction.ts';
+
+export {
+  TransactionOrchestrationError,
+  type LifecycleTransactionAction,
+  type TransactionPreparationStatus,
+  type TransactionExecutionStatus,
+  type TransactionPreparation,
+  type TransactionExecution,
+  type TransactionOrchestrationResult,
+  type TransactionOrchestrationErrorCode,
+} from './transaction-orchestration.ts';

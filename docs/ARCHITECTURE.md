@@ -1370,6 +1370,110 @@ $$\text{Private Financial Witness} \longrightarrow \text{Local Compact Prover} \
 - **Capabilities**: Live badges for each capability in the matrix (Green `✓` for available local features, Red `✕` for unavailable network operations).
 - **Honest Disclosure**: `"Notice: Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active."`
 
+---
+
+## 23. Transaction Orchestration & Provider Execution Boundary
+
+Commit #23 establishes a dedicated **Transaction Orchestration Layer** (`frontend/src/lib/transaction-orchestrator.ts` and `frontend/src/types/transaction-orchestration.ts`) bridging the application's domain workflows with the underlying `WalletProvider` abstraction. This layer strictly separates pre-execution transaction validation from network execution while upholding all zero-knowledge privacy and anti-fabrication invariants.
+
+### 23.1 Orchestration Pipeline: Preparation vs. Execution
+
+The transaction lifecycle is partitioned into two distinct, deterministic phases:
+
+```
+[User Action in UI]
+        │
+        ▼
+1. Transaction Preparation: prepareLifecycleTransaction()
+   ├── Validate Public Agreement Parameters (status != INVALID)
+   ├── Enforce Contract Authorization Guards (canVerify, canFund, canRepay, canSettle)
+   ├── Evaluate Provider Capability Matrix (missingCapabilities check)
+   └── Produce Read-Only Preparation Descriptor: TransactionPreparation
+        │
+        ├────────────────────────────────┬───────────────────────────────┐
+        ▼                                ▼                               ▼
+[BLOCKED / INVALID]             [UNSUPPORTED]                         [READY]
+(Contract Guard Failed)         (Lacks Provider Capability)           (All Requirements Satisfied)
+- Return reason to UI           - Return typed UNSUPPORTED            - Proceed to execution
+- Do NOT proceed                - Do NOT mutate LoanRegistry          - Off-chain proof or submit
+                                                                         │
+                                                                         ▼
+                                2. Transaction Execution: executeLifecycleTransaction()
+                                   ├── Local ZK Proof Generation (off-chain)
+                                   └── Delegate to WalletProvider.submitTransaction()
+```
+
+1. **Transaction Preparation (`prepareLifecycleTransaction`)**:
+   - Evaluates caller role and contract invariants using canonical guards (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`).
+   - Assesses active provider capabilities against the action's operational requirements.
+   - **Guaranteed Read-Only & Idempotent**: Preparation produces a structured `TransactionPreparation` descriptor without mutating registry state, storing state, or dispatching calls.
+
+2. **Transaction Execution (`executeLifecycleTransaction`)**:
+   - Executes authorized, supported lifecycle actions through the active provider adapter.
+   - In local prototype mode, on-chain actions return a typed `UNSUPPORTED` outcome with honest technical disclosures.
+   - **Critical State Preservation Invariant**: An unsupported or failed transaction attempt **never mutates the central `LoanRegistry`**. Unconfirmed transactions do not alter status, lender bindings, or timestamps.
+
+### 23.2 Canonical Circuit Dispatch Mapping
+
+Every high-level protocol action maps 1:1 to its exact Midnight Compact contract circuit:
+
+```typescript
+export const ACTION_TO_CIRCUIT_MAP: Record<LifecycleTransactionAction, string> = {
+  VERIFY_ELIGIBILITY: 'verifyEligibility',
+  FUND_LOAN: 'fundLoan',
+  REPAY_LOAN: 'repayLoan',
+  SETTLE_LOAN: 'settleLoan',
+};
+```
+
+This guarantees architectural consistency across documentation, client logging, and future on-chain RPC dispatches.
+
+### 23.3 Required Provider Capabilities Matrix
+
+Each lifecycle action declares its minimal required provider capabilities:
+
+| Lifecycle Action | Canonical Circuit | Required Provider Capabilities | Prototype Provider Availability |
+| :--- | :--- | :--- | :--- |
+| `VERIFY_ELIGIBILITY` | `verifyEligibility` | `CREATE_PROOF` | **Supported (Local off-chain ZK prover)** |
+| `FUND_LOAN` | `fundLoan` | `SIGN_TRANSACTION`, `SUBMIT_TRANSACTION` | **Unsupported (Typed 'UNSUPPORTED' result)** |
+| `REPAY_LOAN` | `repayLoan` | `SIGN_TRANSACTION`, `SUBMIT_TRANSACTION` | **Unsupported (Typed 'UNSUPPORTED' result)** |
+| `SETTLE_LOAN` | `settleLoan` | `SIGN_TRANSACTION`, `SUBMIT_TRANSACTION` | **Unsupported (Typed 'UNSUPPORTED' result)** |
+
+### 23.4 Anti-Fabrication & Ledger Safety Invariants
+
+1. **Zero Fake Blockchain Primitives**:
+   - When executing unsupported actions in prototype mode, `executeLifecycleTransaction` returns:
+     ```typescript
+     {
+       success: false,
+       status: 'UNSUPPORTED',
+       action: 'FUND_LOAN',
+       circuitName: 'fundLoan',
+       message: 'Live wallet transaction execution is unavailable in prototype mode.',
+       unsupportedReason: 'Missing required provider capabilities: SIGN_TRANSACTION, SUBMIT_TRANSACTION',
+       transactionId: undefined, // NEVER fabricated
+       blockHeight: undefined,   // NEVER fabricated
+     }
+     ```
+   - No synthetic transaction hashes, faux gas fees, or mock block confirmations are generated.
+
+2. **Strict LoanRegistry Immutability**:
+   - Automated test `Test 165` verifies that attempting an unsupported transaction execution leaves the `LoanRegistry` completely untouched.
+   - Status remains `requested`, lender remains unbound (`null`), and lifecycle integrity is preserved.
+
+### 23.5 Zero-Knowledge Privacy Isolation
+
+- The transaction orchestrator accepts only public agreement data (`LoanDetailsModel`), public participant keys, and circuit names.
+- Private underwriting witnesses, financial metrics, and credentials are strictly excluded from all orchestration parameters, return types, and error structures.
+- Static privacy tests scan all frontend source files (41+ files) to enforce zero occurrences of private financial terms across the orchestration layer.
+
+### 23.6 UI Integration: Lifecycle Dispatch Panel
+
+`NetworkStatusPanel.tsx` incorporates an interactive **Lifecycle Transaction Dispatch** monitor:
+- **Supported Local Actions**: Clearly displays `VERIFY_ELIGIBILITY` as available off-chain via the client ZK prover.
+- **Unsupported Network Actions**: Clearly identifies `FUND_LOAN`, `REPAY_LOAN`, and `SETTLE_LOAN` as unavailable until live Midnight network connection is active.
+
+
 
 
 

@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 205 passing tests across 8 test suites
+# 230 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #22)
+### Current Status & Features (Commit #23)
+- **Transaction Orchestration & Lifecycle Dispatch (Commit #23)**:
+  - **Deterministic Two-Phase Pipeline**: Introduces `prepareLifecycleTransaction` and `executeLifecycleTransaction` (`frontend/src/lib/transaction-orchestrator.ts`) to cleanly partition contract guard validation and capability evaluation from execution.
+  - **Canonical 1:1 Circuit Dispatch Mapping**: Standardizes mapping between high-level actions (`VERIFY_ELIGIBILITY`, `FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`) and underlying Midnight Compact circuits (`verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan`).
+  - **Provider Capability Requirement Engine**: Enforces atomic capability matrix checks per action, identifying supported off-chain operations (`VERIFY_ELIGIBILITY` via local ZK prover) versus actions requiring live on-chain capabilities (`FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN` requiring wallet signing & submission).
+  - **Strict Anti-Fabrication & Ledger Invariants**: In prototype mode, on-chain actions return typed `UNSUPPORTED` outcomes with transparent error classifications. Zero fake transaction hashes, block numbers, or confirmations are ever generated.
+  - **Critical LoanRegistry State Preservation**: Guarantees that unsupported or rejected transaction attempts **never mutate the central `LoanRegistry`**. Unconfirmed actions leave agreement status, assigned lenders, and timestamps untouched.
+  - **Lifecycle Transaction Dispatch UI**: Integrates interactive dispatch monitor in `NetworkStatusPanel.tsx` clearly segregating supported local actions from unsupported network actions.
 - **Midnight Network & Wallet Provider Abstraction (Commit #22)**:
   - **Strongly Typed Infrastructure Models**: Comprehensive typing (`frontend/src/types/network.ts`, `frontend/src/types/transaction.ts`) defining network environments (`LOCAL`, `TESTNET`, `MAINNET`), connection states, provider capability matrices, network account representations, and typed domain errors (`ProviderError`).
   - **Modular Wallet Provider Interface**: `WalletProvider` boundary (`frontend/src/lib/wallet-provider.ts`) abstracting connection lifecycle, public key resolution, network context, capability queries, and transaction submission.
@@ -186,4 +193,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #22). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #23). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

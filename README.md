@@ -36,3 +36,24 @@ The Compact contracts reside in `contracts/`.
   npm run build:contracts
   ```
 
+## Smart Contract Architecture (Foundational)
+
+The initial Compact contract (`contracts/src/index.compact`) establishes the foundational state model for the lending lifecycle:
+
+- **`LoanStatus`**:
+  - `requested`: Initial state upon loan creation.
+  - `funded`: Transitioned when a lender supplies capital.
+  - `repaid`: Transitioned when borrower returns principal and interest.
+  - `settled`: Concluding state for the loan.
+- **Ledger State**:
+  - `borrower`: Borrower public account key (`Bytes<32>`).
+  - `lender`: Optional lender account key (`Maybe<Bytes<32>>`).
+  - `amount`: Loan principal requested (`Uint<64>`).
+  - `interestRateBasisPoints`: Interest rate in basis points (`Uint<16>`).
+  - `durationBlocks`: Term duration in blocks (`Uint<32>`).
+  - `status`: Current lifecycle state (`LoanStatus`).
+- **Inspection Circuits**:
+  - `getLoanStatus()`: Inspect current loan status.
+  - `getLoanDetails()`: Retrieve structured `LoanDetails` record.
+
+

@@ -268,3 +268,72 @@ Parameters are strictly enforced via on-chain Compact `assert()` statements and 
 ```
 A newly created request is immediately compatible with the `verifyEligibility()` circuit. Once verified, the request is cryptographically stamped as eligible without disclosing the borrower's private financial value, paving the way for confidential lender funding in subsequent protocol phases.
 
+---
+
+## 9. Lender Funding Lifecycle
+
+The lender funding flow transitions an eligible, requested loan into an active debt obligation (`funded`) held between the borrower and an identified lender.
+
+```
++─────────────────────────────────────────+
+|      1. DISCOVERY & INSPECTION          |
+|                                         |
+|  Lender queries getLoanDetails():       |
+|  - terms: amount, rate, duration        |
+|  - check: status == requested           |
+|  - check: isEligibilityVerified == true |
+|  - check: lender == none                |
++─────────────────────────────────────────+
+                     │
+                     ▼
++─────────────────────────────────────────+
+|        2. FUNDING CIRCUIT CALL          |
+|                                         |
+|  Lender calls fundLoan(lenderPk):       |
+|  - asserts caller == lenderPk           |
+|  - asserts lenderPk != borrower         |
+|  - asserts lenderPk != empty            |
+|  - asserts status == requested          |
+|  - asserts isEligibilityVerified == true|
++─────────────────────────────────────────+
+                     │
+                     ▼
++─────────────────────────────────────────+
+|        3. FUNDED LEDGER STATE           |
+|                                         |
+|  - status = LoanStatus.funded           |
+|  - lender = some(lenderPk)              |
+|  - zero leakage of borrower secrets     |
++─────────────────────────────────────────+
+```
+
+### 9.1 What the Lender Evaluates
+Prospective lenders have full discoverability of public underwriting terms without learning private financial details:
+- **Disclosed Terms**: Principal amount (`amount`), return rate (`interestRateBasisPoints`), term length (`durationBlocks`), and threshold commitment (`eligibilityThreshold`).
+- **Eligibility Proof Attestation**: `isEligibilityVerified == true` certifies that the borrower proved `privateFinancialValue >= eligibilityThreshold` in zero knowledge.
+- **Participant Identity**: The borrower's public account key (`borrower`).
+
+### 9.2 Eligibility Prerequisite & Strict Validation
+The `fundLoan(lenderPk: Bytes<32>)` circuit enforces atomic preconditions:
+1. **Verified Underwriting Required**: `assert(isEligibilityVerified, "Loan eligibility has not been verified")`. Lenders cannot fund unverified loans.
+2. **Lifecycle State Integrity**: `assert(status == LoanStatus.requested, "Loan is not in requested state")`. Already-funded, repaid, or settled loans cannot be funded.
+3. **Cryptographic Caller Binding**: `assert(ownPublicKey().bytes == lenderPk, "Caller is not the designated lender")`. The transaction signer must prove ownership of `lenderPk`, preventing front-running and unauthorized assignment.
+4. **No Self-Funding**: `assert(lenderPk != borrower, "Borrower cannot fund their own loan")`. Enforces authentic two-party lending.
+5. **Non-Empty Identity**: `assert(lenderPk != pad(32, ""), "Lender public key cannot be empty")`.
+
+### 9.3 State Transition & Lender Assignment
+Upon circuit verification:
+- `lender` is updated from `none<Bytes<32>>()` to `some<Bytes<32>>(disclose(lenderPk))`.
+- `status` transitions from `LoanStatus.requested` to `LoanStatus.funded`.
+
+### 9.4 Asset Transfer Status & Infrastructure Boundaries
+- **Current Scope**: The smart contract and client library execute the authentic ZK circuit state transition (`funded`) and assign the lender.
+- **No Faked Asset Transfers**: Real token movement and escrow require Midnight Network shielded coin infrastructure (`zswap` / Native Tokens) and wallet integration (Lace / Midnight.js provider). Because no live Midnight node, token contract, or wallet provider is currently connected to this offline environment, asset movement is explicitly reported as unexecuted (`isAssetTransferExecuted: false`).
+- **Client Extensibility**: The `FundLoanParams` interface provides a `paymentTransferDetails` placeholder to seamlessly incorporate native shielded coin escrows once network token infrastructure is provisioned in future milestones.
+
+### 9.5 Privacy & Secret Hygiene Guarantees
+- The funding transaction does not query or invoke the private witness `getPrivateFinancialValue()`.
+- Borrower private financial values, account balances, and witness execution transcripts remain strictly local to the borrower's proving environment.
+- Lenders make funding decisions solely based on zero-knowledge public attestations.
+
+

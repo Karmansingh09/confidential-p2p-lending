@@ -79,6 +79,47 @@ export interface EligibilityProofResult {
 }
 
 /**
+ * Parameters for executing lender funding.
+ */
+export interface FundLoanParams {
+  /** The current on-chain contract state */
+  contractState: ContractState;
+  /** The lender's public account key */
+  lenderPk: Uint8Array;
+  /** The caller's public account key (defaults to lenderPk for authentic lender call) */
+  callerPk?: Uint8Array;
+  /** The contract address (defaults to dummyContractAddress for local simulation) */
+  contractAddress?: string;
+  /** Initial private state for circuit execution */
+  privateState?: any;
+  /**
+   * Optional payment receipt / token transfer proof.
+   * Note: In the current off-chain runtime simulation without a live Midnight node or
+   * wallet connector (Lace / Midnight.js), token movements and escrows are tracked via
+   * state transitions. When the network asset infrastructure is deployed, this field will
+   * contain the shielded coin commitment / transfer witness.
+   */
+  paymentTransferDetails?: unknown;
+}
+
+/**
+ * Result of executing the fundLoan circuit.
+ */
+export interface FundLoanResult {
+  /** Updated contract state ready for submission or further interaction */
+  updatedContractState: ContractState;
+  /** Public ledger view reflecting funded status and assigned lender */
+  updatedLedger: Ledger;
+  /** The generated proof data from local circuit execution */
+  proofData: ProofData;
+  /**
+   * Indicator of whether native on-chain asset escrow was executed or if the
+   * state transition is currently simulating funding pending network coin deployment.
+   */
+  isAssetTransferExecuted: boolean;
+}
+
+/**
  * Constructs a client-side witness provider that encapsulates the borrower's
  * private financial value. The value is accessed strictly during local prover
  * execution and never leaves the witness context.
@@ -209,5 +250,69 @@ export function executeEligibilityProof(
     updatedContractState,
     updatedLedger,
     proofData: circuitResult.proofData,
+  };
+}
+
+/**
+ * Executes the lender funding circuit against the active contract state.
+ *
+ * Verifies on-chain preconditions:
+ * 1. status == LoanStatus.requested
+ * 2. isEligibilityVerified == true
+ * 3. caller == lenderPk
+ * 4. lenderPk != borrower
+ * 5. lenderPk != all-zero / empty
+ *
+ * Updates:
+ * - status -> LoanStatus.funded
+ * - lender -> some(lenderPk)
+ */
+export function fundLoan(params: FundLoanParams): FundLoanResult {
+  if (!params.lenderPk || params.lenderPk.length !== 32) {
+    throw new Error("Lender public key must be 32 bytes");
+  }
+
+  // Pre-validate non-empty lender key client-side
+  const isAllZero = params.lenderPk.every((b) => b === 0);
+  if (isAllZero) {
+    throw new Error("Lender public key cannot be empty");
+  }
+
+  const callerPk = params.callerPk ?? params.lenderPk;
+
+  // Use null witnesses since fundLoan does not query private witnesses
+  const contract = new Contract({
+    getPrivateFinancialValue: (ctx) => [ctx.privateState, 0n],
+  });
+
+  const targetAddress = params.contractAddress ?? dummyContractAddress();
+  const circuitContext = createCircuitContext(
+    targetAddress,
+    { bytes: callerPk },
+    params.contractState.data,
+    params.privateState ?? {}
+  );
+
+  const circuitResult: CircuitResults<any, []> = contract.circuits.fundLoan(
+    circuitContext,
+    params.lenderPk
+  );
+
+  const updatedContractState = new ContractState();
+  updatedContractState.data = new ChargedState(circuitResult.context.currentQueryContext.state.state);
+  for (const opName of params.contractState.operations()) {
+    const op = params.contractState.operation(opName);
+    if (op) {
+      updatedContractState.setOperation(opName, op);
+    }
+  }
+
+  const updatedLedger = ledger(circuitResult.context.currentQueryContext.state);
+
+  return {
+    updatedContractState,
+    updatedLedger,
+    proofData: circuitResult.proofData,
+    isAssetTransferExecuted: false,
   };
 }

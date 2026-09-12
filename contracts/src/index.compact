@@ -129,6 +129,38 @@ export circuit verifyEligibility(): [] {
 }
 
 // -----------------------------------------------------------------------------
+// Funding Circuit
+// -----------------------------------------------------------------------------
+
+/**
+ * Funds an eligible loan request.
+ *
+ * Security & Lifecycle Rules:
+ * 1. Loan must be in `requested` state.
+ * 2. Loan eligibility must be verified (`isEligibilityVerified == true`).
+ * 3. Caller must be the designated lender (`ownPublicKey().bytes == lenderPk`).
+ * 4. Lender must not be the borrower (`lenderPk != borrower`).
+ *
+ * On success:
+ * - `lender` is assigned to `some<Bytes<32>>(disclose(lenderPk))`.
+ * - `status` transitions to `LoanStatus.funded`.
+ *
+ * Privacy Guarantees:
+ * - Borrower confidential financial data is never exposed or referenced.
+ * - Funding evaluates strictly public terms and the public verification flag.
+ */
+export circuit fundLoan(lenderPk: Bytes<32>): [] {
+  assert(status == LoanStatus.requested, "Loan is not in requested state");
+  assert(isEligibilityVerified, "Loan eligibility has not been verified");
+  assert(ownPublicKey().bytes == lenderPk, "Caller is not the designated lender");
+  assert(lenderPk != borrower, "Borrower cannot fund their own loan");
+  assert(lenderPk != pad(32, ""), "Lender public key cannot be empty");
+
+  lender = some<Bytes<32>>(disclose(lenderPk));
+  status = LoanStatus.funded;
+}
+
+// -----------------------------------------------------------------------------
 // Inspection Circuits
 // -----------------------------------------------------------------------------
 

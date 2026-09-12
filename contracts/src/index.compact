@@ -11,13 +11,17 @@ export enum LoanStatus {
 /**
  * Public Loan Details Structure
  *
- * PRIVACY BOUNDARY DESIGN:
+ * PRIVACY BOUNDARY & ELIGIBILITY DESIGN:
  * This struct represents the public, discoverable agreement terms that lenders legitimately
- * need to evaluate and fulfill a loan request.
+ * need to evaluate and fulfill a loan request, plus the public underwriting threshold.
  *
- * Sensitive borrower financial values (e.g. actual income, exact wallet balance, banking
- * credentials) remain strictly off-chain within the borrower's private witness context.
- * Only the verified eligibility result (isEligibilityVerified) is published on-chain.
+ * SENSITIVE PRIVATE DATA:
+ * The borrower's actual private financial value (e.g. salary, account balance) is queried
+ * via client-side private witness `getPrivateFinancialValue()` and NEVER stored on-chain or returned.
+ *
+ * PUBLIC RESULT:
+ * Only the public threshold (`eligibilityThreshold`) and the zero-knowledge verification
+ * result flag (`isEligibilityVerified`) are exposed on the ledger.
  */
 export struct LoanDetails {
   borrower: Bytes<32>,
@@ -26,6 +30,7 @@ export struct LoanDetails {
   interestRateBasisPoints: Uint<16>,
   durationBlocks: Uint<32>,
   status: LoanStatus,
+  eligibilityThreshold: Uint<64>,
   isEligibilityVerified: Boolean,
 }
 
@@ -45,16 +50,29 @@ export ledger durationBlocks: Uint<32>;
 // Public loan lifecycle status
 export ledger status: LoanStatus;
 
+// Public eligibility threshold required to qualify for this loan request
+export ledger eligibilityThreshold: Uint<64>;
+
 // Public verification flag: confirms ZK eligibility proof verification
 // without revealing the underlying private financial witnesses on-chain.
 export ledger isEligibilityVerified: Boolean;
+
+// -----------------------------------------------------------------------------
+// Private Witness Declaration
+// -----------------------------------------------------------------------------
+
+/**
+ * Witness interface for querying private borrower financial metrics locally.
+ * Executed off-chain inside the prover; values are never disclosed directly.
+ */
+witness getPrivateFinancialValue(): Uint<64>;
 
 // -----------------------------------------------------------------------------
 // Contract Initialization
 // -----------------------------------------------------------------------------
 
 /**
- * Initializes the loan desk contract instance with the requested terms.
+ * Initializes the loan desk contract instance with the requested terms and eligibility threshold.
  * All public parameters are explicitly disclosed to the ledger state.
  * Eligibility starts unverified (false) and will be updated by future ZK proof circuits.
  */
@@ -62,7 +80,8 @@ constructor(
   borrowerPk: Bytes<32>,
   principalAmount: Uint<64>,
   interestRate: Uint<16>,
-  termBlocks: Uint<32>
+  termBlocks: Uint<32>,
+  minThreshold: Uint<64>
 ) {
   assert(principalAmount > 0, "Loan amount must be greater than zero");
   assert(termBlocks > 0, "Loan duration must be greater than zero");
@@ -72,6 +91,7 @@ constructor(
   amount = disclose(principalAmount);
   interestRateBasisPoints = disclose(interestRate);
   durationBlocks = disclose(termBlocks);
+  eligibilityThreshold = disclose(minThreshold);
   status = LoanStatus.requested;
   isEligibilityVerified = false;
 }
@@ -94,6 +114,7 @@ export circuit getLoanDetails(): LoanDetails {
     interestRateBasisPoints: interestRateBasisPoints,
     durationBlocks: durationBlocks,
     status: status,
+    eligibilityThreshold: eligibilityThreshold,
     isEligibilityVerified: isEligibilityVerified,
   };
 }

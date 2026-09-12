@@ -145,3 +145,58 @@ The `verifyEligibility()` circuit implemented in `contracts/src/index.compact` r
 ### 6.4 Current Limitations
 1. **Self-Reported Witness Model**: In this initial phase, the witness value is supplied by the borrower's local wallet environment. In subsequent iterations, this can be combined with zero-knowledge attestations from signed credentials (e.g. zk-SBTs or verified financial oracles).
 2. **Binary Threshold Evaluation**: The model currently evaluates a single scalar threshold. Complex multi-criteria underwriting (e.g. debt-to-income and collateral ratios simultaneously) will build on this foundational pattern.
+
+---
+
+## 7. Client-Side Proof Execution Architecture
+
+The TypeScript client module (`contracts/client/eligibility-client.ts`) provides the application-level interface for executing the private eligibility circuit using the official Midnight Compact runtime.
+
+### 7.1 Pipeline Overview
+```
++-------------------------------------------------------------+
+|                     APPLICATION CLIENT                      |
+|                                                             |
+|  Private Financial Value (e.g. 42000 from env/wallet)       |
+|  Borrower Identity (borrowerPk)                             |
+|  Active Contract State (contractState)                      |
++-------------------------------------------------------------+
+                              │
+                              ▼
++-------------------------------------------------------------+
+|                 PRIVATE WITNESS PROVIDER                    |
+|                                                             |
+|  createEligibilityWitnessProvider(privateFinancialValue)    |
+|  Encapsulates secret within off-chain closure:              |
+|    getPrivateFinancialValue: () => [privateState, value]    |
++-------------------------------------------------------------+
+                              │
+                              ▼
++-------------------------------------------------------------+
+|                 LOCAL CIRCUIT PROVER EXECUTION              |
+|                                                             |
+|  contract.circuits.verifyEligibility(circuitContext)        |
+|  Evaluates privateValue >= eligibilityThreshold             |
+|  Generates ProofData & asserts constraints locally          |
++-------------------------------------------------------------+
+                              │
+                              ▼
++-------------------------------------------------------------+
+|                 SANITIZED PUBLIC RESULT                     |
+|                                                             |
+|  EligibilityProofResult:                                    |
+|    isVerified: true                                         |
+|    updatedContractState (committed on-chain)                |
+|    updatedLedger (isEligibilityVerified = true)             |
+|    proofData (public transcript, zero secrets)              |
++-------------------------------------------------------------+
+```
+
+### 7.2 Strict Secret Hygiene Guarantees
+The client module enforces cryptographic hygiene invariants:
+1. **Zero Exposure**: `privateFinancialValue` is never stored on the ledger, never logged to stdout/stderr, and never included in `EligibilityProofResult`.
+2. **Runtime Configuration**: Sensitive inputs can be injected via runtime environment variables (e.g. `process.env.BORROWER_PRIVATE_FINANCIAL_VALUE`) or directly from local wallet storage, avoiding hardcoded source secrets.
+3. **Fail-Fast Integrity**: If the private value is below `eligibilityThreshold` or if the caller is not the registered borrower, the function halts with an assertion error without mutating contract state.
+
+### 7.3 Local Proving & Network Environment
+When running outside of a connected testnet/devnet (i.e. when a remote proof server or node is not running), the client module leverages the local execution engine in `@midnight-ntwrk/compact-runtime`. This evaluates the compiled ZKIR circuits against authentic prover contexts, producing valid `ProofData` and ledger mutations identically to on-chain execution.

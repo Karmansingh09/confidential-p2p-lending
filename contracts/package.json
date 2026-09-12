@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "compile": "compact compile src/index.compact managed",
-    "build": "npm run compile && npm run typecheck",
+    "build": "npm run compile && tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MOCK_LOANS, DEFAULT_LOAN_ID } from '../lib/mock-data.js';
 import { StateBanner } from '../components/StateBanner.js';
 import { Header } from '../components/Header.js';
@@ -7,25 +7,45 @@ import { LoanSummaryCard } from '../components/LoanSummaryCard.js';
 import { PrivacyIndicator } from '../components/PrivacyIndicator.js';
 import { LoanActionPanel } from '../components/LoanActionPanel.js';
 import { LoanMarketplace } from '../components/LoanMarketplace.js';
+import { LenderEvaluationPanel } from '../components/LenderEvaluationPanel.js';
 import type { LoanDetailsModel } from '../types/index.js';
 
 interface DashboardPageProps {
   onNavigateToCreateLoan?: () => void;
   loansMap?: Record<string, LoanDetailsModel>;
+  onLoanFunded?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToCreateLoan,
   loansMap = MOCK_LOANS,
+  onLoanFunded,
 }) => {
-  const availableKeys = Object.keys(loansMap);
+  const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
   const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
 
-  const isUnknownLoan = availableKeys.length > 0 && !loansMap[selectedLoanId];
-  const effectiveLoanId = loansMap[selectedLoanId]
+  useEffect(() => {
+    setInternalLoans(loansMap);
+  }, [loansMap]);
+
+  const activeLoans = internalLoans;
+  const availableKeys = Object.keys(activeLoans);
+
+  const isUnknownLoan = availableKeys.length > 0 && !activeLoans[selectedLoanId];
+  const effectiveLoanId = activeLoans[selectedLoanId]
     ? selectedLoanId
     : availableKeys[0] ?? DEFAULT_LOAN_ID;
-  const currentLoan = loansMap[effectiveLoanId];
+  const currentLoan = activeLoans[effectiveLoanId];
+
+  const handleFundingSuccess = (fundedLoanId: string, updatedLoan: LoanDetailsModel) => {
+    setInternalLoans((prev) => ({
+      ...prev,
+      [fundedLoanId]: updatedLoan,
+    }));
+    if (onLoanFunded) {
+      onLoanFunded(fundedLoanId, updatedLoan);
+    }
+  };
 
   return (
     <div className="dashboard-container">
@@ -95,11 +115,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
                   onSelectLoan={setSelectedLoanId}
-                  loansMap={loansMap}
+                  loansMap={activeLoans}
                 />
               </div>
 
               <div className="right-column">
+                <LenderEvaluationPanel
+                  loan={currentLoan}
+                  loanId={effectiveLoanId}
+                  onFundLoan={handleFundingSuccess}
+                />
+
                 <PrivacyIndicator
                   eligibilityThreshold={currentLoan.eligibilityThreshold}
                   isEligibilityVerified={currentLoan.isEligibilityVerified}
@@ -127,7 +153,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Public Loan Marketplace Section */}
             <LoanMarketplace
-              loansMap={loansMap}
+              loansMap={activeLoans}
               selectedLoanId={effectiveLoanId}
               onSelectLoan={setSelectedLoanId}
             />
@@ -137,10 +163,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #15
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #16
         </p>
       </footer>
     </div>
   );
 };
+
 

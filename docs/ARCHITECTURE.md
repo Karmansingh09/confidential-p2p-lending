@@ -816,16 +816,83 @@ The Loan Details Panel (`LoanSummaryCard.tsx`) prominently partitions displayed 
 2. **PRIVATE BORROWER INFORMATION**:
    Explicitly designated as **Intentionally Unavailable & Excluded**. Confidential underwriting data, bank statements, income, and secret witnesses are never received by or stored within the frontend application tree.
 
-### 15.7 Honest Local Mock Mode Limitation
-In Commit #15, the frontend operates in **Local Mock UI Mode**:
-- Actions display prototype notices explaining protocol transition mechanics.
-- No fake transaction hashes, fake wallet confirmations, fake blockchain timestamps, or simulated network responses are fabricated.
-- Live Midnight.js transaction submission and Lace Wallet signing are reserved for future milestones.
 
+---
 
+## 16. Lender Loan Evaluation & Funding UX (Commit #16)
 
+Commit #16 introduces the typed lender loan evaluation service and funding confirmation workflow, allowing prospective liquidity providers to inspect, assess, and simulate funding of public loan agreements without compromising borrower privacy.
 
+### 16.1 Architecture & Component Hierarchy
 
+```
+frontend/src/
+├── types/
+│   └── lender.ts                 # Strongly typed lender evaluation and funding contracts
+├── lib/
+│   └── lender-evaluation.ts       # Deterministic evaluation engine & BigInt return calculations
+├── components/
+│   ├── LenderEvaluationPanel.tsx  # Assessment dashboard, metrics, warnings & review drawer
+│   └── FundingConfirmation.tsx    # Post-funding confirmation card with explicit prototype disclosure
+└── pages/
+    └── DashboardPage.tsx          # Orchestrates marketplace selection with lender evaluation
+```
 
+### 16.2 Strict Information Separation During Evaluation
 
+When a prospective lender inspects an agreement on the marketplace, the evaluation engine (`frontend/src/lib/lender-evaluation.ts`) consumes **strictly public data** defined by the `LoanDetailsModel` interface:
 
+* **Public Terms Evaluated**:
+  - Principal Amount (`amount`: `bigint`)
+  - Interest Rate (`interestRateBasisPoints`: `number`)
+  - Agreed Duration (`durationBlocks`: `bigint`)
+  - Public Qualification Threshold (`eligibilityThreshold`: `bigint`)
+  - Borrower Public Account Key (`borrower`: `Uint8Array`)
+  - Current Lifecycle Status (`status`: `LoanStatus`)
+  - Public Attestation (`isEligibilityVerified`: `boolean`)
+* **Strictly Excluded & Omitted**:
+  - Off-chain witness credentials and secret salts
+  - Borrower income, liquid balances, or personal identifiers
+  - Financial records or proprietary underwriting inputs
+
+### 16.3 Exact BigInt Financial Arithmetic
+
+All projected lender earnings and expected returns are computed using exact integer basis-point arithmetic matching the canonical Midnight Compact smart contract rules:
+
+$$\text{Interest Earnings} = \frac{\text{Principal} \times \text{RateBasisPoints}}{10000}$$
+$$\text{Expected Return} = \text{Principal} + \text{Interest Earnings}$$
+
+- **Zero Floating-Point Representation**: IEEE-754 numbers are strictly forbidden for currency and interest calculations to eliminate rounding drift across execution environments.
+- **Canonical Parity**: Expected return delegates to the canonical `calculateRepaymentObligation` function, guaranteeing identical calculations across client, contract, and UI.
+
+### 16.4 Contract-Guarded Funding Readiness Derivation
+
+The evaluation panel derives the funding action state deterministically using canonical contract lifecycle rules from `canFundLoan`:
+
+| Readiness Status | Condition | Lender UI Behavior |
+| :--- | :--- | :--- |
+| `READY_TO_FUND` | `status == requested && isEligibilityVerified && lender != borrower` | Funding review button enabled with green readiness badge |
+| `ELIGIBILITY_NOT_VERIFIED` | `status == requested && !isEligibilityVerified` | Disabled; displays zero-knowledge attestation warning |
+| `BORROWER_CANNOT_FUND_OWN_LOAN` | `lenderAccount == loan.borrower` | Disabled; warns that self-funding is prohibited |
+| `LOAN_ALREADY_FUNDED` | `status == funded` | Disabled; displays active loan status notice |
+| `AGREEMENT_CONCLUDED` | `status == repaid \|\| status == settled` | Disabled; displays terminal agreement notice |
+| `LOAN_NOT_AVAILABLE` | Invalid status or undefined agreement | Action disabled |
+
+### 16.5 Zero-Knowledge Underwriting Attestation
+
+The evaluation interface provides prospective lenders with cryptographic confidence through a **Zero-Knowledge Underwriting Attestation**:
+- Proves that the borrower's private financial metrics satisfied `eligibilityThreshold >= amount` inside an off-chain ZK circuit.
+- Affirms to the lender that creditworthiness has been verified by the Midnight consensus layer without exposing any underlying financial records.
+
+### 16.6 Step-by-Step Prototype Funding Workflow
+
+1. **Loan Selection**: Lender selects any public loan request from the marketplace.
+2. **Deterministic Evaluation**: UI calculates exact return metrics, interest earnings, and displays relevant risk warnings.
+3. **Account Selection**: Lender selects their simulated public funding key.
+4. **Interactive Review**: Lender clicks "Review & Prepare Funding" to open the confirmation drawer, displaying full commitment terms and legal disclosures.
+5. **Simulated State Transition**: Lender commits funding, transitioning agreement state from `REQUESTED` to `FUNDED` and assigning the lender's public account key.
+6. **Honest Post-Execution Confirmation**: The `FundingConfirmation` card renders with an explicit disclosure:
+   - Lifecycle Status: `REQUESTED → FUNDED`
+   - Lender Account Key: Hex commitment
+   - Asset Transfer Status: **`"Not executed — local prototype mode"`**
+   - Zero fabricated network transactions or simulated cryptographic hashes

@@ -19,12 +19,20 @@ export const App: React.FC = () => {
     }));
   };
 
+  const handleLoanFunded = (loanId: string, updatedLoan: LoanDetailsModel) => {
+    setLoans((prev) => ({
+      ...prev,
+      [loanId]: updatedLoan,
+    }));
+  };
+
   return (
     <div className="app-root">
       {currentView === 'dashboard' ? (
         <DashboardPage
           onNavigateToCreateLoan={() => setCurrentView('create-loan')}
           loansMap={loans}
+          onLoanFunded={handleLoanFunded}
         />
       ) : (
         <CreateLoanPage

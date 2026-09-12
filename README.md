@@ -138,19 +138,20 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #15)
-- **Public Loan Marketplace Discovery**: Comprehensive table and search engine allowing users to discover and inspect active micro-loans using strictly public ledger data.
-- **Deterministic Case-Insensitive Search**: Search agreements by Loan ID, Borrower public key, or Lender public key.
-- **Lifecycle Filtering**: Filter loans across all phases (`All`, `Requested`, `Verified`, `Funded`, `Repaid`, `Settled`) with dynamic count badges.
-- **Canonical State Machine Preservation**: Derives `VERIFIED` state strictly from `status === requested && isEligibilityVerified === true` without mutating the 4-state contract enum.
-- **Deterministic BigInt Sorting**: 6 sort options (Principal Low/High, Interest Rate Low/High, Duration Short/Long) computed strictly with integer comparisons to eliminate floating-point drift.
-- **Lifecycle-Aware Action Dispatcher**: Derived directly from canonical `LoanDesk` contract guards (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`).
-- **Enhanced Details Panel**: Explicit visual and architectural separation between Public Agreement Information and excluded Private Borrower Information.
-- **Borrower Loan Request UI**: Propose confidential micro-loans with integer basis point precision and live agreement preview.
+### Current Status & Features (Commit #16)
+- **Lender Loan Evaluation & Funding Workflow (Commit #16)**:
+  - **Typed Evaluation Engine**: Deterministic evaluation model (`frontend/src/lib/lender-evaluation.ts`) operating exclusively on public `LoanDetailsModel` properties.
+  - **Exact BigInt Arithmetic**: Computes expected interest earnings and total returns with zero IEEE-754 floating-point drift, delegating to canonical contract obligation rules.
+  - **Canonical Contract-Guarded Readiness**: Derives funding capability strictly from `canFundLoan`, enforcing prerequisite ZK eligibility verification, active requested state, and self-funding prevention.
+  - **Zero-Knowledge Underwriting Attestation**: Transparent UI panel assuring liquidity providers of verified borrower creditworthiness without disclosing confidential underwriting data.
+  - **Interactive 2-Step Funding Drawer**: Modal review flow displaying terms, simulated lender identity selection, and legal disclosures before committing.
+  - **Honest Post-Execution Confirmation Card**: Displays state transition (`REQUESTED → FUNDED`), lender assignment, and explicit prototype notice: `Asset Transfer Status: "Not executed — local prototype mode"`.
+- **Public Loan Marketplace Discovery (Commit #15)**:
+  - Search agreements by Loan ID, Borrower, or Lender.
+  - Lifecycle filtering with verified state derivation (`status === requested && isEligibilityVerified === true`).
+  - Deterministic 6-way BigInt sorting with tie-breaking.
+- **Borrower Loan Request UI (Commit #14)**: Propose confidential micro-loans with basis-point precision and real-time validation.
+- **Strict Privacy Separation**: Zero private financial data, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #15). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
-
-
-
-
+> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #16). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

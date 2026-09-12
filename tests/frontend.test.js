@@ -23,6 +23,18 @@ import {
   queryMarketplace,
   getLifecycleActionDescriptor,
 } from '../frontend/src/lib/marketplace.ts';
+import {
+  evaluateLoanForLender,
+  getFundingReadiness,
+  getEvaluationWarnings,
+  calculateExpectedReturn,
+  calculateInterestEarnings,
+  executeLocalFunding,
+  DEFAULT_LENDER_PK_BYTES,
+  DEFAULT_LENDER_PK_HEX,
+  ALTERNATIVE_LENDER_PK_BYTES,
+  ALTERNATIVE_LENDER_PK_HEX,
+} from '../frontend/src/lib/lender-evaluation.ts';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
@@ -39,11 +51,13 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/App.css',
       'src/index.css',
       'src/types/index.ts',
+      'src/types/lender.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
       'src/lib/loan-service.ts',
       'src/lib/marketplace.ts',
+      'src/lib/lender-evaluation.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -57,7 +71,10 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/LoanPreview.tsx',
       'src/components/ValidationMessage.tsx',
       'src/components/LoanMarketplace.tsx',
+      'src/components/LenderEvaluationPanel.tsx',
+      'src/components/FundingConfirmation.tsx',
     ];
+
 
 
     for (const relPath of requiredFiles) {
@@ -687,5 +704,225 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       }
     }
   });
+
+  // ===========================================================================
+  // Commit #16: Lender Loan Evaluation & Funding Workflow Tests
+  // ===========================================================================
+
+  it('Test 29 (Commit #16 - Req 1): Verified requested loan is fundable by lender', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const readiness = getFundingReadiness(verifiedLoan, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(readiness.canFund, true);
+    assert.equal(readiness.status, 'READY_TO_FUND');
+    assert.equal(readiness.badgeType, 'success');
+  });
+
+  it('Test 30 (Commit #16 - Req 2): Unverified requested loan is NOT fundable', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const readiness = getFundingReadiness(unverifiedLoan, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(readiness.canFund, false);
+    assert.equal(readiness.status, 'ELIGIBILITY_NOT_VERIFIED');
+    assert.equal(readiness.badgeType, 'warning');
+  });
+
+  it('Test 31 (Commit #16 - Req 3): Funded loan is NOT fundable', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const readiness = getFundingReadiness(fundedLoan, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(readiness.canFund, false);
+    assert.equal(readiness.status, 'LOAN_ALREADY_FUNDED');
+    assert.equal(readiness.badgeType, 'warning');
+  });
+
+  it('Test 32 (Commit #16 - Req 4): Repaid loan is NOT fundable', () => {
+    const repaidLoan = MOCK_LOANS['loan-004'];
+    const readiness = getFundingReadiness(repaidLoan, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(readiness.canFund, false);
+    assert.equal(readiness.status, 'LOAN_NOT_AVAILABLE');
+    assert.equal(readiness.badgeType, 'info');
+  });
+
+  it('Test 33 (Commit #16 - Req 5): Settled loan is NOT fundable', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    const readiness = getFundingReadiness(settledLoan, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(readiness.canFund, false);
+    assert.equal(readiness.status, 'AGREEMENT_CONCLUDED');
+    assert.equal(readiness.badgeType, 'info');
+  });
+
+  it('Test 34 (Commit #16 - Req 6): Borrower cannot fund their own loan request', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    // Supply borrower's own public key bytes as lender key
+    const readiness = getFundingReadiness(verifiedLoan, verifiedLoan.borrowerBytes);
+    assert.equal(readiness.canFund, false);
+    assert.equal(readiness.status, 'BORROWER_CANNOT_FUND_OWN_LOAN');
+    assert.equal(readiness.badgeType, 'error');
+  });
+
+  it('Test 35 (Commit #16 - Req 7 & 9): Expected interest calculation is exact BigInt arithmetic', () => {
+    // 25000 * 750 / 10000 = 1875
+    const interest = calculateInterestEarnings(25000n, 750n);
+    assert.equal(interest, 1875n);
+    assert.equal(typeof interest, 'bigint');
+
+    // 10000 * 400 / 10000 = 400
+    assert.equal(calculateInterestEarnings(10000n, 400n), 400n);
+
+    // 35000 * 650 / 10000 = 2275
+    assert.equal(calculateInterestEarnings(35000n, 650n), 2275n);
+  });
+
+  it('Test 36 (Commit #16 - Req 8): Expected repayment calculation strictly matches canonical contract calculation', () => {
+    const testCases = [
+      { amount: 25000n, rateBps: 750n },
+      { amount: 40000n, rateBps: 550n },
+      { amount: 15000n, rateBps: 500n },
+      { amount: 50000n, rateBps: 600n },
+    ];
+
+    for (const tc of testCases) {
+      const contractCalc = calculateRepaymentObligation(tc.amount, tc.rateBps);
+      const evalCalc = calculateExpectedReturn(tc.amount, tc.rateBps);
+      assert.equal(evalCalc, contractCalc);
+      assert.equal(evalCalc, tc.amount + (tc.amount * tc.rateBps) / 10000n);
+    }
+  });
+
+  it('Test 37 (Commit #16 - Req 9): BigInt arithmetic is strictly used for all monetary calculations', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const evalData = evaluateLoanForLender('loan-002', loan, DEFAULT_LENDER_PK_HEX);
+
+    assert.equal(typeof evalData.terms.amount, 'bigint');
+    assert.equal(typeof evalData.terms.interestRateBasisPoints, 'bigint');
+    assert.equal(typeof evalData.terms.durationBlocks, 'bigint');
+    assert.equal(typeof evalData.terms.eligibilityThreshold, 'bigint');
+    assert.equal(typeof evalData.terms.totalRepaymentObligation, 'bigint');
+    assert.equal(typeof evalData.terms.expectedInterest, 'bigint');
+    assert.equal(typeof evalData.expectedInterest, 'bigint');
+    assert.equal(typeof evalData.expectedTotalReturn, 'bigint');
+  });
+
+  it('Test 38 (Commit #16 - Req 10): Funding simulation correctly transitions REQUESTED → FUNDED with lender assigned', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const { updatedLoan, result } = executeLocalFunding('loan-002', loan, DEFAULT_LENDER_PK_HEX);
+
+    assert.equal(result.success, true);
+    assert.equal(result.loanId, 'loan-002');
+    assert.equal(result.previousStatus, 'REQUESTED');
+    assert.equal(result.newStatus, 'FUNDED');
+    assert.equal(result.lender, DEFAULT_LENDER_PK_HEX);
+    assert.equal(result.amount, 25000n);
+    assert.equal(result.expectedInterest, 1875n);
+    assert.equal(result.expectedRepayment, 26875n);
+
+    // Verify updated loan model
+    assert.equal(updatedLoan.status, LoanStatus.funded);
+    assert.equal(updatedLoan.statusText, 'funded');
+    assert.equal(updatedLoan.lender, DEFAULT_LENDER_PK_HEX);
+    assert.ok(updatedLoan.lenderBytes !== null);
+  });
+
+  it('Test 39 (Commit #16 - Req 11): Prototype funding explicitly declares asset transfer not executed in local prototype mode', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const { result } = executeLocalFunding('loan-002', loan, DEFAULT_LENDER_PK_HEX);
+
+    assert.equal(result.assetTransferStatus, 'Not executed — local prototype mode');
+    assert.ok(result.disclaimer.includes('Prototype mode'));
+    assert.ok(result.disclaimer.includes('No real cryptocurrency tokens'));
+  });
+
+  it('Test 40 (Commit #16 - Req 12): Lender evaluation exposes exclusively public LoanDetailsModel information', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const evaluation = evaluateLoanForLender('loan-002', loan, DEFAULT_LENDER_PK_HEX);
+
+    // Terms should contain ONLY public ledger fields
+    const termKeys = Object.keys(evaluation.terms);
+    const allowedKeys = [
+      'loanId',
+      'borrower',
+      'lender',
+      'amount',
+      'interestRateBasisPoints',
+      'durationBlocks',
+      'eligibilityThreshold',
+      'isEligibilityVerified',
+      'status',
+      'statusText',
+      'totalRepaymentObligation',
+      'expectedInterest',
+    ];
+
+    for (const key of termKeys) {
+      assert.ok(allowedKeys.includes(key), `Field ${key} should be an allowed public term`);
+    }
+
+    // Explicitly verify absence of private fields
+    assert.equal('privateFinancialValue' in evaluation.terms, false);
+    assert.equal('privateWitness' in evaluation.terms, false);
+    assert.equal('income' in evaluation.terms, false);
+    assert.equal('bankBalance' in evaluation.terms, false);
+  });
+
+  it('Test 41 (Commit #16 - Req 13): Lender evaluation panel and confirmation UI components contain zero private financial data or secrets', () => {
+    const evalPanelPath = path.join(srcDir, 'components', 'LenderEvaluationPanel.tsx');
+    const evalContent = fs.readFileSync(evalPanelPath, 'utf8');
+
+    const confirmPath = path.join(srcDir, 'components', 'FundingConfirmation.tsx');
+    const confirmContent = fs.readFileSync(confirmPath, 'utf8');
+
+    // Asserts privacy notices are present
+    assert.ok(evalContent.includes('Zero-Knowledge Underwriting Attestation'));
+    assert.ok(evalContent.includes('Borrower eligibility has been verified without revealing'));
+    assert.ok(evalContent.includes('Private financial information is not exposed to lenders'));
+
+    // Asserts confirmation displays asset transfer status
+    assert.ok(confirmContent.includes('Asset Transfer Status'));
+    assert.ok(confirmContent.includes('result.assetTransferStatus'));
+  });
+
+  it('Test 42 (Commit #16 - Req 9 & Strict Privacy Audit): Zero references to private financial credentials across all frontend files including new lender modules', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'privateState',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 15, 'Must audit all frontend source files including lender modules');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
 });
+
 

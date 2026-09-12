@@ -131,3 +131,18 @@ export {
   type TransactionOrchestrationResult,
   type TransactionOrchestrationErrorCode,
 } from './transaction-orchestration.ts';
+
+export {
+  WalletAdapterError,
+  type WalletProviderKind,
+  type WalletDetectionStatus,
+  type WalletAdapterStatus,
+  type WalletAccountIdentity,
+  type WalletNetworkInfo,
+  type WalletCapabilitySet,
+  type WalletConnectionResult,
+  type WalletTransactionRequest,
+  type WalletTransactionResult,
+  type WalletAdapterErrorCode,
+} from './wallet-adapter.ts';
+

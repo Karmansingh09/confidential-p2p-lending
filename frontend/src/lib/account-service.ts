@@ -13,6 +13,11 @@ import {
   PROTOTYPE_LENDER_PK,
   PROTOTYPE_THIRD_PARTY_PK,
 } from './midnight-provider.ts';
+import {
+  createMidnightWalletAdapter,
+  MidnightWalletAdapter,
+} from './midnight-wallet-adapter.ts';
+import type { WalletProviderKind } from '../types/wallet-adapter.ts';
 
 export const MOCK_BORROWER_PK = PROTOTYPE_BORROWER_PK;
 export const MOCK_LENDER_PK = PROTOTYPE_LENDER_PK;
@@ -24,8 +29,8 @@ export function bytesToHex(bytes: Uint8Array): string {
 
 /**
  * Active provider instance mediating all wallet and network identity behaviors.
- * Conceptual Architecture (Commit #22):
- * Account Service → WalletProvider Interface → LocalPrototypeWalletProvider (or MidnightWalletProvider)
+ * Conceptual Architecture (Commit #22 & #24):
+ * Account Service → WalletProvider Interface → [LocalPrototypeWalletProvider | MidnightWalletAdapter]
  */
 let activeProvider: WalletProvider = createDefaultWalletProvider();
 
@@ -47,6 +52,27 @@ export function setWalletProvider(provider: WalletProvider): void {
  * Resets the wallet provider adapter to the default local prototype provider.
  */
 export function resetWalletProvider(): void {
+  activeProvider = createDefaultWalletProvider();
+}
+
+/**
+ * Returns the architectural kind of the currently active wallet provider.
+ */
+export function getActiveProviderKind(): WalletProviderKind {
+  return activeProvider.kind ?? (activeProvider.isPrototype ? 'LOCAL_PROTOTYPE' : 'MIDNIGHT');
+}
+
+/**
+ * Switches the active wallet provider to a real Midnight / Lace Wallet Adapter.
+ */
+export function switchToMidnightAdapter(adapter?: WalletProvider): void {
+  activeProvider = adapter ?? createMidnightWalletAdapter();
+}
+
+/**
+ * Switches the active wallet provider back to the Local Prototype Provider.
+ */
+export function switchToPrototypeProvider(): void {
   activeProvider = createDefaultWalletProvider();
 }
 

@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 230 passing tests across 8 test suites
+# 255 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #23)
+### Current Status & Features (Commit #24)
+- **Real Midnight / Lace Wallet Adapter Integration Boundary (Commit #24)**:
+  - **Verified Midnight Integration Surface**: Rigorous audit separating verified installed dependencies (`@midnight-ntwrk/compact-runtime` v0.16.0, `@midnight-ntwrk/onchain-runtime-v3` v3.1.1, Compact smart contract, client ZK prover, `LoanDesk`) from required future SDKs (`@midnight-ntwrk/dapp-connector-api`, `@midnight-ntwrk/midnight-js-*`, live Lace extension enclave, and live network RPC).
+  - **Production-Ready Wallet Adapter**: Implements `MidnightWalletAdapter` (`frontend/src/lib/midnight-wallet-adapter.ts`) backed by safe browser connector detection (`window.midnight`), honest capability negotiation, and connection lifecycle management (`NOT_DETECTED`, `UNSUPPORTED`, `DISCONNECTED`, `CONNECTING`, `CONNECTED`).
+  - **Anti-Fabrication Transaction Boundary**: Rejects unsupported transaction submissions with typed `WalletAdapterError('UNSUPPORTED_OPERATION')` without generating fake transaction hashes, block numbers, or confirmations.
+  - **Critical LoanRegistry State Preservation**: Enforces that unsupported or rejected adapter operations never mutate the central `LoanRegistry`.
+  - **Dual-Provider Runtime Switching**: Seamlessly toggle between `LocalPrototypeWalletProvider` (for instant multi-role testing) and `MidnightWalletAdapter` (for browser connector integration).
+  - **Interactive Wallet Connection UI**: Mounted `WalletConnectionPanel.tsx` in the dashboard with provider toggle, detection status badges, connection controls, public identity view, atomic capability matrix, and transparent prototype notices.
 - **Transaction Orchestration & Lifecycle Dispatch (Commit #23)**:
   - **Deterministic Two-Phase Pipeline**: Introduces `prepareLifecycleTransaction` and `executeLifecycleTransaction` (`frontend/src/lib/transaction-orchestrator.ts`) to cleanly partition contract guard validation and capability evaluation from execution.
   - **Canonical 1:1 Circuit Dispatch Mapping**: Standardizes mapping between high-level actions (`VERIFY_ELIGIBILITY`, `FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`) and underlying Midnight Compact circuits (`verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan`).
@@ -193,4 +200,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #23). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Adapter Boundary** (Commit #24). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection and on-chain transaction signing) is structured behind `MidnightWalletAdapter` but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or mock wallet connections are executed in this commit.

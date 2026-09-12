@@ -10,6 +10,10 @@ import type {
   TransactionRequest,
   TransactionResult,
 } from '../types/transaction.ts';
+import type {
+  WalletProviderKind,
+  WalletDetectionStatus,
+} from '../types/wallet-adapter.ts';
 
 /**
  * Clean architectural interface representing the minimum wallet and network
@@ -30,8 +34,14 @@ export interface WalletProvider {
   /** Indicates whether the provider is operating in local prototype/simulation mode */
   readonly isPrototype: boolean;
 
+  /** Architectural categorization of the provider kind */
+  readonly kind?: WalletProviderKind;
+
   /** Checks if the provider is installed or available in the current environment */
   isAvailable(): boolean;
+
+  /** Returns detection status of the wallet connector in the current environment */
+  getDetectionStatus?(): WalletDetectionStatus;
 
   /** Returns current connection status of the provider */
   getConnectionStatus(): WalletConnectionStatus;

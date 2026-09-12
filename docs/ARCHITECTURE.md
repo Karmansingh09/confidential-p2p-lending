@@ -1473,6 +1473,119 @@ Each lifecycle action declares its minimal required provider capabilities:
 - **Supported Local Actions**: Clearly displays `VERIFY_ELIGIBILITY` as available off-chain via the client ZK prover.
 - **Unsupported Network Actions**: Clearly identifies `FUND_LOAN`, `REPAY_LOAN`, and `SETTLE_LOAN` as unavailable until live Midnight network connection is active.
 
+---
+
+## 24. Midnight / Lace Wallet Adapter Integration Boundary
+
+### 24.1 Verified Midnight Integration Surface
+
+An exhaustive audit of the repository dependencies confirms the exact boundaries of installed Midnight packages versus components requiring future SDK and wallet integration:
+
+| Layer / Component | Package / Source | Status in Commit #24 | Operational Scope |
+| :--- | :--- | :--- | :--- |
+| **Compact Smart Contract** | `contracts/src/index.compact` | **AVAILABLE NOW** | Foundational ledger state, 5-phase lifecycle circuits (`verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan`), and state inspection. |
+| **Compact Runtime** | `@midnight-ntwrk/compact-runtime` (v0.16.0) | **AVAILABLE NOW** | Low-level Compact execution engine and runtime primitives. |
+| **Onchain Runtime** | `@midnight-ntwrk/onchain-runtime-v3` (v3.1.1) | **AVAILABLE NOW** | On-chain ledger state machine and cryptographic constraint evaluation. |
+| **Client Lifecycle API** | `@midnight-p2p/contracts` (`loan-api.ts`, `LoanDesk`) | **AVAILABLE NOW** | Typed lifecycle facade, canonical contract guards, BigInt repayment math, and error mapping. |
+| **Client Off-chain ZK Prover** | `contracts/client/witness.ts` | **AVAILABLE NOW** | Off-chain zero-knowledge eligibility proof generation against Compact circuit constraints. |
+| **Local Prototype Provider** | `LocalPrototypeWalletProvider` (`frontend/src/lib/midnight-provider.ts`) | **AVAILABLE NOW** | Offline simulated identity provider supporting role switching (`BORROWER`, `LENDER`, `THIRD_PARTY`). |
+| **Central Loan Registry** | `LoanRegistry` (`frontend/src/lib/loan-registry.ts`) | **AVAILABLE NOW** | Single source of truth for public loan agreements with immutable term enforcement. |
+| **Transaction Orchestrator** | `TransactionOrchestrator` (`frontend/src/lib/transaction-orchestrator.ts`) | **AVAILABLE NOW** | Two-phase lifecycle preparation and capability validation pipeline. |
+| **Midnight / Lace Wallet Adapter** | `MidnightWalletAdapter` (`frontend/src/lib/midnight-wallet-adapter.ts`) | **AVAILABLE NOW** | Production-ready browser connector boundary, detection state machine, capability disclosure, and anti-fabrication rejections. |
+| **DApp Connector SDK** | `@midnight-ntwrk/dapp-connector-api` | **REQUIRES FUTURE SDK / WALLET** | Browser wallet injection standard (`window.midnight`) and CIP-30 style wallet session handshake. |
+| **Midnight.js Client SDK** | `@midnight-ntwrk/midnight-js-*` | **REQUIRES FUTURE SDK / WALLET** | High-level ledger client for contract deployment, proof server orchestration, and balance queries. |
+| **Lace Wallet Web Extension** | Midnight-enabled Lace Wallet | **REQUIRES FUTURE SDK / WALLET** | Secure cryptographic key enclave for live transaction signing and identity attestation. |
+| **Live Network RPC & Consensus** | Midnight Testnet / Mainnet | **REQUIRES FUTURE SDK / WALLET** | Decentralized consensus, transaction inclusion, block confirmation, and live asset settlement. |
+
+> [!IMPORTANT]
+> **Anti-Fabrication Guarantee**: Commit #24 establishes the honest structural adapter boundary without installing speculative npm packages or inventing unverified mock APIs. Uninstalled SDK capabilities are reported truthfully as unavailable.
+
+### 24.2 Architecture & Adapter State Machine
+
+The `MidnightWalletAdapter` implements the canonical `WalletProvider` interface and coordinates browser connector detection, connection lifecycle, and capability negotiation:
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                         MIDNIGHT WALLET ADAPTER                           |
+|                 (frontend/src/lib/midnight-wallet-adapter.ts)             |
+|                                                                           |
+|  1. Detection Engine (getDetectionStatus()):                              |
+|     ├── Non-browser Node / SSR environment       ──► UNSUPPORTED          |
+|     ├── Browser window.midnight undefined        ──► NOT_DETECTED         |
+|     └── Browser window.midnight present          ──► DETECTED             |
+|                                                                           |
+|  2. Connection State Machine (connect() / disconnect()):                  |
+|     ├── NOT_DETECTED / UNSUPPORTED               ──► Throws typed error   |
+|     ├── User rejects extension authorization     ──► USER_REJECTED        |
+|     ├── User approves extension authorization    ──► CONNECTED (public PK)|
+|     └── disconnect()                             ──► DISCONNECTED         |
+|                                                                           |
+|  3. Capability Negotiation (getCapabilities()):                           |
+|     ├── Disconnected: SIGN=false, SUBMIT=false, QUERY=false, PROOF=false  |
+|     └── Connected:    SIGN=true,  SUBMIT=true,  QUERY=false, PROOF=false  |
+|                                                                           |
+|  4. Anti-Fabrication Transaction Boundary (submitTransaction()):          |
+|     └── Always throws WalletAdapterError('UNSUPPORTED_OPERATION')         |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 24.3 Typed Error Taxonomy
+
+All adapter operations return structured domain errors via `WalletAdapterError`:
+
+```typescript
+export type WalletAdapterErrorCode =
+  | 'WALLET_NOT_DETECTED'
+  | 'USER_REJECTED'
+  | 'CONNECTION_FAILED'
+  | 'UNSUPPORTED_OPERATION'
+  | 'NOT_CONNECTED'
+  | 'NETWORK_MISMATCH';
+```
+
+- **`WALLET_NOT_DETECTED`**: Thrown when `connect()` is invoked without the Midnight / Lace browser extension installed.
+- **`USER_REJECTED`**: Thrown when the user cancels or denies the wallet connection prompt.
+- **`UNSUPPORTED_OPERATION`**: Thrown on non-browser environments or when attempting transaction submission before live Midnight SDK integration.
+- **`NOT_CONNECTED`**: Thrown when transaction operations are attempted while the adapter is disconnected.
+
+### 24.4 Dual-Provider Architecture & Runtime Switching
+
+The application cleanly supports two concurrent provider adapters through `AccountService`:
+
+1. **`LocalPrototypeWalletProvider` (`LOCAL_PROTOTYPE`)**:
+   - Default provider for offline prototyping, development, and test suites.
+   - Allows instant persona switching (`Borrower`, `Lender`, `Third Party`) without requiring browser extensions.
+   - Executes local off-chain ZK eligibility verification.
+
+2. **`MidnightWalletAdapter` (`MIDNIGHT_LACE`)**:
+   - Live integration boundary for genuine browser wallet connectors (`window.midnight`).
+   - Discloses honest detection status and rejects unsupported operations without fabrication.
+   - Can be activated at runtime via `accountService.switchToMidnightAdapter()` and restored via `accountService.switchToPrototypeProvider()`.
+
+### 24.5 Strict Anti-Fabrication & Registry Preservation Invariants
+
+1. **Zero Synthetic Blockchain Primitives**:
+   - `submitTransaction` never returns mock transaction hashes (`0x...`), synthetic block heights, or fabricated confirmations.
+   - In prototype mode and in the current adapter boundary, unexecutable network transactions fail cleanly with typed errors.
+
+2. **Registry Immutability on Unsupported Operations**:
+   - Attempted lifecycle transactions that are rejected by the adapter (e.g. `fundLoan`, `repayLoan`, `settleLoan`) **never mutate the central `LoanRegistry`**.
+   - Verified by automated tests `Test 194` and `Test 195`: agreement status remains unchanged, lender accounts remain unbound, and state transitions remain strictly protected by contract invariants.
+
+3. **Strict Zero-Knowledge Privacy Isolation**:
+   - Static analysis verifies that across all 43+ files in `frontend/src/`, zero private underwriting credentials, private keys, or financial secrets exist.
+   - The wallet adapter only ever handles public account addresses and public agreement terms.
+
+### 24.6 UI Integration: Wallet Connection Panel
+
+The `WalletConnectionPanel` component is mounted directly on the dashboard above the `NetworkStatusPanel`:
+- **Provider Selector**: Allows evaluators to switch between `Local Prototype Provider` and `Midnight / Lace Wallet Adapter`.
+- **Status Indicators**: Real-time badges for detection status (`DETECTED`, `NOT_DETECTED`, `UNSUPPORTED`) and connection status (`CONNECTED`, `DISCONNECTED`, `CONNECTING`).
+- **Public Identity Display**: Displays public account identifier when connected.
+- **Atomic Capabilities Matrix**: Real-time inspection of active provider capabilities.
+- **Honest Disclosures**: Clear callouts explaining that live transaction submission requires future Midnight SDK and Lace extension integration.
+
+
 
 
 

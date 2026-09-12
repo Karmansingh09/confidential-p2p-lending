@@ -14,6 +14,7 @@ import { SettlementPanel } from '../components/SettlementPanel.js';
 import { AccountSwitcher } from '../components/AccountSwitcher.js';
 import { AccountStatusPanel } from '../components/AccountStatusPanel.js';
 import { NetworkStatusPanel } from '../components/NetworkStatusPanel.js';
+import { WalletConnectionPanel } from '../components/WalletConnectionPanel.js';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -60,6 +61,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
   const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
+  const [, setProviderTick] = useState<number>(0);
+
+  const handleProviderSwitched = () => setProviderTick((t) => t + 1);
 
   // Synchronize local selection with prop
   useEffect(() => {
@@ -187,7 +191,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
         </div>
 
-        {/* Network & Provider Status Panel (Commit #22) */}
+        {/* Wallet Connection & Integration Panel (Commit #24) */}
+        <section className="wallet-connection-section">
+          <WalletConnectionPanel onProviderSwitched={handleProviderSwitched} />
+        </section>
+
+        {/* Network & Provider Status Panel (Commit #22 & #24) */}
         <section className="network-status-section">
           <NetworkStatusPanel
             accountContext={effectiveAccountContext}
@@ -445,7 +454,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #23 Prototype
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #24 Real Midnight / Lace Adapter Boundary
         </p>
       </footer>
     </div>

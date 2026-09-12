@@ -11,6 +11,10 @@ import type {
   TransactionRequest,
   TransactionResult,
 } from '../types/transaction.ts';
+import type {
+  WalletProviderKind,
+  WalletDetectionStatus,
+} from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 
 export const PROTOTYPE_BORROWER_PK = new Uint8Array(32).fill(1);
@@ -38,6 +42,7 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
   readonly id = 'midnight-local-prototype';
   readonly name = 'Local Prototype Provider';
   readonly isPrototype = true;
+  readonly kind: WalletProviderKind = 'LOCAL_PROTOTYPE';
 
   private status: WalletConnectionStatus;
   private activeRole: AccountRole;
@@ -57,6 +62,10 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
 
   isAvailable(): boolean {
     return true;
+  }
+
+  getDetectionStatus(): WalletDetectionStatus {
+    return 'DETECTED';
   }
 
   getConnectionStatus(): WalletConnectionStatus {

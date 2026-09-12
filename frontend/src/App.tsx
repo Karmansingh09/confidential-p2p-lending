@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { CreateLoanPage } from './pages/CreateLoanPage.js';
 import {
@@ -6,6 +6,7 @@ import {
   disconnectMockAccount,
   switchMockRole,
 } from './lib/account-service.js';
+import { subscribeToWalletSession } from './lib/wallet-session-service.ts';
 import { createDefaultLoanRegistry } from './lib/application-store.js';
 import type { LoanRegistry } from './lib/loan-registry.js';
 import type { LoanDetailsModel } from './types/index.js';
@@ -27,6 +28,17 @@ export const App: React.FC = () => {
   const [accountContext, setAccountContext] = useState<AccountContext>(() =>
     connectMockAccount('BORROWER')
   );
+
+  // Synchronize global account context when wallet session transitions
+  useEffect(() => {
+    const unsubscribe = subscribeToWalletSession((session) => {
+      if (session.status === 'DISCONNECTED') {
+        setSelectedRole('NONE');
+        setAccountContext(connectMockAccount('NONE'));
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   const handleConnect = (role: AccountRole = 'BORROWER') => {
     setSelectedRole(role);

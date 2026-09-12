@@ -18,6 +18,10 @@ import {
   MidnightWalletAdapter,
 } from './midnight-wallet-adapter.ts';
 import type { WalletProviderKind } from '../types/wallet-adapter.ts';
+import {
+  getWalletSessionService,
+  resetWalletSessionService,
+} from './wallet-session-service.ts';
 
 export const MOCK_BORROWER_PK = PROTOTYPE_BORROWER_PK;
 export const MOCK_LENDER_PK = PROTOTYPE_LENDER_PK;
@@ -28,64 +32,64 @@ export function bytesToHex(bytes: Uint8Array): string {
 }
 
 /**
- * Active provider instance mediating all wallet and network identity behaviors.
- * Conceptual Architecture (Commit #22 & #24):
- * Account Service → WalletProvider Interface → [LocalPrototypeWalletProvider | MidnightWalletAdapter]
- */
-let activeProvider: WalletProvider = createDefaultWalletProvider();
-
-/**
- * Returns the currently active wallet provider adapter.
+ * Returns the currently active wallet provider adapter via the WalletSessionService.
  */
 export function getWalletProvider(): WalletProvider {
-  return activeProvider;
+  return getWalletSessionService().getProvider();
 }
 
 /**
  * Sets or injects a wallet provider adapter (useful for testing or future provider switching).
  */
 export function setWalletProvider(provider: WalletProvider): void {
-  activeProvider = provider;
+  getWalletSessionService().setProvider(provider);
 }
 
 /**
  * Resets the wallet provider adapter to the default local prototype provider.
  */
 export function resetWalletProvider(): void {
-  activeProvider = createDefaultWalletProvider();
+  const defaultProvider = createDefaultWalletProvider();
+  resetWalletSessionService(defaultProvider);
 }
 
 /**
  * Returns the architectural kind of the currently active wallet provider.
  */
 export function getActiveProviderKind(): WalletProviderKind {
-  return activeProvider.kind ?? (activeProvider.isPrototype ? 'LOCAL_PROTOTYPE' : 'MIDNIGHT');
+  const provider = getWalletProvider();
+  return provider.kind ?? (provider.isPrototype ? 'LOCAL_PROTOTYPE' : 'MIDNIGHT');
 }
 
 /**
  * Switches the active wallet provider to a real Midnight / Lace Wallet Adapter.
  */
 export function switchToMidnightAdapter(adapter?: WalletProvider): void {
-  activeProvider = adapter ?? createMidnightWalletAdapter();
+  getWalletSessionService().switchToMidnightAdapter(adapter);
 }
 
 /**
  * Switches the active wallet provider back to the Local Prototype Provider.
  */
 export function switchToPrototypeProvider(): void {
-  activeProvider = createDefaultWalletProvider();
+  getWalletSessionService().switchToPrototypeProvider();
 }
 
 /**
- * Returns a strongly typed account identity by translating provider state.
- * STRICT PRIVACY GUARANTEE:
+ * Returns a strongly typed account identity by translating provider and session state.
+ *
+ * PRIVACY GUARANTEE:
  * Operates purely on public account identities.
- * No cryptographic credentials or confidential user inputs are ever created or stored.
+ * No cryptographic secrets or confidential inputs are ever held or created.
  */
 export function getMockAccount(
   role: AccountRole = 'BORROWER',
   customLoan?: LoanDetailsModel
 ): AccountIdentity {
+  const provider = getWalletProvider();
+  const session = getWalletSessionService().getSession();
+
+  // If role is explicitly NONE or session is disconnected
   if (role === 'NONE') {
     return {
       publicKey: null,
@@ -94,10 +98,41 @@ export function getMockAccount(
       displayName: 'Disconnected',
       shortLabel: 'No Account Connected',
       role: 'NONE',
-      isPrototype: activeProvider.isPrototype,
+      isPrototype: provider.isPrototype,
     };
   }
 
+  // If active provider is a real Midnight/Lace adapter (not prototype)
+  if (!provider.isPrototype) {
+    const rawAccount = provider.getAccount() ?? session.account;
+    if (session.status === 'CONNECTED' && rawAccount) {
+      const pk = rawAccount.publicKey;
+      const hex = rawAccount.publicKeyHex || (pk ? bytesToHex(pk) : '');
+      const shortHex = hex ? `${hex.slice(0, 6)}...${hex.slice(-4)}` : 'Adapter Account';
+      return {
+        publicKey: pk,
+        publicKeyHex: hex,
+        connectionStatus: 'CONNECTED',
+        displayName: rawAccount.displayName ?? 'Midnight Wallet Account',
+        shortLabel: `Lace (${shortHex})`,
+        role: rawAccount.role ?? role,
+        isPrototype: false,
+      };
+    }
+
+    // Disconnected adapter
+    return {
+      publicKey: null,
+      publicKeyHex: '',
+      connectionStatus: 'DISCONNECTED',
+      displayName: 'Midnight Wallet (Disconnected)',
+      shortLabel: 'Disconnected',
+      role: 'NONE',
+      isPrototype: false,
+    };
+  }
+
+  // Prototype provider identities (clearly marked as simulation)
   let pk: Uint8Array;
   let displayName: string;
   let labelPrefix: string;
@@ -131,31 +166,40 @@ export function getMockAccount(
     displayName,
     shortLabel: `${labelPrefix} (${shortHex})`,
     role,
-    isPrototype: activeProvider.isPrototype,
+    isPrototype: true,
   };
 }
 
 /**
- * Connects to a prototype account context with the designated role via the active provider.
+ * Connects to an account context with the designated role via the active provider and session service.
  */
 export function connectMockAccount(
   role: AccountRole = 'BORROWER',
   customLoan?: LoanDetailsModel
 ): AccountContext {
-  if (activeProvider instanceof LocalPrototypeWalletProvider) {
-    activeProvider.connectSync(role, customLoan);
+  const sessionService = getWalletSessionService();
+  const provider = sessionService.getProvider();
+
+  if (role === 'NONE') {
+    void sessionService.disconnect();
+  } else if (provider instanceof LocalPrototypeWalletProvider) {
+    provider.connectSync(role, customLoan);
+    // Sync session
+    void sessionService.connect({ providerKind: 'LOCAL_PROTOTYPE', role, customLoan });
   } else {
-    void activeProvider.connect(role, customLoan);
+    void sessionService.connect({ role, customLoan });
   }
 
-  const netContext = activeProvider.getNetworkContext();
+  const netContext = provider.getNetworkContext();
   const identity = getMockAccount(role, customLoan);
   const connectionStatus: AccountConnectionStatus =
-    role === 'NONE' ? 'DISCONNECTED' : 'CONNECTED';
+    role === 'NONE' || identity.connectionStatus === 'DISCONNECTED'
+      ? 'DISCONNECTED'
+      : 'CONNECTED';
 
   return {
-    identity: role === 'NONE' ? null : identity,
-    selectedRole: role,
+    identity: connectionStatus === 'DISCONNECTED' ? null : identity,
+    selectedRole: connectionStatus === 'DISCONNECTED' ? 'NONE' : role,
     availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
     connectionStatus,
     networkName: netContext.networkName,
@@ -165,14 +209,11 @@ export function connectMockAccount(
 }
 
 /**
- * Disconnects the active prototype account via the wallet provider.
+ * Disconnects the active account via the wallet session and provider.
  */
 export function disconnectMockAccount(): AccountContext {
-  if (activeProvider instanceof LocalPrototypeWalletProvider) {
-    activeProvider.disconnectSync();
-  } else {
-    void activeProvider.disconnect();
-  }
+  const sessionService = getWalletSessionService();
+  void sessionService.disconnect();
   return connectMockAccount('NONE');
 }
 

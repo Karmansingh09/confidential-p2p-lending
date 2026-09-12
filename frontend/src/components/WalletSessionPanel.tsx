@@ -1,0 +1,412 @@
+import React, { useState, useEffect } from 'react';
+import {
+  getWalletSessionService,
+  subscribeToWalletSession,
+} from '../lib/wallet-session-service.ts';
+import type {
+  WalletSession,
+  WalletSessionStatus,
+} from '../types/wallet-session.ts';
+import type {
+  WalletDetectionStatus,
+  WalletProviderKind,
+} from '../types/wallet-adapter.ts';
+
+export interface WalletSessionPanelProps {
+  onSessionChanged?: (session: WalletSession) => void;
+  onProviderSwitched?: () => void;
+}
+
+/**
+ * Production-ready Wallet Session Management UI Panel.
+ *
+ * Provides real-time visibility into the active wallet session, detection status,
+ * connection state machine, public account identity, and atomic capability sets.
+ *
+ * HONEST DISCLOSURE INVARIANTS:
+ * - Local prototype is explicitly labeled "LOCAL PROTOTYPE (SIMULATION ONLY)".
+ * - Real adapter is explicitly labeled "MIDNIGHT/LACE ADAPTER".
+ * - Missing extension is labeled "WALLET NOT DETECTED".
+ * - Network status is labeled "LIVE NETWORK NOT AVAILABLE".
+ * - Never displays fabricated transaction IDs, confirmations, or balances.
+ */
+export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
+  onSessionChanged,
+  onProviderSwitched,
+}) => {
+  const sessionService = getWalletSessionService();
+  const [session, setSession] = useState<WalletSession>(() =>
+    sessionService.getSession()
+  );
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Subscribe to session transitions
+  useEffect(() => {
+    const unsubscribe = subscribeToWalletSession((updatedSession) => {
+      setSession(updatedSession);
+      onSessionChanged?.(updatedSession);
+    });
+    return unsubscribe;
+  }, [onSessionChanged]);
+
+  const handleConnect = async () => {
+    setIsProcessing(true);
+    setLocalError(null);
+    try {
+      const result = await sessionService.connect();
+      if (!result.success && result.error) {
+        setLocalError(result.error.message);
+      }
+    } catch (err: unknown) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to connect wallet session.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsProcessing(true);
+    setLocalError(null);
+    try {
+      await sessionService.disconnect();
+    } catch (err: unknown) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to disconnect session.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSwitchToPrototype = () => {
+    setLocalError(null);
+    sessionService.switchToPrototypeProvider();
+    onProviderSwitched?.();
+  };
+
+  const handleSwitchToMidnightAdapter = () => {
+    setLocalError(null);
+    sessionService.switchToMidnightAdapter();
+    onProviderSwitched?.();
+  };
+
+  const isPrototype =
+    session.providerKind === 'LOCAL_PROTOTYPE' || session.network.isPrototype;
+  const isConnected = session.status === 'CONNECTED';
+  const isConnecting = session.status === 'CONNECTING' || isProcessing;
+
+  const getDetectionBadge = (detection: WalletDetectionStatus) => {
+    switch (detection) {
+      case 'DETECTED':
+        return { text: 'CONNECTOR DETECTED', bg: '#14532d', color: '#86efac' };
+      case 'NOT_DETECTED':
+        return { text: 'WALLET NOT DETECTED', bg: '#7f1d1d', color: '#fca5a5' };
+      case 'UNSUPPORTED':
+        return { text: 'CONNECTOR UNSUPPORTED', bg: '#854d0e', color: '#fef08a' };
+      default:
+        return { text: 'UNKNOWN STATUS', bg: '#334155', color: '#94a3b8' };
+    }
+  };
+
+  const getStatusBadge = (status: WalletSessionStatus) => {
+    switch (status) {
+      case 'CONNECTED':
+        return { text: 'CONNECTED', bg: '#14532d', color: '#86efac' };
+      case 'CONNECTING':
+        return { text: 'CONNECTING...', bg: '#1e3a8a', color: '#93c5fd' };
+      case 'DISCONNECTED':
+        return { text: 'DISCONNECTED', bg: '#334155', color: '#94a3b8' };
+      case 'UNSUPPORTED':
+        return { text: 'UNSUPPORTED', bg: '#854d0e', color: '#fef08a' };
+      case 'REJECTED':
+        return { text: 'USER REJECTED', bg: '#7f1d1d', color: '#fca5a5' };
+      case 'FAILED':
+      default:
+        return { text: 'FAILED', bg: '#991b1b', color: '#fecaca' };
+    }
+  };
+
+  const detectionBadge = getDetectionBadge(session.detectionStatus);
+  const statusBadge = getStatusBadge(session.status);
+
+  const accountDisplay = session.account
+    ? session.account.address || session.account.publicKeyHex || 'Connected'
+    : 'No account connected';
+
+  const shortAccount =
+    accountDisplay.length > 20
+      ? `${accountDisplay.slice(0, 8)}...${accountDisplay.slice(-6)}`
+      : accountDisplay;
+
+  return (
+    <div
+      style={{
+        background: '#1e293b',
+        border: '1px solid #334155',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '20px',
+        color: '#f8fafc',
+      }}
+      data-testid="wallet-session-panel"
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '12px',
+          borderBottom: '1px solid #334155',
+          paddingBottom: '10px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '20px' }}>🔐</span>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
+              Wallet Session &amp; Identity Management
+            </h3>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Commit #25 • Production-Oriented Wallet Session &amp; Transaction Readiness
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              background: isPrototype ? '#854d0e' : '#1e3a8a',
+              color: isPrototype ? '#fef08a' : '#93c5fd',
+            }}
+          >
+            {isPrototype ? 'LOCAL PROTOTYPE' : 'MIDNIGHT/LACE ADAPTER'}
+          </span>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              background: detectionBadge.bg,
+              color: detectionBadge.color,
+            }}
+          >
+            {detectionBadge.text}
+          </span>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              background: statusBadge.bg,
+              color: statusBadge.color,
+            }}
+          >
+            {statusBadge.text}
+          </span>
+        </div>
+      </div>
+
+      {/* Provider Switcher Selector */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          type="button"
+          onClick={handleSwitchToPrototype}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: isPrototype ? '2px solid #eab308' : '1px solid #475569',
+            background: isPrototype ? '#422006' : '#0f172a',
+            color: isPrototype ? '#fef08a' : '#cbd5e1',
+            fontWeight: 600,
+            fontSize: '12px',
+            cursor: 'pointer',
+          }}
+          data-testid="session-select-prototype-btn"
+        >
+          LOCAL PROTOTYPE (Simulation)
+        </button>
+        <button
+          type="button"
+          onClick={handleSwitchToMidnightAdapter}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: !isPrototype ? '2px solid #3b82f6' : '1px solid #475569',
+            background: !isPrototype ? '#172554' : '#0f172a',
+            color: !isPrototype ? '#93c5fd' : '#cbd5e1',
+            fontWeight: 600,
+            fontSize: '12px',
+            cursor: 'pointer',
+          }}
+          data-testid="session-select-adapter-btn"
+        >
+          MIDNIGHT/LACE ADAPTER (Extension)
+        </button>
+      </div>
+
+      {/* Session State Metadata Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+          marginBottom: '16px',
+        }}
+      >
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8' }}>CONNECTED PUBLIC IDENTITY</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: isConnected ? '#4ade80' : '#94a3b8',
+              marginTop: '4px',
+              fontFamily: 'monospace',
+            }}
+          >
+            {shortAccount}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8' }}>NETWORK / ENVIRONMENT</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#f8fafc',
+              marginTop: '4px',
+            }}
+          >
+            {session.network.networkName}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8' }}>NETWORK SETTLEMENT STATUS</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            LIVE NETWORK NOT AVAILABLE
+          </div>
+        </div>
+      </div>
+
+      {/* Atomic Capabilities Matrix */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '12px 14px',
+          borderRadius: '6px',
+          marginBottom: '16px',
+        }}
+      >
+        <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
+          ATOMIC PROVIDER CAPABILITIES
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {Object.entries(session.capabilities).map(([cap, supported]) => (
+            <span
+              key={cap}
+              style={{
+                fontSize: '11px',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                background: supported ? '#14532d' : '#7f1d1d',
+                color: supported ? '#bbf7d0' : '#fecaca',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <span>{supported ? '✓' : '✗'}</span>
+              <span>{cap}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Error or Warning Banner */}
+      {(localError || session.error) && (
+        <div
+          style={{
+            background: '#450a0a',
+            border: '1px solid #b91c1c',
+            borderRadius: '6px',
+            padding: '10px 14px',
+            marginBottom: '14px',
+            color: '#fca5a5',
+            fontSize: '12px',
+          }}
+          data-testid="session-error-banner"
+        >
+          <strong>Session Notice: </strong>
+          {localError || session.error?.message}
+        </div>
+      )}
+
+      {/* Action Controls */}
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        {!isConnected ? (
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={isConnecting}
+            style={{
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              padding: '8px 18px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: isConnecting ? 'not-allowed' : 'pointer',
+            }}
+            data-testid="session-connect-btn"
+          >
+            {isConnecting ? 'Connecting...' : 'Connect Session'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            disabled={isConnecting}
+            style={{
+              background: '#475569',
+              color: '#f8fafc',
+              border: 'none',
+              padding: '8px 18px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: isConnecting ? 'not-allowed' : 'pointer',
+            }}
+            data-testid="session-disconnect-btn"
+          >
+            Disconnect Session
+          </button>
+        )}
+
+        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+          {isPrototype
+            ? 'Simulation mode active: Personas switchable locally without extension.'
+            : 'Adapter boundary active: Live signing requires future installed dApp connector SDK.'}
+        </span>
+      </div>
+    </div>
+  );
+};

@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 255 passing tests across 8 test suites
+# 280 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #24)
+### Current Status & Features (Commit #25)
+- **Wallet Session Management & Transaction Readiness (Commit #25)**:
+  - **Reactive Session Domain Model**: Comprehensive models (`frontend/src/types/wallet-session.ts`) defining session lifecycle (`DISCONNECTED`, `CONNECTING`, `CONNECTED`, `UNSUPPORTED`, `REJECTED`, `FAILED`) with sanitized domain error codes.
+  - **Production Wallet Session Service**: Implements `WalletSessionService` (`frontend/src/lib/wallet-session-service.ts`) coordinating browser connector detection, connection lifecycle, and reactive observer subscriptions.
+  - **Decoupled Account Service Integration**: Updates `AccountService` to cleanly synchronize public identity and active provider kind with the underlying session service.
+  - **Comprehensive Pre-Execution Preparation**: Enhanced `prepareLifecycleTransaction` evaluating contract guards, caller authorization, session status, wallet detection, and atomic capabilities.
+  - **Interactive Transaction Review UI**: Mounted `TransactionReviewPanel.tsx` enabling full pre-execution review of Compact circuit parameters, required vs available capabilities, and honest readiness explanations.
+  - **Wallet Session UI**: Mounted `WalletSessionPanel.tsx` in the dashboard with provider toggle, detection status badges, connection controls, public identity view, atomic capability matrix, and transparent prototype notices.
 - **Real Midnight / Lace Wallet Adapter Integration Boundary (Commit #24)**:
   - **Verified Midnight Integration Surface**: Rigorous audit separating verified installed dependencies (`@midnight-ntwrk/compact-runtime` v0.16.0, `@midnight-ntwrk/onchain-runtime-v3` v3.1.1, Compact smart contract, client ZK prover, `LoanDesk`) from required future SDKs (`@midnight-ntwrk/dapp-connector-api`, `@midnight-ntwrk/midnight-js-*`, live Lace extension enclave, and live network RPC).
   - **Production-Ready Wallet Adapter**: Implements `MidnightWalletAdapter` (`frontend/src/lib/midnight-wallet-adapter.ts`) backed by safe browser connector detection (`window.midnight`), honest capability negotiation, and connection lifecycle management (`NOT_DETECTED`, `UNSUPPORTED`, `DISCONNECTED`, `CONNECTING`, `CONNECTED`).
@@ -200,4 +207,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Adapter Boundary** (Commit #24). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection and on-chain transaction signing) is structured behind `MidnightWalletAdapter` but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or mock wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Wallet Session Boundary** (Commit #25). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection and on-chain transaction signing) is structured behind `MidnightWalletAdapter` and managed by `WalletSessionService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.

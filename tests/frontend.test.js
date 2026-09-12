@@ -98,6 +98,18 @@ import {
 } from '../frontend/src/lib/midnight-wallet-adapter.ts';
 import { WalletAdapterError } from '../frontend/src/types/wallet-adapter.ts';
 import {
+  WalletSessionError,
+} from '../frontend/src/types/wallet-session.ts';
+import {
+  WalletSessionService,
+  getWalletSessionService,
+  resetWalletSessionService,
+  getCurrentWalletSession,
+  connectWalletSession,
+  disconnectWalletSession,
+  subscribeToWalletSession,
+} from '../frontend/src/lib/wallet-session-service.ts';
+import {
   prepareLifecycleTransaction,
   executeLifecycleTransaction,
   getTransactionExecutionReadiness,
@@ -136,6 +148,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/transaction.ts',
       'src/types/transaction-orchestration.ts',
       'src/types/wallet-adapter.ts',
+      'src/types/wallet-session.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -153,6 +166,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/midnight-provider.ts',
       'src/lib/transaction-orchestrator.ts',
       'src/lib/midnight-wallet-adapter.ts',
+      'src/lib/wallet-session-service.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -166,6 +180,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/LoanPreview.tsx',
       'src/components/NetworkStatusPanel.tsx',
       'src/components/WalletConnectionPanel.tsx',
+      'src/components/WalletSessionPanel.tsx',
+      'src/components/TransactionReviewPanel.tsx',
       'src/components/ValidationMessage.tsx',
       'src/components/LoanMarketplace.tsx',
       'src/components/LenderEvaluationPanel.tsx',
@@ -3674,6 +3690,362 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 43, `Must audit all frontend source files including wallet adapter modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // =========================================================================
+  // COMMIT #25 TESTS: WALLET SESSION & TRANSACTION READINESS
+  // =========================================================================
+
+  it('Test 201 (Commit #25): WalletSessionService initializes with clean disconnected status and public metadata', () => {
+    const adapter = createMidnightWalletAdapter();
+    const service = new WalletSessionService(adapter);
+    const session = service.getSession();
+
+    assert.equal(session.status, 'DISCONNECTED');
+    assert.equal(session.account, null);
+    assert.equal(session.providerKind, 'LACE');
+    assert.equal(session.error, null);
+    assert.equal(session.capabilities.SIGN_TRANSACTION, false);
+    assert.equal(session.capabilities.SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 202 (Commit #25): Local prototype session connects successfully with public identity', async () => {
+    const service = new WalletSessionService();
+    const result = await service.connect({
+      providerKind: 'LOCAL_PROTOTYPE',
+      role: 'BORROWER',
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.session.status, 'CONNECTED');
+    assert.ok(result.session.account !== null);
+    assert.equal(result.session.account.role, 'BORROWER');
+    assert.deepEqual(result.session.account.publicKey, PROTOTYPE_BORROWER_PK);
+    assert.equal(result.session.providerKind, 'LOCAL_PROTOTYPE');
+  });
+
+  it('Test 203 (Commit #25): Prototype session role switching updates public identity', async () => {
+    const service = new WalletSessionService();
+    await service.connect({ role: 'BORROWER' });
+    const switchResult = await service.connect({ role: 'LENDER' });
+
+    assert.equal(switchResult.success, true);
+    assert.equal(switchResult.session.status, 'CONNECTED');
+    assert.equal(switchResult.session.account.role, 'LENDER');
+    assert.deepEqual(switchResult.session.account.publicKey, PROTOTYPE_LENDER_PK);
+  });
+
+  it('Test 204 (Commit #25): Midnight adapter session reports NOT_DETECTED when window.midnight is absent in browser environment', () => {
+    const adapter = createMidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting(false);
+    const service = new WalletSessionService(adapter);
+
+    assert.equal(service.getDetectionStatus(), 'NOT_DETECTED');
+    assert.equal(service.getSession().detectionStatus, 'NOT_DETECTED');
+  });
+
+  it('Test 205 (Commit #25): Midnight adapter session reports UNSUPPORTED in non-browser Node.js environment', () => {
+    const adapter = createMidnightWalletAdapter();
+    const service = new WalletSessionService(adapter);
+
+    assert.equal(service.getDetectionStatus(), 'UNSUPPORTED');
+    assert.equal(service.getSession().detectionStatus, 'UNSUPPORTED');
+  });
+
+  it('Test 206 (Commit #25): Midnight adapter reflects DETECTED when connector is present', () => {
+    const adapter = createMidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      apiVersion: '1.0.0',
+      name: 'Lace',
+    });
+    const service = new WalletSessionService(adapter);
+
+    assert.equal(service.getDetectionStatus(), 'DETECTED');
+    assert.equal(service.getSession().detectionStatus, 'DETECTED');
+  });
+
+  it('Test 207 (Commit #25): Attempting connect with missing extension throws typed WALLET_NOT_DETECTED error', async () => {
+    const adapter = createMidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting(false);
+    const service = new WalletSessionService(adapter);
+
+    const result = await service.connect();
+    assert.equal(result.success, false);
+    assert.equal(result.session.status, 'UNSUPPORTED');
+    assert.ok(result.error instanceof WalletSessionError);
+    assert.equal(result.error.code, 'WALLET_NOT_DETECTED');
+  });
+
+  it('Test 208 (Commit #25): User connection rejection maps cleanly to USER_REJECTED session error', async () => {
+    const adapter = createMidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      shouldReject: true,
+    });
+    const service = new WalletSessionService(adapter);
+
+    const result = await service.connect();
+    assert.equal(result.success, false);
+    assert.equal(result.session.status, 'REJECTED');
+    assert.ok(result.error instanceof WalletSessionError);
+    assert.equal(result.error.code, 'USER_REJECTED');
+  });
+
+  it('Test 209 (Commit #25): Session disconnect cleanly purges account identity and resets to DISCONNECTED', async () => {
+    const service = new WalletSessionService();
+    await service.connect({ role: 'BORROWER' });
+    assert.equal(service.getSession().status, 'CONNECTED');
+
+    const discoResult = await service.disconnect();
+    assert.equal(discoResult.success, true);
+    assert.equal(discoResult.session.status, 'DISCONNECTED');
+    assert.equal(discoResult.session.account, null);
+    assert.equal(discoResult.session.connectedAt, null);
+  });
+
+  it('Test 210 (Commit #25): Connected session exposes only public identifiers without sensitive credentials', async () => {
+    const service = new WalletSessionService();
+    await service.connect({ role: 'BORROWER' });
+    const acc = service.getAccount();
+
+    assert.ok(acc !== null);
+    assert.equal(typeof acc.address, 'string');
+    assert.equal(typeof acc.publicKeyHex, 'string');
+    assert.deepEqual(acc.publicKey, PROTOTYPE_BORROWER_PK);
+    // Explicit assertion that private fields do not exist on account
+    assert.equal(acc.privateWitness, undefined);
+    assert.equal(acc.secret, undefined);
+    assert.equal(acc.mnemonic, undefined);
+  });
+
+  it('Test 211 (Commit #25): Wallet session subscriptions fire reactively on state transitions', async () => {
+    const service = new WalletSessionService();
+    let transitionCount = 0;
+    const history = [];
+
+    const unsubscribe = service.subscribe((session) => {
+      transitionCount++;
+      history.push(session.status);
+    });
+
+    await service.connect({ role: 'BORROWER' });
+    await service.disconnect();
+    unsubscribe();
+
+    assert.ok(transitionCount >= 2);
+    assert.ok(history.includes('CONNECTED'));
+    assert.ok(history.includes('DISCONNECTED'));
+  });
+
+  it('Test 212 (Commit #25): Session capability matrix accurately reflects active provider capabilities', async () => {
+    const adapter = createMidnightWalletAdapter();
+    const service = new WalletSessionService(adapter);
+
+    const caps = service.getCapabilities();
+    assert.equal(caps.READ_PUBLIC_LEDGER, true);
+    assert.equal(caps.CREATE_PROOF, true);
+    assert.equal(caps.SIGN_TRANSACTION, false);
+    assert.equal(caps.SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 213 (Commit #25): Transaction preparation blocks operations when wallet session is disconnected', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const disconnectedAccount = {
+      connectionStatus: 'DISCONNECTED',
+      role: 'NONE',
+      publicKey: null,
+      publicKeyHex: '',
+    };
+
+    const prep = prepareLifecycleTransaction(loan, disconnectedAccount, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep.status, 'BLOCKED');
+    assert.ok(prep.authorizationReason?.includes('Wallet connection required'));
+  });
+
+  it('Test 214 (Commit #25): Transaction preparation blocks unauthorized callers with canonical contract guards', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderAccount = getMockAccount('LENDER', unverifiedLoan);
+    const borrowerAccount = getMockAccount('BORROWER', verifiedLoan);
+    const thirdPartyAccount = getMockAccount('PARTICIPANT', verifiedLoan);
+
+    // Lender cannot verify eligibility (borrower only)
+    const prepVerify = prepareLifecycleTransaction(unverifiedLoan, lenderAccount, 'VERIFY_ELIGIBILITY');
+    assert.equal(prepVerify.status, 'BLOCKED');
+
+    // Borrower cannot fund loan (lender only)
+    const prepFund = prepareLifecycleTransaction(verifiedLoan, borrowerAccount, 'FUND_LOAN');
+    assert.equal(prepFund.status, 'BLOCKED');
+
+    // Third party cannot repay or settle
+    const prepRepay = prepareLifecycleTransaction(verifiedLoan, thirdPartyAccount, 'REPAY_LOAN');
+    assert.equal(prepRepay.status, 'BLOCKED');
+  });
+
+  it('Test 215 (Commit #25): Transaction preparation marks actions UNSUPPORTED when provider capabilities are missing', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderAccount = getMockAccount('LENDER', verifiedLoan);
+    const protoProvider = new LocalPrototypeWalletProvider();
+
+    const prep = prepareLifecycleTransaction(verifiedLoan, lenderAccount, 'FUND_LOAN', protoProvider);
+    assert.equal(prep.status, 'UNSUPPORTED');
+    assert.ok(prep.missingCapabilities.includes('SIGN_TRANSACTION'));
+    assert.ok(prep.missingCapabilities.includes('SUBMIT_TRANSACTION'));
+  });
+
+  it('Test 216 (Commit #25): Transaction preparation preserves exact 1:1 Midnight Compact circuit mapping', () => {
+    assert.equal(getCircuitNameForAction('VERIFY_ELIGIBILITY'), 'verifyEligibility');
+    assert.equal(getCircuitNameForAction('FUND_LOAN'), 'fundLoan');
+    assert.equal(getCircuitNameForAction('REPAY_LOAN'), 'repayLoan');
+    assert.equal(getCircuitNameForAction('SETTLE_LOAN'), 'settleLoan');
+
+    assert.equal(CIRCUIT_TO_ACTION_MAP['verifyEligibility'], 'VERIFY_ELIGIBILITY');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['fundLoan'], 'FUND_LOAN');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['repayLoan'], 'REPAY_LOAN');
+    assert.equal(CIRCUIT_TO_ACTION_MAP['settleLoan'], 'SETTLE_LOAN');
+  });
+
+  it('Test 217 (Commit #25): Transaction preparation reports READY for authorized local ZK verification', () => {
+    const unverifiedLoan = MOCK_LOANS['loan-001'];
+    const borrowerAccount = getMockAccount('BORROWER', unverifiedLoan);
+
+    const prep = prepareLifecycleTransaction(unverifiedLoan, borrowerAccount, 'VERIFY_ELIGIBILITY');
+    assert.equal(prep.status, 'READY');
+    assert.equal(prep.isAuthorized, true);
+    assert.equal(prep.circuitName, 'verifyEligibility');
+  });
+
+  it('Test 218 (Commit #25): Transaction preparation reports UNSUPPORTED when wallet is not detected on real adapter', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderAccount = getMockAccount('LENDER', verifiedLoan);
+    const adapter = createMidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting(false); // NOT_DETECTED
+
+    const prep = prepareLifecycleTransaction(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(prep.status, 'UNSUPPORTED');
+  });
+
+  it('Test 219 (Commit #25 & Critical Invariant): Unsupported lifecycle transaction execution NEVER mutates LoanRegistry', async () => {
+    const registry = createDefaultLoanRegistry();
+    const originalLoan = registry.getLoan('loan-002');
+    assert.equal(originalLoan.statusText, 'requested');
+    assert.equal(originalLoan.lender, null);
+
+    const lenderAccount = getMockAccount('LENDER', originalLoan);
+    const result = await executeLifecycleTransaction(originalLoan, lenderAccount, 'FUND_LOAN');
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+
+    // Verify registry is untouched
+    const afterLoan = registry.getLoan('loan-002');
+    assert.equal(afterLoan.statusText, 'requested');
+    assert.equal(afterLoan.lender, null);
+    assert.equal(afterLoan.amount, originalLoan.amount);
+  });
+
+  it('Test 220 (Commit #25 & Critical Invariant): Preparation is strictly read-only and idempotent', () => {
+    const loan = MOCK_LOANS['loan-001'];
+    const borrowerAccount = getMockAccount('BORROWER', loan);
+
+    const prep1 = prepareLifecycleTransaction(loan, borrowerAccount, 'VERIFY_ELIGIBILITY');
+    const prep2 = prepareLifecycleTransaction(loan, borrowerAccount, 'VERIFY_ELIGIBILITY');
+
+    assert.deepEqual(prep1, prep2);
+    assert.equal(loan.statusText, 'requested');
+    assert.equal(loan.isEligibilityVerified, false);
+  });
+
+  it('Test 221 (Commit #25 & Anti-Fabrication): Failed or unsupported operations NEVER generate synthetic hashes or confirmations', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const lenderAccount = getMockAccount('LENDER', verifiedLoan);
+
+    const result = await executeLifecycleTransaction(verifiedLoan, lenderAccount, 'FUND_LOAN');
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.equal(result.transactionId, undefined);
+    assert.equal(result.blockHeight, undefined);
+  });
+
+  it('Test 222 (Commit #25): AccountService cleanly reflects active wallet session provider and identity', () => {
+    switchToMidnightAdapter();
+    assert.equal(getActiveProviderKind(), 'LACE');
+
+    switchToPrototypeProvider();
+    assert.equal(getActiveProviderKind(), 'LOCAL_PROTOTYPE');
+  });
+
+  it('Test 223 (Commit #25): TransactionReviewPanel and WalletSessionPanel contain honest prototype and network disclosures', () => {
+    const sessionPanelPath = path.join(srcDir, 'components', 'WalletSessionPanel.tsx');
+    const reviewPanelPath = path.join(srcDir, 'components', 'TransactionReviewPanel.tsx');
+    const sessionContent = fs.readFileSync(sessionPanelPath, 'utf8');
+    const reviewContent = fs.readFileSync(reviewPanelPath, 'utf8');
+
+    assert.ok(sessionContent.includes('LOCAL PROTOTYPE'));
+    assert.ok(sessionContent.includes('MIDNIGHT/LACE ADAPTER'));
+    assert.ok(sessionContent.includes('LIVE NETWORK NOT AVAILABLE'));
+
+    assert.ok(reviewContent.includes('Transaction Review'));
+    assert.ok(reviewContent.includes('Live transaction signing/submission is unavailable'));
+  });
+
+  it('Test 224 (Commit #25): types/index.ts re-exports all wallet session domain models and errors', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('WalletSessionError'));
+    assert.ok(content.includes('WalletSessionStatus'));
+    assert.ok(content.includes('WalletSessionErrorCode'));
+    assert.ok(content.includes('WalletSession'));
+    assert.ok(content.includes('WalletSessionRequest'));
+    assert.ok(content.includes('WalletSessionResult'));
+  });
+
+  it('Test 225 (Commit #25 & Strict Privacy Audit): All frontend files (>= 46 files) contain zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 46, `Must audit all frontend source files including wallet session and review modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

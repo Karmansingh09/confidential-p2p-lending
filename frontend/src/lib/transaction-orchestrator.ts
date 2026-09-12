@@ -131,8 +131,11 @@ export function prepareLifecycleTransaction(
 
   const loanId = (loan as any).id ?? 'active-loan';
 
-  // 2. Guard against disconnected or missing account
-  if (!callerPk) {
+  // 2. Guard against missing or disconnected account
+  if (
+    !callerPk ||
+    (account && 'connectionStatus' in account && account.connectionStatus === 'DISCONNECTED')
+  ) {
     return {
       loanId,
       action,
@@ -142,6 +145,49 @@ export function prepareLifecycleTransaction(
       callerPublicKeyHex: null,
       isAuthorized: false,
       authorizationReason: 'No active account connected. Wallet connection required.',
+      requiredCapabilities,
+      missingCapabilities,
+      isExecutionSupported,
+      estimatedFee: null,
+    };
+  }
+
+  // 3. Evaluate wallet detection status on real adapter
+  const isWalletNotDetected =
+    !activeProvider.isPrototype &&
+    activeProvider.getDetectionStatus &&
+    (activeProvider.getDetectionStatus() === 'NOT_DETECTED' ||
+      activeProvider.getDetectionStatus() === 'UNSUPPORTED');
+
+  if (isWalletNotDetected) {
+    return {
+      loanId,
+      action,
+      circuitName,
+      status: 'UNSUPPORTED',
+      callerPublicKey: callerPk,
+      callerPublicKeyHex: callerPkHex,
+      isAuthorized: false,
+      authorizationReason:
+        'Wallet connector is not detected or unsupported in this environment.',
+      requiredCapabilities,
+      missingCapabilities,
+      isExecutionSupported: false,
+      estimatedFee: null,
+    };
+  }
+
+  // 4. Guard against disconnected provider on real adapter
+  if (!activeProvider.isPrototype && activeProvider.getConnectionStatus() === 'DISCONNECTED') {
+    return {
+      loanId,
+      action,
+      circuitName,
+      status: 'BLOCKED',
+      callerPublicKey: callerPk,
+      callerPublicKeyHex: callerPkHex,
+      isAuthorized: false,
+      authorizationReason: 'Wallet session is disconnected. Connect wallet to prepare transaction.',
       requiredCapabilities,
       missingCapabilities,
       isExecutionSupported,
@@ -197,12 +243,15 @@ export function prepareLifecycleTransaction(
     }
   }
 
-  // 4. Derive overall preparation status
+  // 5. Derive overall preparation status
   let status: TransactionPreparationStatus;
   if (!isAuthorized) {
     status = 'BLOCKED';
   } else if (!isExecutionSupported) {
     status = 'UNSUPPORTED';
+    if (!authorizationReason) {
+      authorizationReason = `Missing required provider capabilities: ${missingCapabilities.join(', ')}`;
+    }
   } else {
     status = 'READY';
   }

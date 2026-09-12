@@ -15,6 +15,13 @@ import { AccountSwitcher } from '../components/AccountSwitcher.js';
 import { AccountStatusPanel } from '../components/AccountStatusPanel.js';
 import { NetworkStatusPanel } from '../components/NetworkStatusPanel.js';
 import { WalletConnectionPanel } from '../components/WalletConnectionPanel.js';
+import { WalletSessionPanel } from '../components/WalletSessionPanel.js';
+import { TransactionReviewPanel } from '../components/TransactionReviewPanel.js';
+import type {
+  LifecycleTransactionAction,
+  TransactionOrchestrationResult,
+} from '../types/transaction-orchestration.ts';
+import { executeLifecycleTransaction } from '../lib/transaction-orchestrator.ts';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -61,6 +68,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
   const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
+  const [reviewAction, setReviewAction] = useState<LifecycleTransactionAction | null>(null);
+  const [reviewResult, setReviewResult] = useState<TransactionOrchestrationResult | null>(null);
+  const [isExecutingReview, setIsExecutingReview] = useState<boolean>(false);
   const [, setProviderTick] = useState<number>(0);
 
   const handleProviderSwitched = () => setProviderTick((t) => t + 1);
@@ -116,6 +126,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setIsVerifyingEligibility(false);
     setIsRepayingLoan(false);
     setIsSettlingLoan(false);
+    setReviewAction(null);
+    setReviewResult(null);
   }, [effectiveSelectedLoanId]);
 
   // Single Source of Truth: consume authoritative loansMap directly
@@ -162,6 +174,38 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
+  const handleExecuteReviewedAction = async () => {
+    if (!reviewAction || !currentLoan) return;
+    if (reviewAction === 'VERIFY_ELIGIBILITY') {
+      setIsVerifyingEligibility(true);
+      setReviewAction(null);
+      setReviewResult(null);
+      return;
+    }
+
+    setIsExecutingReview(true);
+    setReviewResult(null);
+    try {
+      const result = await executeLifecycleTransaction(
+        currentLoan,
+        effectiveAccountContext,
+        reviewAction
+      );
+      setReviewResult(result);
+    } catch (err: unknown) {
+      setReviewResult({
+        success: false,
+        status: 'FAILED',
+        action: reviewAction,
+        loanId: effectiveLoanId,
+        circuitName: 'unknown',
+        message: err instanceof Error ? err.message : 'Transaction execution failed.',
+      });
+    } finally {
+      setIsExecutingReview(false);
+    }
+  };
+
   return (
     <div className="dashboard-container">
       <StateBanner />
@@ -190,6 +234,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           )}
         </div>
+
+        {/* Wallet Session & Identity Management (Commit #25) */}
+        <section className="wallet-session-section">
+          <WalletSessionPanel onProviderSwitched={handleProviderSwitched} />
+        </section>
 
         {/* Wallet Connection & Integration Panel (Commit #24) */}
         <section className="wallet-connection-section">
@@ -394,6 +443,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </div>
                 )}
 
+                {/* Pre-Execution Transaction Review Panel (Commit #25) */}
+                {reviewAction && (
+                  <TransactionReviewPanel
+                    loan={currentLoan}
+                    loanId={effectiveLoanId}
+                    action={reviewAction}
+                    accountContext={effectiveAccountContext}
+                    onClose={() => {
+                      setReviewAction(null);
+                      setReviewResult(null);
+                    }}
+                    onExecute={handleExecuteReviewedAction}
+                    isExecuting={isExecutingReview}
+                    executionResult={reviewResult}
+                  />
+                )}
+
                 <LoanActionPanel
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
@@ -404,6 +470,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   onStartSettlement={() => setIsSettlingLoan(true)}
                   accountContext={effectiveAccountContext}
                   onConnectAccount={handleConnect}
+                  onReviewAction={(act) => {
+                    setReviewResult(null);
+                    setReviewAction(act);
+                  }}
                 />
               </div>
 
@@ -454,7 +524,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #24 Real Midnight / Lace Adapter Boundary
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #25 Wallet Session &amp; Transaction Readiness
         </p>
       </footer>
     </div>

@@ -4,6 +4,7 @@ import type { AccountContext, AccountRole } from '../types/account.js';
 import { LoanStatus } from '../types/index.js';
 import { getLifecycleActionDescriptor } from '../lib/marketplace.js';
 import { getAccountAuthorization } from '../lib/account-authorization.js';
+import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 
 interface LoanActionPanelProps {
   loan: LoanDetailsModel;
@@ -16,6 +17,7 @@ interface LoanActionPanelProps {
   onStartFunding?: () => void;
   accountContext?: AccountContext;
   onConnectAccount?: (role?: AccountRole) => void;
+  onReviewAction?: (action: LifecycleTransactionAction) => void;
 }
 
 export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
@@ -29,6 +31,7 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
   onStartFunding,
   accountContext,
   onConnectAccount,
+  onReviewAction,
 }) => {
   // If account context is provided, derive account-aware action
   const isConnected =
@@ -239,7 +242,7 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
           </div>
         </div>
 
-        <div className="action-button-wrapper">
+        <div className="action-button-wrapper" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className={`action-btn ${canExecute ? 'primary-action' : 'concluded-action'}`}
@@ -248,6 +251,27 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
           >
             {buttonLabel}
           </button>
+          {actionKind !== 'none' && actionKind !== 'connect' && onReviewAction && (
+            <button
+              type="button"
+              className="action-btn"
+              style={{ background: '#334155', color: '#60a5fa', border: '1px solid #475569' }}
+              onClick={() => {
+                const actionMap: Record<string, LifecycleTransactionAction> = {
+                  verify: 'VERIFY_ELIGIBILITY',
+                  fund: 'FUND_LOAN',
+                  repay: 'REPAY_LOAN',
+                  settle: 'SETTLE_LOAN',
+                };
+                if (actionMap[actionKind]) {
+                  onReviewAction(actionMap[actionKind]);
+                }
+              }}
+              data-testid="review-readiness-btn"
+            >
+              🔍 Review Readiness
+            </button>
+          )}
         </div>
       </div>
 

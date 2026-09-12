@@ -1585,6 +1585,86 @@ The `WalletConnectionPanel` component is mounted directly on the dashboard above
 - **Atomic Capabilities Matrix**: Real-time inspection of active provider capabilities.
 - **Honest Disclosures**: Clear callouts explaining that live transaction submission requires future Midnight SDK and Lace extension integration.
 
+---
+
+## 25. Wallet Session Management & Transaction Readiness Boundary
+
+### 25.1 Architecture & Session Lifecycle
+The `WalletSessionService` (`frontend/src/lib/wallet-session-service.ts`) and domain types (`frontend/src/types/wallet-session.ts`) introduce a dedicated, reactive session management layer.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                         WALLET SESSION SERVICE                            |
+|                  (frontend/src/lib/wallet-session-service.ts)             |
+|                                                                           |
+|  1. Session Lifecycle State Machine:                                      |
+|     ├── DISCONNECTED  ──(connect())──► CONNECTING                         |
+|     ├── CONNECTING    ──(approved)──►  CONNECTED (with public PK/address) |
+|     ├── CONNECTING    ──(denied)──►    REJECTED (USER_REJECTED error)     |
+|     ├── CONNECTING    ──(missing)──►   UNSUPPORTED (WALLET_NOT_DETECTED)  |
+|     └── CONNECTED     ──(disconnect)─► DISCONNECTED                       |
+|                                                                           |
+|  2. Reactive Observer Subscription:                                       |
+|     └── subscribe(listener: (session: WalletSession) => void): () => void |
+|                                                                           |
+|  3. Dual-Provider Coordination:                                           |
+|     ├── switchToPrototypeProvider() ──► Offline simulation session        |
+|     └── switchToMidnightAdapter()   ──► Browser connector session         |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 25.2 Integration With AccountService
+The `accountService` (`frontend/src/lib/account-service.ts`) delegates directly to the wallet session singleton:
+- **Zero Identity Duplication**: Public account addresses, public key bytes, and connection status are derived directly from the underlying provider session.
+- **Explicit Simulation Marking**: Prototype identities are clearly tagged with `isPrototype: true`, while genuine adapter identities carry `isPrototype: false`.
+- **Honest Disconnection Handling**: When disconnected, account identity resolves to null with role `NONE` and connection status `DISCONNECTED`.
+
+### 25.3 Comprehensive Pre-Execution Transaction Preparation
+The `prepareLifecycleTransaction` pipeline (`frontend/src/lib/transaction-orchestrator.ts`) evaluates all preconditions before transaction dispatch:
+
+1. **Agreement Validation**: Missing or corrupted agreement records return `status: 'INVALID'`.
+2. **Session / Account Connection Guard**: Disconnected sessions or missing caller accounts return `status: 'BLOCKED'`.
+3. **Wallet Detection Check**: Real adapters where browser connectors are missing (`NOT_DETECTED` or `UNSUPPORTED`) return `status: 'UNSUPPORTED'`.
+4. **Contract Circuit & Authorization Guards**: Canonical Compact contract assertions (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`) evaluate caller rights. Unauthorized callers return `status: 'BLOCKED'`.
+5. **Atomic Capabilities Check**: Verifies active provider capabilities against action requirements:
+   - `VERIFY_ELIGIBILITY`: requires `CREATE_PROOF` (Available locally via client ZK prover ──► `READY`).
+   - `FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`: require `SIGN_TRANSACTION` and `SUBMIT_TRANSACTION` (Missing in prototype mode ──► `UNSUPPORTED`).
+
+### 25.4 Canonical Circuit Mapping (1:1 Invariant)
+Every lifecycle action maps deterministically 1:1 to its corresponding Midnight Compact circuit:
+- `VERIFY_ELIGIBILITY` ↔ `verifyEligibility`
+- `FUND_LOAN` ↔ `fundLoan`
+- `REPAY_LOAN` ↔ `repayLoan`
+- `SETTLE_LOAN` ↔ `settleLoan`
+
+### 25.5 Pre-Execution Transaction Review UI
+The `TransactionReviewPanel` (`frontend/src/components/TransactionReviewPanel.tsx`) renders the preparation evaluation to the user:
+- Displays agreement ID, lifecycle action, mapped Compact circuit, caller role, and sanitized public identity.
+- Renders atomic capability comparison (required vs available).
+- Exposes real-time readiness status badges: `READY`, `BLOCKED`, `UNSUPPORTED`, `INVALID`.
+- For local ZK verification: clearly explains that proof generation occurs locally off-chain without disclosing secret underwriting parameters.
+- For unsupported on-chain actions: explicitly states "Live transaction signing/submission is unavailable in the current environment."
+- Prevents execution dispatch if preparation status is not `READY`.
+
+### 25.6 Interactive Wallet Session UI
+The `WalletSessionPanel` (`frontend/src/components/WalletSessionPanel.tsx`) displays:
+- Provider switcher toggle (`LOCAL PROTOTYPE` vs `MIDNIGHT/LACE ADAPTER`).
+- Real-time detection badge (`CONNECTOR DETECTED`, `WALLET NOT DETECTED`, `CONNECTOR UNSUPPORTED`).
+- Session status indicator (`DISCONNECTED`, `CONNECTING`, `CONNECTED`, `UNSUPPORTED`, `REJECTED`, `FAILED`).
+- Connected public account identity.
+- Network status badge (`LIVE NETWORK NOT AVAILABLE`).
+- Atomic capabilities matrix.
+- Interactive connection and role management controls.
+
+### 25.7 Anti-Fabrication & Strict Privacy Invariants
+1. **Zero Fake Blockchain Primitives**:
+   - No mock transaction hashes (`0x...`), synthetic block heights, or fabricated confirmations are generated.
+2. **LoanRegistry State Preservation**:
+   - Unsupported or failed transaction attempts **never mutate the central `LoanRegistry`**. Unconfirmed actions leave status and lender assignments untouched.
+3. **Zero-Knowledge Privacy Isolation**:
+   - Comprehensive static analysis across all 46+ frontend source files verifies that zero private financial terms exist in frontend state, DOM, or storage.
+
+
 
 
 

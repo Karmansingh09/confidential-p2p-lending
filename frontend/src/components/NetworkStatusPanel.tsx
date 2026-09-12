@@ -62,7 +62,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
               Network & Wallet Infrastructure
             </h3>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Commit #22 & #23 • Transaction Orchestration & Provider Boundary
+              Commit #24 &amp; #25 • Wallet Session &amp; Transaction Readiness Boundary
             </span>
           </div>
         </div>

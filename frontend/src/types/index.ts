@@ -146,3 +146,13 @@ export {
   type WalletAdapterErrorCode,
 } from './wallet-adapter.ts';
 
+export {
+  WalletSessionError,
+  type WalletSessionStatus,
+  type WalletSessionErrorCode,
+  type WalletSession,
+  type WalletSessionRequest,
+  type WalletSessionResult,
+} from './wallet-session.ts';
+
+

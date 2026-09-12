@@ -444,6 +444,136 @@ assert(caller == borrower || (lender.is_some && caller == lender.value), "Caller
 - The settlement transaction marks the verified terminal state transition on the smart contract.
 - Similar to earlier phases, physical coin unlock and escrow release require active Midnight Network token infrastructure (`zswap` / Native Tokens), which is reported honestly as unexecuted (`isAssetTransferExecuted: false`).
 
+---
+
+## 12. Typed Client Lifecycle API
+
+The Typed Client Lifecycle API (`contracts/client/loan-api.ts`) provides an ergonomic, strongly typed developer layer designed to bridge the low-level Compact runtime circuits with upcoming React frontend components and Midnight.js wallet infrastructure.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                        UPCOMING REACT UI / MIDNIGHT.JS                    |
+|                (State Management, Wallet Connectors, UX Views)            |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++───────────────────────────────────────────────────────────────────────────+
+|                       TYPED CLIENT LIFECYCLE API                          |
+|                       (contracts/client/loan-api.ts)                      |
+|                                                                           |
+|  - LoanDesk Facade & Canonical Methods (createLoan, fundLoan, etc.)       |
+|  - Typed Models: LoanDetailsModel, LoanStatusText, Hex Address Formats    |
+|  - Error Model: LoanErrorCode & LoanApiError with Forensics               |
+|  - Defensive UX Guards: canVerifyEligibility, canFundLoan, etc.           |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++───────────────────────────────────────────────────────────────────────────+
+|                   LOW-LEVEL CLIENT / RUNTIME EXECUTOR                     |
+|                 (contracts/client/eligibility-client.ts)                  |
+|                                                                           |
+|  - Private Witness Injection (createEligibilityWitnessProvider)          |
+|  - Circuit Context Assembly (createCircuitContext, dummyContractAddress)  |
+|  - Compact Runtime ChargedState & Ledger Query Management                 |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++───────────────────────────────────────────────────────────────────────────+
+|                     AUTHORITATIVE COMPACT CIRCUITS                        |
+|                      (contracts/src/index.compact)                        |
+|                                                                           |
+|  - Zero-Knowledge Prover & Verifier Primitives (BLS12-381 Scalar Field)   |
+|  - On-Chain Invariant Assertions & State Mutations                        |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 12.1 Why the Abstraction Exists
+1. **Separation of Concerns**: UI components and DApp frontends should not need to manipulate raw `Uint8Array` public key buffers, unpack low-level Compact `ChargedState` objects, or understand internal runtime circuit context creation.
+2. **Ergonomic Safety**: BigInts, byte conversions, basis points, and status mappings are standardized into high-level TypeScript interfaces (`LoanDetailsModel`).
+3. **Defensive UX Feedback**: Frontend buttons and tooltips can evaluate `LifecycleGuardResult` to offer immediate user feedback before triggering proof generation or signing transactions.
+
+### 12.2 Contract Layer vs. Client Layer Boundaries
+| Dimension | Compact Contract Layer (`contracts/src/index.compact`) | Client API Layer (`contracts/client/loan-api.ts`) |
+| :--- | :--- | :--- |
+| **Role** | Authoritative cryptographic security boundary & state transition engine | Ergonomic application gateway & UI consumer interface |
+| **Security Authority** | Absolute. Cryptographically asserts all invariants on-chain | Non-authoritative UX helper. Pre-validates to improve user experience |
+| **Witness Access** | Receives witness input inside ZK circuit prover; values never leave prover | Injects witness via provider; never surfaces secrets in return models |
+| **Error Handling** | Compact assertions halt circuit execution with descriptive error strings | Traps runtime assertions and maps them to typed `LoanApiError` instances |
+
+### 12.3 Public Loan Model (`LoanDetailsModel`)
+The client API projects on-chain ledger state into `LoanDetailsModel`:
+
+```typescript
+export interface LoanDetailsModel {
+  borrower: string;                     // Hex-encoded ("0x...")
+  borrowerBytes: Uint8Array;            // Raw 32-byte public key
+  lender: string | null;                // Hex-encoded ("0x...") or null
+  lenderBytes: Uint8Array | null;       // Raw 32-byte public key or null
+  amount: bigint;                       // Principal in micro-units
+  interestRateBasisPoints: bigint;      // 100 bps = 1.00%
+  durationBlocks: bigint;               // Duration in ledger blocks
+  status: LoanStatus;                   // Compact enum (0..3)
+  statusText: LoanStatusText;           // 'requested' | 'funded' | 'repaid' | 'settled'
+  eligibilityThreshold: bigint;         // Required qualification threshold
+  isEligibilityVerified: boolean;       // ZK verification attestation
+}
+```
+
+#### Zero-Leakage Guarantee
+- `LoanDetailsModel` **strictly omits** any borrower private financial values, account balances, or secret keys.
+- Even when `verifyLoanEligibility()` executes the confidential ZK proof, the returned result structure contains only `{ success, isVerified, contractState, loanDetails, proofData }`. The borrower's private witness input remains strictly encapsulated in the local off-chain prover context.
+
+### 12.4 Lifecycle Methods & Unified `LoanDesk` Facade
+The client provides canonical lifecycle methods alongside the unified `LoanDesk` facade:
+
+- **`createLoan(params)`**: Validates loan terms and deploys an initial loan request.
+- **`verifyLoanEligibility(params)`**: Executes the private ZK proof against the borrower's local witness.
+- **`fundLoan(params)`**: Records lender commitment and transitions the loan to `funded`.
+- **`repayLoan(params)`**: Calculates and validates repayment amount, transitioning the loan to `repaid`.
+- **`settleLoan(params)`**: Terminal closure callable by borrower or lender, transitioning to `settled`.
+- **`getLoanStatus(contractState)`**: Reads the current `LoanStatus` enum from state.
+- **`getLoanDetails(contractState)`**: Reads and maps full `LoanDetailsModel` from state.
+- **`calculateRepaymentObligation(principal, rateBps)`**: Computes principal + simple interest.
+
+### 12.5 Structured Error Model (`LoanErrorCode` & `LoanApiError`)
+All canonical methods map runtime errors into typed `LoanApiError` instances containing structured enum codes:
+
+```typescript
+export enum LoanErrorCode {
+  INVALID_PARAMETERS = 'INVALID_PARAMETERS',
+  ELIGIBILITY_VERIFICATION_FAILED = 'ELIGIBILITY_VERIFICATION_FAILED',
+  UNAUTHORIZED_CALLER = 'UNAUTHORIZED_CALLER',
+  INVALID_STATE = 'INVALID_STATE',
+  ALREADY_FUNDED = 'ALREADY_FUNDED',
+  ALREADY_VERIFIED = 'ALREADY_VERIFIED',
+  REPAYMENT_AMOUNT_INVALID = 'REPAYMENT_AMOUNT_INVALID',
+  SETTLEMENT_UNAUTHORIZED = 'SETTLEMENT_UNAUTHORIZED',
+  EXECUTION_FAILED = 'EXECUTION_FAILED',
+}
+```
+
+The error mapper preserves the original underlying exception (`originalError`) for forensic debugging while providing clean, actionable codes for UI error boundaries and alert banners.
+
+### 12.6 Client-Side Lifecycle UX Helpers
+To avoid unnecessary user friction, the client provides defensive guard functions:
+- `canVerifyEligibility(loan, callerPk)`
+- `canFundLoan(loan, callerPk)`
+- `canRepayLoan(loan, callerPk)`
+- `canSettleLoan(loan, callerPk)`
+
+Each helper returns a `LifecycleGuardResult` (`{ canExecute: boolean, reason?: string }`), enabling frontend buttons to be disabled with explanatory tooltips (e.g. *"Loan eligibility has not been verified"* or *"Borrower cannot fund their own loan"*).
+
+### 12.7 Local Execution & Asset Movement Transparency
+- All operations currently execute within the local Compact runtime environment.
+- Any property representing live token movement (`isAssetTransferExecuted`) evaluates to `false`, guaranteeing transparent and honest reporting until Midnight Network native token infrastructure (`zswap` / Native Tokens) is integrated.
+
+### 12.8 Future Midnight.js & React UI Integration
+This client API is structured as an immediate drop-in dependency for the upcoming React frontend:
+1. **Wallet Hooks**: React hooks can invoke `LoanDesk.createLoan(...)` and pass wallet public keys obtained from Lace Wallet.
+2. **Prover Sidecar Integration**: The witness provider passed to `verifyLoanEligibility` can seamlessly delegate to a local Midnight proof server sidecar or in-browser WASM prover.
+3. **State Observability**: Polling or subscription to on-chain ledger events can pipe contract states directly into `LoanDesk.getLoanDetails(state)` to trigger UI reactivity.
+
+
 
 
 

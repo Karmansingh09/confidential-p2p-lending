@@ -52,8 +52,75 @@ The initial Compact contract (`contracts/src/index.compact`) establishes the fou
   - `interestRateBasisPoints`: Interest rate in basis points (`Uint<16>`).
   - `durationBlocks`: Term duration in blocks (`Uint<32>`).
   - `status`: Current lifecycle state (`LoanStatus`).
-- **Inspection Circuits**:
+- **Inspection & Transition Circuits**:
+  - `verifyEligibility()`: Proves borrower income satisfies threshold in zero-knowledge without revealing secret financial values.
+  - `fundLoan()`: Records lender commitment and marks loan funded.
+  - `repayLoan()`: Validates exact principal + interest obligation via Euclidean field division proof.
+  - `settleLoan()`: Terminal settlement callable by borrower or lender.
   - `getLoanStatus()`: Inspect current loan status.
   - `getLoanDetails()`: Retrieve structured `LoanDetails` record.
+
+## Client Lifecycle API (`LoanDesk`)
+
+The `@midnight-p2p/contracts` package exposes a strongly typed client API and unified facade for application frontends:
+
+```typescript
+import {
+  LoanDesk,
+  createLoan,
+  verifyLoanEligibility,
+  fundLoan,
+  repayLoan,
+  settleLoan,
+  LoanApiError,
+  LoanErrorCode,
+} from '@midnight-p2p/contracts';
+
+// 1. Borrower creates a loan request
+const loan = createLoan({
+  borrowerPk: borrowerPublicKey,
+  principalAmount: 25000n,
+  interestRateBasisPoints: 500n, // 5.00%
+  durationBlocks: 100n,
+  eligibilityThreshold: 30000n,
+});
+
+// 2. Borrower proves eligibility in Zero-Knowledge (private value stays local)
+const verified = verifyLoanEligibility({
+  contractState: loan.contractState,
+  borrowerPk: borrowerPublicKey,
+  privateFinancialValue: 42000n, // Secret off-chain witness
+});
+
+// 3. Lender funds the verified request
+const funded = fundLoan({
+  contractState: verified.contractState,
+  lenderPk: lenderPublicKey,
+  callerPk: lenderPublicKey,
+});
+
+// 4. Borrower repays principal + interest (25000 + 1250 = 26250)
+const repaid = repayLoan({
+  contractState: funded.contractState,
+  borrowerPk: borrowerPublicKey,
+  callerPk: borrowerPublicKey,
+});
+
+// 5. Either party settles the loan into its terminal state
+const settled = settleLoan({
+  contractState: repaid.contractState,
+  callerPk: lenderPublicKey,
+});
+
+// Inspect safe public loan details (ZERO private data exposed)
+console.log(settled.loanDetails.statusText); // 'settled'
+```
+
+### Running Tests
+Run the automated test suite covering all 5 lifecycle transitions and client API:
+```bash
+npm test
+```
+
 
 

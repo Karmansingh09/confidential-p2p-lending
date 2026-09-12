@@ -1193,5 +1193,89 @@ The application transparently communicates that no real wallet connection or net
 - Badges explicitly declare `"Simulation Only • Offline Mode"` and `"Local Prototype"`.
 - Warning banners state: `"No Real Wallet Connected: Operating in local prototype account mode. Public account identities are simulated deterministically."`
 
+---
+
+## 21. Persistent Local Loan Registry & Application State (Commit #21)
+
+Commit #21 establishes an authoritative centralized loan registry layer (`LoanRegistry`, `application-store`) that serves as the single source of truth for all public loan agreements across the application. This architectural milestone eliminates fragmented and duplicated component-level states, guarantees immutable loan terms, enforces canonical protocol lifecycle transitions, integrates clean prototype persistence, and coordinates with account authorization.
+
+### 21.1 Architecture & Single Source of Truth
+
+Prior to Commit #21, agreement state was split between `App.tsx` and internal component state in `DashboardPage.tsx`, creating synchronization risks and allowing potential term mutations. Commit #21 introduces `LoanRegistry`, an immutable-update registry class:
+
+```
+App.tsx (Root Owner of registry: LoanRegistry)
+  │
+  ├── DashboardPage.tsx (Consumes loansMap, selectedLoan, onSelect, onAction)
+  │     ├── LoanMarketplace.tsx (Filtered loans, counts from registry.getFilterCounts())
+  │     ├── LoanSummaryCard.tsx (Public loan details)
+  │     ├── AccountStatusPanel.tsx (Account authorization derived against registry loan)
+  │     ├── LoanActionPanel.tsx (Action triggers bound to registry lifecycle methods)
+  │     └── Workflow Panels (EligibilityVerificationPanel, LenderEvaluationPanel, RepaymentPanel, SettlementPanel)
+  │
+  └── CreateLoanPage.tsx (Inserts new agreement via registry.addLoan())
+```
+
+- **Deterministic Ordering**: Agreements preserve deterministic insertion order via `orderedIds` and `getAllLoans()`.
+- **Unique Identifier Enforcement**: Adding duplicate loan IDs throws `LoanRegistryError('DUPLICATE_LOAN_ID')`.
+- **Immutable Updates**: State modifications return a new `LoanRegistry` instance via functional immutable cloning, preventing accidental in-place mutations.
+
+### 21.2 Immutability Guarantees & Term Preservation
+
+In micro-lending protocols, financial agreement terms must remain strictly immutable once created. `LoanRegistry` enforces this via `assertImmutableTermsPreserved(existing, updated)` on every update:
+- `amount` (Principal) cannot be modified.
+- `interestRateBasisPoints` (Interest rate) cannot be modified.
+- `durationBlocks` (Loan term) cannot be modified.
+- `eligibilityThreshold` (ZK underwriting threshold) cannot be modified.
+- `borrower` and `borrowerBytes` cannot be modified.
+- If any of these fields diverge, `LoanRegistryError('IMMUTABLE_TERM_MUTATION')` is thrown immediately.
+
+### 21.3 Canonical State Machine Enforcement
+
+All state transitions are validated by `validateLifecycleTransition(fromStatus, toStatus, isVerified)` against the protocol state machine:
+
+$$\text{REQUESTED (unverified)} \longrightarrow \text{REQUESTED (verified)} \longrightarrow \text{FUNDED} \longrightarrow \text{REPAID} \longrightarrow \mathbf{SETTLED}$$
+
+| Current State | Target State | Permitted? | Condition / Method |
+| :--- | :--- | :--- | :--- |
+| `REQUESTED` (unverified) | `REQUESTED` (verified) | **Yes** | `registry.verifyLoanEligibility()` (caller must match borrower) |
+| `REQUESTED` (verified) | `FUNDED` | **Yes** | `registry.fundLoan()` (caller must be lender, recorded in agreement) |
+| `FUNDED` | `REPAID` | **Yes** | `registry.repayLoan()` (caller must match borrower) |
+| `REPAID` | `SETTLED` | **Yes** | `registry.settleLoan()` (caller must match borrower or lender) |
+| `SETTLED` | *Any* | **No** | Terminal state; throws `ALREADY_SETTLED` |
+| `REQUESTED` | `REPAID` | **No** | Skipped funding; throws `INVALID_TRANSITION` |
+| `REQUESTED` | `SETTLED` | **No** | Skipped funding & repayment; throws `INVALID_TRANSITION` |
+| `FUNDED` | `VERIFIED` | **No** | Backward transition; throws `INVALID_TRANSITION` |
+| `REPAID` | `FUNDED` | **No** | Backward transition; throws `INVALID_TRANSITION` |
+
+### 21.4 Clean Persistence Adapter Boundary
+
+The registry abstracts persistence through the `LoanRegistryPersistence` interface:
+```typescript
+export interface LoanRegistryPersistence {
+  load(): Record<string, LoanDetailsModel> | null;
+  save(loans: Record<string, LoanDetailsModel>): void;
+  clear(): void;
+}
+```
+
+Two concrete implementations are provided in `application-store.ts`:
+1. **`InMemoryLoanRegistryPersistence`**: Default adapter for automated testing, server environments, and non-persistent sessions.
+2. **`LocalStorageLoanRegistryPersistence`**: Browser-compatible adapter enabling prototype state to persist across browser reloads. It handles `BigInt` and `Uint8Array` serialization transparently and safely falls back to in-memory storage if storage is unavailable.
+
+### 21.5 Strict Privacy Guarantees
+
+The registry and persistence layers operate exclusively on public ledger data:
+- `LoanDetailsModel` records contain only public metadata (`borrower`, `lender`, `amount`, `interestRateBasisPoints`, `durationBlocks`, `status`, `eligibilityThreshold`, `isEligibilityVerified`).
+- No ephemeral witnesses, private financial inputs, bank statements, seed phrases, or private keys are ever accepted, stored, or serialized.
+- Storage writes persist only sanitized public agreement records.
+- Verified by automated privacy audits spanning all 34+ frontend source files.
+
+### 21.6 Honest Prototype Disclosures
+
+The application clearly discloses the nature of local storage and simulated state:
+- The footer and UI badges explicitly declare: `"Commit #21 Prototype • In-Memory / Local Storage State Engine • Zero simulated blockchain transactions"`.
+- All operations are acknowledged as local prototype state transitions without live Midnight Network consensus or token movements.
+
 
 

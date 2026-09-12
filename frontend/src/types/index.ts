@@ -94,4 +94,13 @@ export type {
   AccountAuthorization,
 } from './account.js';
 
+export {
+  LoanRegistryError,
+  type LoanRegistryErrorCode,
+  type LoanRegistryState,
+  type LoanRegistryPersistence,
+  type LoanRegistryFilterCounts,
+} from './application-state.js';
+
+
 

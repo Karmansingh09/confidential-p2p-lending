@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { CreateLoanPage } from './pages/CreateLoanPage.js';
-import { MOCK_LOANS } from './lib/mock-data.js';
 import {
   connectMockAccount,
   disconnectMockAccount,
   switchMockRole,
 } from './lib/account-service.js';
+import { createDefaultLoanRegistry } from './lib/application-store.js';
+import type { LoanRegistry } from './lib/loan-registry.js';
 import type { LoanDetailsModel } from './types/index.js';
 import type { AccountContext, AccountRole } from './types/account.js';
 import './App.css';
@@ -15,7 +16,11 @@ export type AppView = 'dashboard' | 'create-loan';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
-  const [loans, setLoans] = useState<Record<string, LoanDetailsModel>>(MOCK_LOANS);
+
+  // Centralized Authoritative Loan Registry (Commit #21)
+  const [registry, setRegistry] = useState<LoanRegistry>(() =>
+    createDefaultLoanRegistry()
+  );
 
   // Global Account State Abstraction (Commit #20)
   const [selectedRole, setSelectedRole] = useState<AccountRole>('BORROWER');
@@ -38,40 +43,31 @@ export const App: React.FC = () => {
     setAccountContext(switchMockRole(role));
   };
 
+  const handleSelectLoan = (loanId: string) => {
+    setRegistry((prev) => prev.selectLoan(loanId));
+  };
+
   const handleLoanCreated = (newLoan: LoanDetailsModel) => {
-    const newId = `loan-${Date.now().toString().slice(-4)}`;
-    setLoans((prev) => ({
-      ...prev,
-      [newId]: newLoan,
-    }));
+    const existingCount = registry.getOrderedLoanIds().length;
+    const newId = `loan-${String(existingCount + 1).padStart(3, '0')}`;
+    setRegistry((prev) => prev.addLoan(newId, newLoan));
+    setCurrentView('dashboard');
   };
 
   const handleLoanFunded = (loanId: string, updatedLoan: LoanDetailsModel) => {
-    setLoans((prev) => ({
-      ...prev,
-      [loanId]: updatedLoan,
-    }));
+    setRegistry((prev) => prev.replaceLoan(loanId, updatedLoan));
   };
 
   const handleLoanVerified = (loanId: string, updatedLoan: LoanDetailsModel) => {
-    setLoans((prev) => ({
-      ...prev,
-      [loanId]: updatedLoan,
-    }));
+    setRegistry((prev) => prev.replaceLoan(loanId, updatedLoan));
   };
 
   const handleLoanRepaid = (loanId: string, updatedLoan: LoanDetailsModel) => {
-    setLoans((prev) => ({
-      ...prev,
-      [loanId]: updatedLoan,
-    }));
+    setRegistry((prev) => prev.replaceLoan(loanId, updatedLoan));
   };
 
   const handleLoanSettled = (loanId: string, updatedLoan: LoanDetailsModel) => {
-    setLoans((prev) => ({
-      ...prev,
-      [loanId]: updatedLoan,
-    }));
+    setRegistry((prev) => prev.replaceLoan(loanId, updatedLoan));
   };
 
   return (
@@ -79,7 +75,9 @@ export const App: React.FC = () => {
       {currentView === 'dashboard' ? (
         <DashboardPage
           onNavigateToCreateLoan={() => setCurrentView('create-loan')}
-          loansMap={loans}
+          loansMap={registry.getLoans()}
+          selectedLoanId={registry.getSelectedLoanId()}
+          onSelectLoan={handleSelectLoan}
           onLoanFunded={handleLoanFunded}
           onLoanVerified={handleLoanVerified}
           onLoanRepaid={handleLoanRepaid}

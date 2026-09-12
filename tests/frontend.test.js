@@ -65,6 +65,17 @@ import {
   MOCK_THIRD_PARTY_PK,
 } from '../frontend/src/lib/account-service.ts';
 import { getAccountAuthorization } from '../frontend/src/lib/account-authorization.ts';
+import {
+  LoanRegistry,
+  validateLifecycleTransition,
+  assertImmutableTermsPreserved,
+} from '../frontend/src/lib/loan-registry.ts';
+import {
+  InMemoryLoanRegistryPersistence,
+  LocalStorageLoanRegistryPersistence,
+  createDefaultLoanRegistry,
+} from '../frontend/src/lib/application-store.ts';
+import { LoanRegistryError } from '../frontend/src/types/application-state.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -87,6 +98,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/repayment.ts',
       'src/types/settlement.ts',
       'src/types/account.ts',
+      'src/types/application-state.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -98,6 +110,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/settlement-service.ts',
       'src/lib/account-service.ts',
       'src/lib/account-authorization.ts',
+      'src/lib/loan-registry.ts',
+      'src/lib/application-store.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -1989,7 +2003,311 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
     assert.ok(statusPanelContent.includes('Agreement Permissions'), 'Must render permissions title');
     assert.ok(statusPanelContent.includes('Local Prototype Account'), 'Must render local prototype disclaimer');
   });
+
+  it('Test 106 (Commit #21): Central registry initializes with existing mock agreements', () => {
+    const registry = createDefaultLoanRegistry();
+    const loans = registry.getLoans();
+    assert.ok(Object.keys(loans).length >= 5);
+    assert.ok(loans['loan-001'] !== undefined);
+    assert.ok(loans['loan-002'] !== undefined);
+    assert.ok(loans['loan-003'] !== undefined);
+    assert.ok(loans['loan-004'] !== undefined);
+    assert.ok(loans['loan-005'] !== undefined);
+  });
+
+  it('Test 107 (Commit #21): Registry returns loans in deterministic insertion order', () => {
+    const registry = createDefaultLoanRegistry();
+    const orderedIds = registry.getOrderedLoanIds();
+    assert.equal(orderedIds[0], 'loan-001');
+    assert.equal(orderedIds[1], 'loan-002');
+    assert.equal(orderedIds[2], 'loan-003');
+    const orderedLoans = registry.getOrderedLoans();
+    assert.equal(orderedLoans[0].id, 'loan-001');
+    assert.equal(orderedLoans[0].loan.amount, MOCK_LOANS['loan-001'].amount);
+  });
+
+  it('Test 108 (Commit #21): Loan creation inserts exactly one new loan agreement', () => {
+    const registry = createDefaultLoanRegistry();
+    const initialCount = registry.getOrderedLoanIds().length;
+    const newLoan = {
+      borrower: '0x0101010101010101010101010101010101010101010101010101010101010101',
+      borrowerBytes: new Uint8Array(32).fill(1),
+      lender: null,
+      lenderBytes: null,
+      amount: 18000n,
+      interestRateBasisPoints: 450n,
+      durationBlocks: 120n,
+      status: LoanStatus.requested,
+      statusText: 'requested',
+      eligibilityThreshold: 32000n,
+      isEligibilityVerified: false,
+    };
+    const nextRegistry = registry.addLoan('loan-099', newLoan);
+    assert.equal(nextRegistry.getOrderedLoanIds().length, initialCount + 1);
+    assert.equal(nextRegistry.getLoan('loan-099')?.amount, 18000n);
+    assert.equal(nextRegistry.getSelectedLoanId(), 'loan-099');
+  });
+
+  it('Test 109 (Commit #21): Duplicate loan IDs are strictly rejected', () => {
+    const registry = createDefaultLoanRegistry();
+    const newLoan = { ...MOCK_LOANS['loan-001'] };
+    assert.throws(
+      () => registry.addLoan('loan-001', newLoan),
+      (err) => err instanceof LoanRegistryError && err.code === 'DUPLICATE_LOAN_ID'
+    );
+  });
+
+  it('Test 110 (Commit #21): Newly created loan begins in unverified requested state without lender', () => {
+    const registry = createDefaultLoanRegistry();
+    const fundedAttempt = { ...MOCK_LOANS['loan-003'] };
+    assert.throws(
+      () => registry.addLoan('loan-bad-1', fundedAttempt),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_INITIAL_STATE'
+    );
+
+    const verifiedAttempt = { ...MOCK_LOANS['loan-002'] };
+    assert.throws(
+      () => registry.addLoan('loan-bad-2', verifiedAttempt),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_INITIAL_STATE'
+    );
+  });
+
+  it('Test 111 (Commit #21): Updating one agreement does not mutate unrelated agreements', () => {
+    const registry = createDefaultLoanRegistry();
+    const updated = registry.verifyLoanEligibility('loan-001', MOCK_BORROWER_PK);
+    assert.equal(updated.getLoan('loan-001')?.isEligibilityVerified, true);
+    assert.equal(updated.getLoan('loan-003')?.status, LoanStatus.funded);
+    assert.equal(registry.getLoan('loan-001')?.isEligibilityVerified, false, 'Original registry must remain immutable');
+  });
+
+  it('Test 112 (Commit #21): Immutable loan terms cannot be changed during updates', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-001', (prev) => ({
+          ...prev,
+          amount: prev.amount + 5000n,
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'IMMUTABLE_TERM_MUTATION'
+    );
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-001', (prev) => ({
+          ...prev,
+          interestRateBasisPoints: 999n,
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'IMMUTABLE_TERM_MUTATION'
+    );
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-001', (prev) => ({
+          ...prev,
+          durationBlocks: 9999n,
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'IMMUTABLE_TERM_MUTATION'
+    );
+  });
+
+  it('Test 113 (Commit #21): Verification transition updates status to verified without changing status from requested', () => {
+    const registry = createDefaultLoanRegistry();
+    const updated = registry.verifyLoanEligibility('loan-001', MOCK_BORROWER_PK);
+    const loan = updated.getLoan('loan-001');
+    assert.equal(loan?.status, LoanStatus.requested);
+    assert.equal(loan?.isEligibilityVerified, true);
+  });
+
+  it('Test 114 (Commit #21): Funding transition updates status to funded and records lender', () => {
+    const registry = createDefaultLoanRegistry();
+    const lenderPk = MOCK_LENDER_PK;
+    const updated = registry.fundLoan('loan-002', lenderPk);
+    const loan = updated.getLoan('loan-002');
+    assert.equal(loan?.status, LoanStatus.funded);
+    assert.equal(loan?.statusText, 'funded');
+    assert.ok(loan?.lenderBytes !== null);
+  });
+
+  it('Test 115 (Commit #21): Repayment transition updates status to repaid', () => {
+    const registry = createDefaultLoanRegistry();
+    const borrowerPk = MOCK_LOANS['loan-003'].borrowerBytes;
+    const updated = registry.repayLoan('loan-003', borrowerPk);
+    const loan = updated.getLoan('loan-003');
+    assert.equal(loan?.status, LoanStatus.repaid);
+    assert.equal(loan?.statusText, 'repaid');
+  });
+
+  it('Test 116 (Commit #21): Settlement transition updates status to settled', () => {
+    const registry = createDefaultLoanRegistry();
+    const borrowerPk = MOCK_LOANS['loan-004'].borrowerBytes;
+    const updated = registry.settleLoan('loan-004', borrowerPk);
+    const loan = updated.getLoan('loan-004');
+    assert.equal(loan?.status, LoanStatus.settled);
+    assert.equal(loan?.statusText, 'settled');
+  });
+
+  it('Test 117 (Commit #21): Invalid transition REQUESTED -> REPAID is rejected', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-001', (prev) => ({
+          ...prev,
+          status: LoanStatus.repaid,
+          statusText: 'repaid',
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_TRANSITION'
+    );
+  });
+
+  it('Test 118 (Commit #21): Invalid transition REQUESTED -> SETTLED is rejected', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-001', (prev) => ({
+          ...prev,
+          status: LoanStatus.settled,
+          statusText: 'settled',
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_TRANSITION'
+    );
+  });
+
+  it('Test 119 (Commit #21): Invalid transition FUNDED -> VERIFIED is rejected', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-003', (prev) => ({
+          ...prev,
+          status: LoanStatus.requested,
+          statusText: 'requested',
+          isEligibilityVerified: true,
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_TRANSITION'
+    );
+  });
+
+  it('Test 120 (Commit #21): Invalid transition REPAID -> FUNDED is rejected', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-004', (prev) => ({
+          ...prev,
+          status: LoanStatus.funded,
+          statusText: 'funded',
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'INVALID_TRANSITION'
+    );
+  });
+
+  it('Test 121 (Commit #21): Terminal SETTLED agreements reject all subsequent state transitions', () => {
+    const registry = createDefaultLoanRegistry();
+    assert.throws(
+      () =>
+        registry.updateLoan('loan-005', (prev) => ({
+          ...prev,
+          status: LoanStatus.repaid,
+        })),
+      (err) => err instanceof LoanRegistryError && err.code === 'ALREADY_SETTLED'
+    );
+  });
+
+  it('Test 122 (Commit #21): Filter counts recalculate automatically upon adding new loans', () => {
+    const registry = createDefaultLoanRegistry();
+    const initialCounts = registry.getFilterCounts();
+    const newLoan = {
+      borrower: '0x0101010101010101010101010101010101010101010101010101010101010101',
+      borrowerBytes: new Uint8Array(32).fill(1),
+      lender: null,
+      lenderBytes: null,
+      amount: 5000n,
+      interestRateBasisPoints: 300n,
+      durationBlocks: 50n,
+      status: LoanStatus.requested,
+      statusText: 'requested',
+      eligibilityThreshold: 10000n,
+      isEligibilityVerified: false,
+    };
+    const updated = registry.addLoan('loan-count-test', newLoan);
+    const nextCounts = updated.getFilterCounts();
+    assert.equal(nextCounts.all, initialCounts.all + 1);
+    assert.equal(nextCounts.requested, initialCounts.requested + 1);
+  });
+
+  it('Test 123 (Commit #21): Account authorization remains accurate through registry transitions', () => {
+    const registry = createDefaultLoanRegistry();
+    const borrowerPk = MOCK_LOANS['loan-001'].borrowerBytes;
+    const borrowerAccount = getMockAccount('BORROWER', MOCK_LOANS['loan-001']);
+
+    const initialAuth = getAccountAuthorization(registry.getLoan('loan-001'), borrowerAccount);
+    assert.equal(initialAuth.canVerifyEligibility, true);
+
+    const verifiedRegistry = registry.verifyLoanEligibility('loan-001', borrowerPk);
+    const verifiedAuth = getAccountAuthorization(verifiedRegistry.getLoan('loan-001'), borrowerAccount);
+    assert.equal(verifiedAuth.canVerifyEligibility, false);
+  });
+
+  it('Test 124 (Commit #21): Persistence adapter serializes and restores only public agreement data', () => {
+    const memoryPersistence = new InMemoryLoanRegistryPersistence();
+    const registry = new LoanRegistry(MOCK_LOANS, undefined, undefined, memoryPersistence);
+    const reloaded = memoryPersistence.load();
+    assert.ok(reloaded !== null);
+    assert.equal(Object.keys(reloaded).length, Object.keys(MOCK_LOANS).length);
+
+    const localPersistence = new LocalStorageLoanRegistryPersistence();
+    localPersistence.save(MOCK_LOANS);
+    const loadedFromLocal = localPersistence.load();
+    assert.ok(loadedFromLocal !== null);
+    assert.equal(loadedFromLocal['loan-001']?.amount, MOCK_LOANS['loan-001'].amount);
+    assert.ok(loadedFromLocal['loan-001']?.borrowerBytes instanceof Uint8Array);
+  });
+
+  it('Test 125 (Commit #21 & Strict Privacy Audit): Frontend state and registry layer contain zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 34, `Must audit all frontend source files including registry and store modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
 });
+
 
 
 

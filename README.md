@@ -120,6 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
+# 180 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -138,7 +139,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #20)
+### Current Status & Features (Commit #21)
+- **Centralized Loan Registry & Application State Engine (Commit #21)**:
+  - **Authoritative Single Source of Truth**: Introduces `LoanRegistry` (`frontend/src/lib/loan-registry.ts`) as the single central store for all public loan agreements, completely eliminating duplicate component-level state and cross-component synchronization discrepancies.
+  - **Deterministic Ordering & Deduplication**: Preserves deterministic loan insertion ordering and strictly rejects duplicate loan IDs with typed domain errors (`LoanRegistryError('DUPLICATE_LOAN_ID')`).
+  - **Immutable Agreement Terms Preservation**: Enforces `assertImmutableTermsPreserved` on every agreement update, guaranteeing that core financial terms (`amount`, `interestRateBasisPoints`, `durationBlocks`, `eligibilityThreshold`, `borrower`, `borrowerBytes`) cannot be mutated after creation.
+  - **Canonical State Machine Transitions**: Guards every lifecycle change via `validateLifecycleTransition`, enforcing strict sequential progression (`REQUESTED (unverified) → REQUESTED (verified) → FUNDED → REPAID → SETTLED`) and rejecting invalid or out-of-order state mutations with typed errors.
+  - **Clean Persistence Adapter Boundary**: Decouples storage via `LoanRegistryPersistence` (`frontend/src/lib/application-store.ts`), providing both `InMemoryLoanRegistryPersistence` (testing/runtime fallback) and `LocalStorageLoanRegistryPersistence` (browser persistence with custom BigInt/Uint8Array serialization).
+  - **Account-Aware Authorization Sync**: Synchronizes seamlessly with `getAccountAuthorization` from Commit #20 so that all dynamic permissions reflect registry transitions in real-time.
 - **Wallet / Account Identity Abstraction & Dynamic Authorization (Commit #20)**:
   - **Typed Account Domain Models**: Strongly typed definitions (`frontend/src/types/account.ts`) for connection status, roles (`BORROWER`, `LENDER`, `PARTICIPANT`, `NONE`), public identity models, and contextual authorization matrices.
   - **Local Prototype Account Adapter**: Clean account service (`frontend/src/lib/account-service.ts`) providing deterministic mock identities (`Mock Borrower Account`, `Mock Lender Account`, `Mock Third-Party Account`, and Disconnected) without coupling the UI to live wallet infrastructure.
@@ -151,26 +159,19 @@ npm run build:frontend
   - **Contract-Guarded Readiness**: Enforces canonical lifecycle validation via `canSettleLoan` from `contracts/client/loan-api.ts`, returning typed readiness codes (`READY_TO_SETTLE`, `LOAN_NOT_REPAID`, `ALREADY_SETTLED`, `UNAUTHORIZED_PARTICIPANT`, `LOAN_NOT_AVAILABLE`).
   - **Interactive Role Switcher & Review Drawer**: `SettlementPanel.tsx` offers seamless switching between borrower and lender perspectives, an agreement details breakdown, and an expandable review drawer.
   - **Terminal Protocol Finality & 5-Phase Stepper**: `SettlementConfirmation.tsx` renders the terminal `SETTLED` state with complete extinguishment of debt obligations and an updated 5-phase visual stepper (`REQUESTED → VERIFIED → FUNDED → REPAID → [SETTLED]`).
-  - **Dashboard & Action Panel Integration**: Contextual settlement action buttons in `LoanActionPanel.tsx`, repayment completion discovery banners, review drawer management, and settled attestation banners in `DashboardPage.tsx`.
 - **Borrower Repayment Workflow & Contract-Guarded Repayment UI (Commit #18)**:
   - **Typed Repayment Domain Models**: Comprehensive typing (`frontend/src/types/repayment.ts`) defining lifecycle readiness states, calculation models, and attestations.
   - **Exact BigInt Parity**: Obligation calculations in `frontend/src/lib/repayment-service.ts` directly delegate to `calculateRepaymentObligation` from the contract workspace with exact integer basis points math.
   - **Contract-Guarded Readiness**: Derives readiness strictly from canonical `canRepayLoan` (`READY_TO_REPAY`, `LOAN_NOT_FUNDED`, `ALREADY_REPAID`, `AGREEMENT_CONCLUDED`, `UNAUTHORIZED_BORROWER`, `LOAN_NOT_AVAILABLE`).
   - **Two-Step Review Breakdown**: `RepaymentPanel.tsx` displays principal, agreed interest, and total obligation before requiring explicit user confirmation.
-  - **Repayment Confirmation & Stepper**: `RepaymentConfirmation.tsx` marks the agreement transition to `REPAID`, showing a 5-phase lifecycle stepper and honest asset transfer disclosure.
-  - **Dashboard Lifecycle Integration**: Direct CTA cards for active funded loans, panel drawer toggling, and repaid attestation banners in `DashboardPage.tsx`.
 - **Borrower Confidential Eligibility Verification Workflow (Commit #17)**:
   - **Typed Prover Integration**: Clean client service (`frontend/src/lib/eligibility-service.ts`) invoking the authentic Midnight Compact zero-knowledge circuit off-chain.
   - **Strict Witness Boundary**: Ephemeral password-style input (`PrivateEligibilityInput.tsx`) cleared immediately upon proof initiation; zero storage in `localStorage`, `sessionStorage`, cookies, or URL queries.
   - **5-Stage Prover Visualization**: Real-time progress indicators for witness preparation, constraint generation, circuit execution, local verification, and attestation.
-  - **Compact Circuit Authority**: Cryptographically rejects under-threshold inputs with sanitized errors without exposing secret amounts or internal stack traces.
-  - **Success & Privacy Attestation**: Result view (`EligibilityVerificationResult.tsx`) affirming `PRIVATE VALUE ≠ PUBLIC DATA` and transitioning the agreement to `REQUESTED + VERIFIED`.
-  - **Seamless Lifecycle Unlocking**: Moving an agreement to verified immediately unlocks the lender evaluation and capital funding workflow.
 - **Lender Loan Evaluation & Funding Workflow (Commit #16)**:
   - Typed evaluation models operating exclusively on public `LoanDetailsModel` properties.
   - Exact BigInt arithmetic for interest earnings and expected return without floating-point drift.
   - Canonical contract-guarded readiness via `canFundLoan`.
-  - Two-step prototype funding drawer and confirmation card with honest disclosure: `Asset Transfer Status: "Not executed — local prototype mode"`.
 - **Public Loan Marketplace Discovery (Commit #15)**:
   - Search agreements by Loan ID, Borrower, or Lender.
   - Lifecycle filtering with verified state derivation (`status === requested && isEligibilityVerified === true`).
@@ -179,4 +180,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #20). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode** (Commit #21). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.

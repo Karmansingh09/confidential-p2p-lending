@@ -25,6 +25,8 @@ import type { AccountContext, AccountRole } from '../types/account.js';
 interface DashboardPageProps {
   onNavigateToCreateLoan?: () => void;
   loansMap?: Record<string, LoanDetailsModel>;
+  selectedLoanId?: string;
+  onSelectLoan?: (loanId: string) => void;
   onLoanFunded?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanVerified?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
   onLoanRepaid?: (loanId: string, updatedLoan: LoanDetailsModel) => void;
@@ -39,6 +41,8 @@ interface DashboardPageProps {
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToCreateLoan,
   loansMap = MOCK_LOANS,
+  selectedLoanId: propSelectedLoanId,
+  onSelectLoan: propSelectLoan,
   onLoanFunded,
   onLoanVerified,
   onLoanRepaid,
@@ -48,11 +52,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onDisconnect: propDisconnect,
   onConnect: propConnect,
 }) => {
-  const [internalLoans, setInternalLoans] = useState<Record<string, LoanDetailsModel>>(loansMap);
-  const [selectedLoanId, setSelectedLoanId] = useState<string>(DEFAULT_LOAN_ID);
+  // Local fallback selection if not controlled by parent store
+  const [localSelectedLoanId, setLocalSelectedLoanId] = useState<string>(
+    propSelectedLoanId ?? DEFAULT_LOAN_ID
+  );
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState<boolean>(false);
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
   const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
+
+  // Synchronize local selection with prop
+  useEffect(() => {
+    if (propSelectedLoanId) {
+      setLocalSelectedLoanId(propSelectedLoanId);
+    }
+  }, [propSelectedLoanId]);
 
   // Local fallback account context if not provided via props
   const [localAccountContext, setLocalAccountContext] = useState<AccountContext>(() =>
@@ -91,61 +104,53 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  useEffect(() => {
-    setInternalLoans(loansMap);
-  }, [loansMap]);
+  const effectiveSelectedLoanId = propSelectedLoanId ?? localSelectedLoanId;
 
   // Reset interactive panels if selected loan changes
   useEffect(() => {
     setIsVerifyingEligibility(false);
     setIsRepayingLoan(false);
     setIsSettlingLoan(false);
-  }, [selectedLoanId]);
+  }, [effectiveSelectedLoanId]);
 
-  const activeLoans = internalLoans;
+  // Single Source of Truth: consume authoritative loansMap directly
+  const activeLoans = loansMap;
   const availableKeys = Object.keys(activeLoans);
 
-  const isUnknownLoan = availableKeys.length > 0 && !activeLoans[selectedLoanId];
-  const effectiveLoanId = activeLoans[selectedLoanId]
-    ? selectedLoanId
+  const isUnknownLoan =
+    availableKeys.length > 0 && !activeLoans[effectiveSelectedLoanId];
+  const effectiveLoanId = activeLoans[effectiveSelectedLoanId]
+    ? effectiveSelectedLoanId
     : availableKeys[0] ?? DEFAULT_LOAN_ID;
   const currentLoan = activeLoans[effectiveLoanId];
 
+  const handleSelectLoan = (loanId: string) => {
+    if (propSelectLoan) {
+      propSelectLoan(loanId);
+    } else {
+      setLocalSelectedLoanId(loanId);
+    }
+  };
+
   const handleFundingSuccess = (fundedLoanId: string, updatedLoan: LoanDetailsModel) => {
-    setInternalLoans((prev) => ({
-      ...prev,
-      [fundedLoanId]: updatedLoan,
-    }));
     if (onLoanFunded) {
       onLoanFunded(fundedLoanId, updatedLoan);
     }
   };
 
   const handleVerificationSuccess = (verifiedLoanId: string, updatedLoan: LoanDetailsModel) => {
-    setInternalLoans((prev) => ({
-      ...prev,
-      [verifiedLoanId]: updatedLoan,
-    }));
     if (onLoanVerified) {
       onLoanVerified(verifiedLoanId, updatedLoan);
     }
   };
 
   const handleRepaymentSuccess = (repaidLoanId: string, updatedLoan: LoanDetailsModel) => {
-    setInternalLoans((prev) => ({
-      ...prev,
-      [repaidLoanId]: updatedLoan,
-    }));
     if (onLoanRepaid) {
       onLoanRepaid(repaidLoanId, updatedLoan);
     }
   };
 
   const handleSettlementSuccess = (settledLoanId: string, updatedLoan: LoanDetailsModel) => {
-    setInternalLoans((prev) => ({
-      ...prev,
-      [settledLoanId]: updatedLoan,
-    }));
     setIsSettlingLoan(false);
     if (onLoanSettled) {
       onLoanSettled(settledLoanId, updatedLoan);
@@ -196,7 +201,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="selection-warning-banner" role="alert">
             <span className="warning-icon">⚠️</span>
             <span>
-              Requested agreement <code>{selectedLoanId}</code> was not found. Defaulting to active agreement <code>{effectiveLoanId}</code>.
+              Requested agreement <code>{effectiveSelectedLoanId}</code> was not found. Defaulting to active agreement <code>{effectiveLoanId}</code>.
             </span>
           </div>
         )}
@@ -373,7 +378,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <LoanActionPanel
                   loan={currentLoan}
                   activeLoanId={effectiveLoanId}
-                  onSelectLoan={setSelectedLoanId}
+                  onSelectLoan={handleSelectLoan}
                   loansMap={activeLoans}
                   onStartVerification={() => setIsVerifyingEligibility(true)}
                   onStartRepayment={() => setIsRepayingLoan(true)}
@@ -399,13 +404,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <h3>Protocol Invariant Safeguards</h3>
                   <ul className="notes-list">
                     <li>
-                      <strong>Account Abstraction:</strong> Strongly typed participant personas (Borrower, Lender, Third-Party) without coupling to live wallets.
+                      <strong>Centralized Registry:</strong> Single authoritative state for all agreements, preventing duplicate or divergent component state.
+                    </li>
+                    <li>
+                      <strong>Lifecycle Transition Guards:</strong> Registry validates all transitions against canonical Compact rules before state updates.
                     </li>
                     <li>
                       <strong>Immutable Terms:</strong> Principal, interest rate, duration, and threshold are sealed upon agreement creation.
-                    </li>
-                    <li>
-                      <strong>Euclidean Math in ZK:</strong> Repayment interest is mathematically validated using scalar field division proofs.
                     </li>
                     <li>
                       <strong>Contract Authority:</strong> Actions are guarded by canonical Compact circuits (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`).
@@ -422,7 +427,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <LoanMarketplace
               loansMap={activeLoans}
               selectedLoanId={effectiveLoanId}
-              onSelectLoan={setSelectedLoanId}
+              onSelectLoan={handleSelectLoan}
             />
           </>
         )}
@@ -430,7 +435,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #20
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #21
         </p>
       </footer>
     </div>

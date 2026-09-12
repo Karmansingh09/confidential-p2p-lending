@@ -9,6 +9,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@contracts": ["../contracts/client/index.ts"]
     }

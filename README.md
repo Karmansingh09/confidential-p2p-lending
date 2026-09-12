@@ -138,16 +138,18 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #14)
-- **Borrower Loan Request UI**: Interactive form to propose new confidential micro-loans with custom values or quick presets (Micro 10k, Standard 25k, Growth 50k).
-- **Safe Basis Point Conversion**: High-precision string arithmetic converts percentage rates (e.g. `5.00%`) into integer basis points (`500 bps`) with zero floating-point drift.
-- **Live Agreement Preview**: Real-time loan card computing estimated simple interest, total repayment obligation, consensus duration, and initial `REQUESTED` / `NOT VERIFIED` status pills.
-- **Zero-Knowledge Privacy Safeguard**: Strict separation of concerns ensuring borrower financial credentials, bank statements, income, and wallet secrets are never requested or stored.
-- **Lifecycle Stepper & Dashboard**: Visualizes the 5-phase protocol lifecycle (`REQUESTED` &rarr; `ELIGIBILITY VERIFIED` &rarr; `FUNDED` &rarr; `REPAID` &rarr; `SETTLED`) and seamlessly displays newly created loan requests.
-- **Defensive Client Validation**: Real-time feedback for amounts, durations, rates, and thresholds, preventing invalid submissions before contract dispatch.
+### Current Status & Features (Commit #15)
+- **Public Loan Marketplace Discovery**: Comprehensive table and search engine allowing users to discover and inspect active micro-loans using strictly public ledger data.
+- **Deterministic Case-Insensitive Search**: Search agreements by Loan ID, Borrower public key, or Lender public key.
+- **Lifecycle Filtering**: Filter loans across all phases (`All`, `Requested`, `Verified`, `Funded`, `Repaid`, `Settled`) with dynamic count badges.
+- **Canonical State Machine Preservation**: Derives `VERIFIED` state strictly from `status === requested && isEligibilityVerified === true` without mutating the 4-state contract enum.
+- **Deterministic BigInt Sorting**: 6 sort options (Principal Low/High, Interest Rate Low/High, Duration Short/Long) computed strictly with integer comparisons to eliminate floating-point drift.
+- **Lifecycle-Aware Action Dispatcher**: Derived directly from canonical `LoanDesk` contract guards (`canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, `canSettleLoan`).
+- **Enhanced Details Panel**: Explicit visual and architectural separation between Public Agreement Information and excluded Private Borrower Information.
+- **Borrower Loan Request UI**: Propose confidential micro-loans with integer basis point precision and live agreement preview.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Simulation / Prototype Mode** (Commit #14). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Mock UI Mode** (Commit #15). Live Midnight.js wallet integration (e.g. Lace Wallet) and on-chain transaction signing are **not implemented yet** and will be integrated in upcoming milestones. No real blockchain transactions or wallet connections are executed in this commit.
 
 
 

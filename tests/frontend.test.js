@@ -9,6 +9,20 @@ import {
   basisPointsToPercentage,
 } from '../frontend/src/lib/validation.ts';
 import { createLocalLoanRequest } from '../frontend/src/lib/loan-service.ts';
+import {
+  MOCK_LOANS,
+  DEFAULT_LOAN_ID,
+} from '../frontend/src/lib/mock-data.ts';
+import {
+  isVerifiedLoan,
+  isUnverifiedRequested,
+  matchesSearch,
+  matchesLifecycleFilter,
+  sortLoans,
+  getLifecycleCounts,
+  queryMarketplace,
+  getLifecycleActionDescriptor,
+} from '../frontend/src/lib/marketplace.ts';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
@@ -29,6 +43,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
       'src/lib/loan-service.ts',
+      'src/lib/marketplace.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -41,7 +56,9 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/components/LoanRequestForm.tsx',
       'src/components/LoanPreview.tsx',
       'src/components/ValidationMessage.tsx',
+      'src/components/LoanMarketplace.tsx',
     ];
+
 
     for (const relPath of requiredFiles) {
       const fullPath = path.join(frontendDir, relPath);
@@ -384,4 +401,291 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
     assert.equal(newLoan.lender, null);
     assert.ok(newLoan.borrower.startsWith('0x'));
   });
+
+  // ===========================================================================
+  // Commit #15: Marketplace Discovery, Filtering, Sorting & Lifecycle Actions
+  // ===========================================================================
+
+  it('Test 17 (Commit #15 - Req 1): Marketplace loan collection loads realistic dataset with public LoanDetailsModel only', () => {
+    const loanIds = Object.keys(MOCK_LOANS);
+    assert.ok(loanIds.length >= 10, 'Marketplace should contain at least 10 realistic loans');
+
+    for (const [id, loan] of Object.entries(MOCK_LOANS)) {
+      assert.ok(typeof id === 'string' && id.startsWith('loan-'), `Loan ID ${id} should be well-formed`);
+      assert.ok(loan.amount > 0n, `Principal amount must be positive for ${id}`);
+      assert.ok(loan.interestRateBasisPoints > 0n && loan.interestRateBasisPoints <= 10000n, `Rate valid for ${id}`);
+      assert.ok(loan.durationBlocks > 0n, `Duration must be positive for ${id}`);
+      assert.ok(loan.eligibilityThreshold > 0n, `Threshold must be positive for ${id}`);
+      assert.ok(typeof loan.isEligibilityVerified === 'boolean', `Verification flag must be boolean for ${id}`);
+      assert.ok(typeof loan.status === 'number', `Status must be a number for ${id}`);
+      assert.ok(typeof loan.borrower === 'string' && loan.borrower.startsWith('0x'), `Borrower must be hex for ${id}`);
+      if (loan.lender) {
+        assert.ok(typeof loan.lender === 'string' && loan.lender.startsWith('0x'), `Lender must be hex for ${id}`);
+      }
+
+      // STRICT ZERO-LEAKAGE: No private witness or income fields
+      assert.equal('privateFinancialValue' in loan, false, `No privateFinancialValue in ${id}`);
+      assert.equal('privateWitness' in loan, false, `No privateWitness in ${id}`);
+      assert.equal('income' in loan, false, `No income in ${id}`);
+      assert.equal('bankBalance' in loan, false, `No bankBalance in ${id}`);
+    }
+  });
+
+  it('Test 18 (Commit #15 - Req 2): Search by Loan ID, Borrower, and Lender is accurate and deterministic', () => {
+    // 1. Search by Loan ID
+    assert.equal(matchesSearch('loan-003', MOCK_LOANS['loan-003'], 'loan-003'), true);
+    assert.equal(matchesSearch('loan-003', MOCK_LOANS['loan-003'], '003'), true);
+    assert.equal(matchesSearch('loan-001', MOCK_LOANS['loan-001'], 'loan-009'), false);
+
+    // 2. Search by Borrower key
+    const borrower1Hex = MOCK_LOANS['loan-001'].borrower;
+    assert.equal(matchesSearch('loan-001', MOCK_LOANS['loan-001'], borrower1Hex.slice(0, 8)), true);
+    assert.equal(matchesSearch('loan-003', MOCK_LOANS['loan-003'], borrower1Hex), false);
+
+    // 3. Search by Lender key
+    const lender1Hex = MOCK_LOANS['loan-003'].lender;
+    assert.ok(lender1Hex !== null);
+    assert.equal(matchesSearch('loan-003', MOCK_LOANS['loan-003'], lender1Hex.slice(0, 8)), true);
+    assert.equal(matchesSearch('loan-001', MOCK_LOANS['loan-001'], lender1Hex), false); // loan-001 has no lender
+  });
+
+  it('Test 19 (Commit #15 - Req 2): Search is case-insensitive and trims whitespace safely', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    assert.equal(matchesSearch('loan-002', loan, 'LOAN-002'), true);
+    assert.equal(matchesSearch('loan-002', loan, '  loan-002  '), true);
+    assert.equal(matchesSearch('loan-002', loan, '  '), true); // Empty search matches everything
+    assert.equal(matchesSearch('loan-002', loan, loan.borrower.toUpperCase()), true);
+  });
+
+  it('Test 20 (Commit #15 - Req 3): Lifecycle filtering and VERIFIED derivation preserve canonical contract enum', () => {
+    // Contract enum has exactly 4 states: requested (0), funded (1), repaid (2), settled (3)
+    assert.equal(LoanStatus.requested, 0);
+    assert.equal(LoanStatus.funded, 1);
+    assert.equal(LoanStatus.repaid, 2);
+    assert.equal(LoanStatus.settled, 3);
+    assert.equal('verified' in LoanStatus, false, 'Canonical enum must NOT have a fake verified state');
+
+    // Test derivation of verified loans: status === requested && isEligibilityVerified === true
+    assert.equal(isVerifiedLoan(MOCK_LOANS['loan-002']), true);
+    assert.equal(isVerifiedLoan(MOCK_LOANS['loan-007']), true);
+    assert.equal(isVerifiedLoan(MOCK_LOANS['loan-001']), false); // unverified
+    assert.equal(isVerifiedLoan(MOCK_LOANS['loan-003']), false); // funded
+
+    // Test unverified requested loans
+    assert.equal(isUnverifiedRequested(MOCK_LOANS['loan-001']), true);
+    assert.equal(isUnverifiedRequested(MOCK_LOANS['loan-006']), true);
+    assert.equal(isUnverifiedRequested(MOCK_LOANS['loan-002']), false);
+
+    // Test filtering predicates
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-001'], 'requested'), true);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-002'], 'requested'), false);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-002'], 'verified'), true);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-003'], 'funded'), true);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-004'], 'repaid'), true);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-005'], 'settled'), true);
+    assert.equal(matchesLifecycleFilter(MOCK_LOANS['loan-001'], 'all'), true);
+  });
+
+  it('Test 21 (Commit #15 - Req 3): Lifecycle counts partition marketplace accurately', () => {
+    const counts = getLifecycleCounts(MOCK_LOANS);
+    assert.equal(counts.all, 10);
+    assert.equal(counts.requested, 2); // loan-001, loan-006
+    assert.equal(counts.verified, 2);  // loan-002, loan-007
+    assert.equal(counts.funded, 2);    // loan-003, loan-008
+    assert.equal(counts.repaid, 2);    // loan-004, loan-009
+    assert.equal(counts.settled, 2);   // loan-005, loan-010
+
+    const sum = counts.requested + counts.verified + counts.funded + counts.repaid + counts.settled;
+    assert.equal(sum, counts.all, 'Sum of lifecycle partitions must equal total agreements');
+  });
+
+  it('Test 22 (Commit #15 - Req 4): Deterministic BigInt sorting across all 6 options without floating-point math', () => {
+    const items = Object.entries(MOCK_LOANS).map(([id, loan]) => ({ id, loan }));
+
+    // 1. Principal: Low -> High
+    const sortedAmountAsc = sortLoans(items, 'amount-asc');
+    for (let i = 1; i < sortedAmountAsc.length; i++) {
+      const prev = sortedAmountAsc[i - 1].loan.amount;
+      const curr = sortedAmountAsc[i].loan.amount;
+      assert.ok(prev <= curr, `Amount asc failed: ${prev} should be <= ${curr}`);
+    }
+
+    // 2. Principal: High -> Low
+    const sortedAmountDesc = sortLoans(items, 'amount-desc');
+    for (let i = 1; i < sortedAmountDesc.length; i++) {
+      const prev = sortedAmountDesc[i - 1].loan.amount;
+      const curr = sortedAmountDesc[i].loan.amount;
+      assert.ok(prev >= curr, `Amount desc failed: ${prev} should be >= ${curr}`);
+    }
+
+    // 3. Interest Rate: Low -> High
+    const sortedRateAsc = sortLoans(items, 'rate-asc');
+    for (let i = 1; i < sortedRateAsc.length; i++) {
+      const prev = sortedRateAsc[i - 1].loan.interestRateBasisPoints;
+      const curr = sortedRateAsc[i].loan.interestRateBasisPoints;
+      assert.ok(prev <= curr, `Rate asc failed: ${prev} <= ${curr}`);
+    }
+
+    // 4. Interest Rate: High -> Low
+    const sortedRateDesc = sortLoans(items, 'rate-desc');
+    for (let i = 1; i < sortedRateDesc.length; i++) {
+      const prev = sortedRateDesc[i - 1].loan.interestRateBasisPoints;
+      const curr = sortedRateDesc[i].loan.interestRateBasisPoints;
+      assert.ok(prev >= curr, `Rate desc failed: ${prev} >= ${curr}`);
+    }
+
+    // 5. Duration: Short -> Long
+    const sortedDurationAsc = sortLoans(items, 'duration-asc');
+    for (let i = 1; i < sortedDurationAsc.length; i++) {
+      const prev = sortedDurationAsc[i - 1].loan.durationBlocks;
+      const curr = sortedDurationAsc[i].loan.durationBlocks;
+      assert.ok(prev <= curr, `Duration asc failed: ${prev} <= ${curr}`);
+    }
+
+    // 6. Duration: Long -> Short
+    const sortedDurationDesc = sortLoans(items, 'duration-desc');
+    for (let i = 1; i < sortedDurationDesc.length; i++) {
+      const prev = sortedDurationDesc[i - 1].loan.durationBlocks;
+      const curr = sortedDurationDesc[i].loan.durationBlocks;
+      assert.ok(prev >= curr, `Duration desc failed: ${prev} >= ${curr}`);
+    }
+  });
+
+  it('Test 23 (Commit #15 - Req 2, 3, 4): queryMarketplace executes search, filter, and sort in a single pipeline', () => {
+    // Filter only verified loans, sorted by amount asc
+    const results = queryMarketplace(MOCK_LOANS, '', 'verified', 'amount-asc');
+    assert.equal(results.length, 2);
+    assert.equal(results[0].id, 'loan-002'); // 25000
+    assert.equal(results[1].id, 'loan-007'); // 40000
+
+    // Search for borrower 3 in all categories
+    const borrower3Hex = MOCK_LOANS['loan-006'].borrower;
+    const b3Results = queryMarketplace(MOCK_LOANS, borrower3Hex.slice(0, 10), 'all', 'amount-asc');
+    assert.equal(b3Results.length, 3); // loan-006, loan-008, loan-009
+  });
+
+  it('Test 24 (Commit #15 - Req 5): Lifecycle actions are derived using canonical contract guards without fabricating transactions', () => {
+    // Phase 1: Unverified requested loan -> Verify action
+    const action1 = getLifecycleActionDescriptor(MOCK_LOANS['loan-001']);
+    assert.equal(action1.actionType, 'verify');
+    assert.equal(action1.canExecute, true);
+    assert.equal(action1.role, 'Borrower Action');
+    assert.ok(action1.notice.includes('Eligibility verification required'));
+
+    // Phase 2: Verified requested loan -> Fund action
+    const action2 = getLifecycleActionDescriptor(MOCK_LOANS['loan-002']);
+    assert.equal(action2.actionType, 'fund');
+    assert.equal(action2.canExecute, true);
+    assert.equal(action2.role, 'Lender Action');
+    assert.ok(action2.notice.includes('ready for lender'));
+
+    // Phase 3: Funded loan -> Repay action
+    const action3 = getLifecycleActionDescriptor(MOCK_LOANS['loan-003']);
+    assert.equal(action3.actionType, 'repay');
+    assert.equal(action3.canExecute, true);
+    assert.equal(action3.role, 'Borrower Action');
+    assert.ok(action3.notice.includes('repayment'));
+
+    // Phase 4: Repaid loan -> Settle action
+    const action4 = getLifecycleActionDescriptor(MOCK_LOANS['loan-004']);
+    assert.equal(action4.actionType, 'settle');
+    assert.equal(action4.canExecute, true);
+    assert.equal(action4.role, 'Borrower or Lender Action');
+    assert.ok(action4.notice.includes('settlement'));
+
+    // Phase 5: Settled loan -> Terminal state
+    const action5 = getLifecycleActionDescriptor(MOCK_LOANS['loan-005']);
+    assert.equal(action5.actionType, 'none');
+    assert.equal(action5.canExecute, false);
+    assert.equal(action5.role, 'Protocol Terminal State');
+    assert.ok(action5.notice.includes('terminal settled state'));
+  });
+
+  it('Test 25 (Commit #15 - Req 6): Repayment calculation is consistent across all marketplace loans', () => {
+    for (const [id, loan] of Object.entries(MOCK_LOANS)) {
+      const contractCalc = calculateRepaymentObligation(loan.amount, loan.interestRateBasisPoints);
+      const interestAmount = (loan.amount * loan.interestRateBasisPoints) / 10000n;
+      const expectedTotal = loan.amount + interestAmount;
+
+      assert.equal(
+        contractCalc,
+        expectedTotal,
+        `Repayment obligation must match contract calculation for ${id}`
+      );
+    }
+  });
+
+  it('Test 26 (Commit #15 - Req 8): Empty search and non-existent loan fallbacks behave correctly', () => {
+    // Non-matching search query returns empty array
+    const emptyResults = queryMarketplace(MOCK_LOANS, 'non-existent-search-term-xyz', 'all', 'amount-asc');
+    assert.equal(emptyResults.length, 0);
+
+    // Verify DEFAULT_LOAN_ID exists in MOCK_LOANS
+    assert.ok(DEFAULT_LOAN_ID in MOCK_LOANS);
+  });
+
+  it('Test 27 (Commit #15 - Req 6): LoanSummaryCard component clearly separates public agreement terms from private borrower information', () => {
+    const cardPath = path.join(srcDir, 'components', 'LoanSummaryCard.tsx');
+    const cardContent = fs.readFileSync(cardPath, 'utf8');
+
+    // Required headers for boundary separation
+    assert.ok(cardContent.includes('PUBLIC AGREEMENT INFORMATION'));
+    assert.ok(cardContent.includes('PRIVATE BORROWER INFORMATION'));
+    assert.ok(cardContent.includes('Intentionally Unavailable & Excluded'));
+
+    // Required fields are rendered
+    assert.ok(cardContent.includes('Principal Amount'));
+    assert.ok(cardContent.includes('Interest Rate'));
+    assert.ok(cardContent.includes('Total Repayment Due'));
+    assert.ok(cardContent.includes('Loan Duration'));
+    assert.ok(cardContent.includes('Eligibility Threshold'));
+    assert.ok(cardContent.includes('Eligibility Status'));
+    assert.ok(cardContent.includes('BORROWER'));
+    assert.ok(cardContent.includes('LENDER'));
+  });
+
+  it('Test 28 (Commit #15 - Req 7 & Strict Privacy Audit): Zero references to private financial credentials across all frontend files', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'private witness values',
+      'borrower income',
+      'bank balances',
+      'credit scores',
+      'seed phrases',
+      'wallet private keys',
+      'privateState',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 10, 'Must audit all frontend source files');
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
 });
+

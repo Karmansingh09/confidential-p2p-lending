@@ -734,6 +734,95 @@ Why is eligibility verification not executed simultaneously inside the loan crea
 4. **Lifecycle State Integrity**:
    - A loan request in state `REQUESTED` and `isEligibilityVerified = false` provides a clear signal to lenders that terms have been proposed but credit qualification is pending.
 
+---
+
+## 15. Public Loan Marketplace Discovery, Filtering, Sorting & Lifecycle-Aware Dashboard
+
+### 15.1 Architecture & Public Information Model
+The Public Loan Marketplace (`frontend/src/components/LoanMarketplace.tsx` and `frontend/src/lib/marketplace.ts`) provides a comprehensive discovery and inspection engine for confidential micro-loans across the entire protocol lifecycle.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                          LOAN MARKETPLACE ENGINE                          |
+|                       (frontend/src/lib/marketplace.ts)                   |
+|                                                                           |
+|  - Ingests public Record<string, LoanDetailsModel>                        |
+|  - Deterministic Search (ID, Borrower, Lender)                            |
+|  - Lifecycle Filtering (All, Requested, Verified, Funded, Repaid, Settled)|
+|  - Exact BigInt Sorting (Principal, Rate, Duration)                       |
+|  - Lifecycle Action Derivation via canonical contract guards              |
++───────────────────────────────────────────────────────────────────────────+
+                                      │
+               ┌──────────────────────┴──────────────────────┐
+               ▼                                             ▼
++─────────────────────────────+               +─────────────────────────────+
+|     DISCOVERY TABLE UI      |               |     ENHANCED DETAILS &      |
+| (LoanMarketplace.tsx)       |               |     LIFECYCLE ACTION PANEL  |
+|                             |               | (LoanSummaryCard & Action)  |
+| - Filter tabs with counts   |               |                             |
+| - Case-insensitive search   |               | - Canonical guards dispatch |
+| - Active row selection      |               | - Strict Public vs Private  |
+| - Empty state handling      |               |   boundary disclosure       |
++─────────────────────────────+               +─────────────────────────────+
+```
+
+### 15.2 Public-Data-Only Filtering and Deterministic Search
+All discovery and querying operations execute strictly against public ledger fields:
+1. **Search Query Evaluation (`matchesSearch`)**:
+   - Matches against `loanId`, `loan.borrower` (hex public key), and `loan.lender` (hex public key if assigned).
+   - Case-insensitive, trims whitespace, deterministic, and type-safe.
+   - Completely isolated from any confidential financial data.
+2. **Lifecycle Filtering (`matchesLifecycleFilter`)**:
+   - Partitions agreements into mutually exclusive categories:
+     - `all`: All recorded agreements.
+     - `requested`: Newly requested agreements pending ZK verification (`status === requested && !isEligibilityVerified`).
+     - `verified`: Formally verified requests awaiting lender funding (`status === requested && isEligibilityVerified === true`).
+     - `funded`: Active agreements awaiting borrower repayment (`status === funded`).
+     - `repaid`: Repaid agreements awaiting settlement (`status === repaid`).
+     - `settled`: Concluded terminal agreements (`status === settled`).
+
+### 15.3 Verified-State Derivation: Preserving the Canonical State Machine
+A fundamental invariant of the protocol is that **the underlying Compact smart contract enum must remain unchanged**:
+- **Compact Contract Enum**:
+  ```compact
+  enum LoanStatus { requested, funded, repaid, settled }
+  ```
+- **Attestation Flag**:
+  `isEligibilityVerified: Boolean` is a separate on-chain public attestation updated only by the `verifyEligibility` circuit.
+- **Frontend Derivation Rule**:
+  The frontend **never** invents a fake contract state enum called `verified`. Instead, `VERIFIED` is derived strictly from:
+  ```ts
+  loan.status === LoanStatus.requested && loan.isEligibilityVerified === true
+  ```
+  This guarantees complete fidelity between the user interface and the underlying Midnight consensus layer.
+
+### 15.4 Deterministic Integer Sorting
+Sorting is executed using exact BigInt comparisons:
+- Options: `Principal: Low → High`, `Principal: High → Low`, `Interest Rate: Low → High`, `Interest Rate: High → Low`, `Duration: Short → Long`, `Duration: Long → Short`.
+- **Zero Floating-Point Drift**: Arithmetic on basis points and principal units strictly avoids IEEE-754 floating-point operations.
+- **Deterministic Tie-Breaking**: When metrics are equal between agreements, ties are broken deterministically using `a.id.localeCompare(b.id)`.
+
+### 15.5 Lifecycle-Aware UI Actions via Canonical Contract Guards
+The UI actions panel does not replicate or re-implement contract state machine rules. Instead, it directly connects to the canonical client lifecycle guards (`contracts/client/loan-api.ts`):
+- `canVerifyEligibility(loan)`: Enables off-chain ZK verification action for unverified requested loans.
+- `canFundLoan(loan)`: Enables capital commitment action for verified requested loans.
+- `canRepayLoan(loan)`: Enables simple-interest repayment action for funded loans.
+- `canSettleLoan(loan)`: Enables terminal settlement closure for repaid loans.
+
+### 15.6 Strict Privacy Boundary & Details Panel Separation
+The Loan Details Panel (`LoanSummaryCard.tsx`) prominently partitions displayed data into two distinct architectural categories:
+1. **PUBLIC AGREEMENT INFORMATION**:
+   Transparent on-chain parameters published to the Midnight ledger (Principal, Interest Rate, Obligation, Duration, Threshold, Attestation Status, Borrower and Lender public keys).
+2. **PRIVATE BORROWER INFORMATION**:
+   Explicitly designated as **Intentionally Unavailable & Excluded**. Confidential underwriting data, bank statements, income, and secret witnesses are never received by or stored within the frontend application tree.
+
+### 15.7 Honest Local Mock Mode Limitation
+In Commit #15, the frontend operates in **Local Mock UI Mode**:
+- Actions display prototype notices explaining protocol transition mechanics.
+- No fake transaction hashes, fake wallet confirmations, fake blockchain timestamps, or simulated network responses are fabricated.
+- Live Midnight.js transaction submission and Lace Wallet signing are reserved for future milestones.
+
+
 
 
 

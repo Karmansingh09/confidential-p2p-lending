@@ -6,25 +6,41 @@ import {
   formatDuration,
   shortenAddress,
 } from '../lib/formatters.js';
+import { calculateRepaymentObligation } from 'contracts';
 import { LoanStatusBadge } from './LoanStatusBadge.js';
+
+import { isVerifiedLoan } from '../lib/marketplace.js';
 
 interface LoanSummaryCardProps {
   loan: LoanDetailsModel;
+  loanId?: string;
 }
 
-export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan }) => {
-  // Simple interest calculation: Principal + floor(Principal * Rate / 10000)
-  const interestAmount = (loan.amount * loan.interestRateBasisPoints) / 10000n;
-  const totalRepaymentObligation = loan.amount + interestAmount;
+export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan, loanId }) => {
+  // Use canonical calculateRepaymentObligation from protocol contract client
+  const totalRepaymentObligation = calculateRepaymentObligation(
+    loan.amount,
+    loan.interestRateBasisPoints
+  );
+  const interestAmount = totalRepaymentObligation - loan.amount;
+  const isVerified = isVerifiedLoan(loan);
 
   return (
-    <div className="loan-summary-card">
+    <div className="loan-summary-card" aria-label="Loan Details Panel">
       <div className="card-header">
         <div>
-          <h2>Active Loan Agreement</h2>
+          <div className="card-title-row">
+            <h2>Loan Agreement Details</h2>
+            {loanId && <span className="card-loan-id-badge">{loanId}</span>}
+          </div>
           <span className="card-subtitle">Public Agreement Terms Recorded on Midnight Ledger</span>
         </div>
-        <LoanStatusBadge statusText={loan.statusText} />
+        <div className="card-header-badges">
+          <LoanStatusBadge statusText={loan.statusText} />
+          {isVerified && (
+            <span className="badge-verified-attestation">ZK Verified</span>
+          )}
+        </div>
       </div>
 
       <div className="summary-metrics-grid">
@@ -57,7 +73,25 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan }) => {
         <div className="summary-metric-card">
           <span className="metric-label">Loan Duration</span>
           <span className="metric-value-lg">{formatDuration(loan.durationBlocks)}</span>
-          <span className="metric-subtext">Ledger blocks until maturity</span>
+          <span className="metric-subtext">Consensus blocks to maturity</span>
+        </div>
+
+        <div className="summary-metric-card">
+          <span className="metric-label">Eligibility Threshold</span>
+          <span className="metric-value-lg">{formatAmount(loan.eligibilityThreshold)}</span>
+          <span className="metric-subtext">Required public qualification mark</span>
+        </div>
+
+        <div className="summary-metric-card">
+          <span className="metric-label">Eligibility Status</span>
+          <span className={`metric-value-lg ${loan.isEligibilityVerified ? 'verified-text' : 'pending-text'}`}>
+            {loan.isEligibilityVerified ? 'Verified in ZK' : 'Not Verified'}
+          </span>
+          <span className="metric-subtext">
+            {loan.isEligibilityVerified
+              ? 'Off-chain proof accepted by contract'
+              : 'Borrower proof submission pending'}
+          </span>
         </div>
       </div>
 
@@ -82,6 +116,30 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan }) => {
           </code>
         </div>
       </div>
+
+      {/* Information Boundary Panels: Public vs Private separation */}
+      <div className="data-boundary-container">
+        <div className="boundary-panel public-panel">
+          <div className="boundary-panel-header">
+            <span className="boundary-indicator public-dot"></span>
+            <h4>PUBLIC AGREEMENT INFORMATION</h4>
+          </div>
+          <p className="boundary-description">
+            Transparent on-chain parameters published to the Midnight ledger. Accessible to prospective lenders to evaluate terms, interest yield, consensus duration, and cryptographic verification status.
+          </p>
+        </div>
+
+        <div className="boundary-panel private-panel">
+          <div className="boundary-panel-header">
+            <span className="boundary-indicator private-dot"></span>
+            <h4>PRIVATE BORROWER INFORMATION</h4>
+          </div>
+          <p className="boundary-description">
+            <strong>Intentionally Unavailable & Excluded.</strong> Sensitive borrower credentials and confidential off-chain documentation are never collected, stored, or revealed to the frontend or ledger. The borrower proves qualification off-chain via Zero-Knowledge proofs.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };
+

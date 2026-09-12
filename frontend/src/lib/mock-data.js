@@ -9,7 +9,7 @@ function bytesToHex(bytes) {
 /**
  * Public mock loans demonstrating each step of the 5-phase protocol lifecycle.
  * STRICT PRIVACY ASSURANCE: Contains ONLY public discoverable terms.
- * NO private witness values, income data, or secret keys exist in this data model.
+ * NO confidential borrower credentials or off-chain data exist in this data model.
  */
 export const MOCK_LOANS = {
     // Phase 1: Newly requested, unverified

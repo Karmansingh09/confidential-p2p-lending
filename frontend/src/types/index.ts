@@ -39,3 +39,11 @@ export interface NetworkConnectionState {
   isMockMode: boolean;
   notice: string;
 }
+
+export type {
+  LifecycleFilter,
+  SortOption,
+  MarketplaceLoanItem,
+  LifecycleActionDescriptor,
+} from '../lib/marketplace.js';
+

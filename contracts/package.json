@@ -8,6 +8,14 @@
     "build": "npm run compile && tsc",
     "typecheck": "tsc --noEmit"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0"
   },

@@ -15,6 +15,13 @@ import type {
   WalletProviderKind,
   WalletDetectionStatus,
 } from '../types/wallet-adapter.ts';
+import type {
+  TransactionSigningRequest,
+  TransactionSigningResult,
+  TransactionSubmissionRequest,
+  TransactionSubmissionResult,
+  TransactionStatusResult,
+} from '../types/transaction-request.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 
 export const PROTOTYPE_BORROWER_PK = new Uint8Array(32).fill(1);
@@ -155,14 +162,34 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
     this.disconnectSync();
   }
 
+  async requestSignature(
+    request: TransactionSigningRequest
+  ): Promise<TransactionSigningResult> {
+    // In local prototype mode, live wallet signing is unavailable.
+    // Zero fake signatures are fabricated.
+    throw new ProviderError(
+      'UNSUPPORTED_OPERATION',
+      'Wallet signature generation is unavailable in prototype mode.'
+    );
+  }
+
   async submitTransaction(
-    request: TransactionRequest
-  ): Promise<TransactionResult> {
+    request: TransactionSubmissionRequest | TransactionRequest
+  ): Promise<TransactionSubmissionResult | TransactionResult> {
     // In local prototype mode, live wallet transactions are unavailable.
     // Zero fake transaction hashes or simulated confirmations are fabricated.
     throw new ProviderError(
       'UNSUPPORTED_OPERATION',
       'Live wallet transactions are unavailable in prototype mode.'
+    );
+  }
+
+  async getTransactionStatus(
+    transactionId: string
+  ): Promise<TransactionStatusResult | null> {
+    throw new ProviderError(
+      'UNSUPPORTED_OPERATION',
+      'Transaction status tracking is unavailable in prototype mode.'
     );
   }
 

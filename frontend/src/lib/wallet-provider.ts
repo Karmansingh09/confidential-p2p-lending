@@ -15,6 +15,13 @@ import type {
   WalletDetectionStatus,
 } from '../types/wallet-adapter.ts';
 import type { TransactionReceipt } from '../types/transaction-execution.ts';
+import type {
+  TransactionSigningRequest,
+  TransactionSigningResult,
+  TransactionSubmissionRequest,
+  TransactionSubmissionResult,
+  TransactionStatusResult,
+} from '../types/transaction-request.ts';
 
 /**
  * Clean architectural interface representing the minimum wallet and network
@@ -74,15 +81,28 @@ export interface WalletProvider {
   disconnect(): Promise<void>;
 
   /**
+   * Optional wallet signature request method.
+   * Prompts the connected wallet to sign the contract lifecycle transaction.
+   * In prototype mode, throws a typed ProviderError indicating live signing is unavailable.
+   */
+  requestSignature?(
+    request: TransactionSigningRequest
+  ): Promise<TransactionSigningResult>;
+
+  /**
    * Optional transaction submission method.
    * In prototype mode, throws a typed ProviderError indicating live transactions are unavailable.
    */
-  submitTransaction?(request: TransactionRequest): Promise<TransactionResult>;
+  submitTransaction?(
+    request: TransactionSubmissionRequest | TransactionRequest
+  ): Promise<TransactionSubmissionResult | TransactionResult>;
 
   /**
    * Optional method to query transaction status from the provider/indexer.
    */
-  getTransactionStatus?(transactionId: string): Promise<TransactionReceipt | null>;
+  getTransactionStatus?(
+    transactionId: string
+  ): Promise<TransactionReceipt | TransactionStatusResult | null>;
 
   /**
    * Optional method to await reliable transaction confirmation from the network.

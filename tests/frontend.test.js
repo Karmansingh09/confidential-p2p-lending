@@ -163,6 +163,12 @@ import {
   getWalletHandshakeState,
 } from '../frontend/src/lib/wallet-handshake-service.ts';
 import { WalletHandshakeError } from '../frontend/src/types/wallet-handshake.ts';
+import {
+  TransactionStatusService,
+  getTransactionStatusService,
+  resetTransactionStatusService,
+} from '../frontend/src/lib/transaction-status-service.ts';
+import { TransactionRequestError } from '../frontend/src/types/transaction-request.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -5956,6 +5962,948 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 54, `Must audit all frontend source files including wallet handshake modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // ===========================================================================
+  // Commit #29: Transaction Request Signing and Submission Boundary Tests
+  // ===========================================================================
+
+  it('Test 304 (Commit #29): Transaction request creation with valid parameters', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const execService = getTransactionExecutionService();
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+
+    assert.ok(request.id.startsWith('tx-req-'));
+    assert.equal(request.loanId, 'loan-002');
+    assert.equal(request.action, 'FUND_LOAN');
+    assert.equal(request.circuitName, 'fundLoan');
+    assert.equal(request.status, 'DRAFT');
+    assert.equal(request.parameters.amount, verifiedLoan.amount);
+    assert.equal(request.parameters.durationBlocks, verifiedLoan.durationBlocks);
+    assert.equal(request.parameters.interestRateBps, verifiedLoan.interestRateBasisPoints);
+    assert.deepEqual(request.parameters.callerPublicKey, DEFAULT_LENDER_PK_BYTES);
+    assert.equal(request.parameters.callerPublicKeyHex, DEFAULT_LENDER_PK_HEX);
+    assert.ok(request.createdAt > 0);
+    assert.ok(request.updatedAt >= request.createdAt);
+  });
+
+  it('Test 305 (Commit #29): Read-only transaction preparation and validation preserves state and returns ready', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = execService.prepareAndValidate(request, verifiedLoan, account);
+
+    assert.equal(result.isReady, true);
+    assert.equal(request.status, 'PREPARED');
+    assert.equal(result.prep.status, 'READY');
+    assert.equal(result.reason, undefined);
+  });
+
+  it('Test 306 (Commit #29): Readiness propagation to signing stage', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const prepResult = execService.prepareAndValidate(request, verifiedLoan, account);
+
+    assert.equal(prepResult.isReady, true);
+    assert.equal(request.status, 'PREPARED');
+  });
+
+  it('Test 307 (Commit #29): Network mismatch blocks transaction request', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const netConfigService = getNetworkConfigService();
+    try {
+      netConfigService.setNetworkConfig({
+        environment: 'TESTNET',
+        networkName: 'Midnight Testnet',
+        networkId: 'midnight-testnet-01',
+        nodeRpcEndpoint: {
+          url: 'https://rpc.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        indexerEndpoint: {
+          url: 'https://indexer.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      });
+
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        mockAccount: {
+          address: 'midnight1lenderaddress00000000000000000000000000000',
+          publicKey: DEFAULT_LENDER_PK_BYTES,
+          publicKeyHex: DEFAULT_LENDER_PK_HEX,
+          role: 'LENDER',
+        },
+        walletNetwork: 'midnight-mainnet',
+        signingAvailable: true,
+        submissionAvailable: true,
+      });
+      adapter.connect('LENDER');
+
+      const sessionService = new WalletSessionService(adapter);
+      const execService = new TransactionExecutionService(sessionService, adapter);
+      const account = {
+        role: 'LENDER',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        connectionStatus: 'CONNECTED',
+      };
+
+      const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+      const result = execService.prepareAndValidate(request, verifiedLoan, account);
+
+      assert.equal(result.isReady, false);
+      assert.equal(result.errorCode, 'NETWORK_MISMATCH');
+      assert.equal(request.status, 'BLOCKED');
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 308 (Commit #29): Unknown network blocks transaction request', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const netConfigService = getNetworkConfigService();
+    try {
+      netConfigService.setNetworkConfig({
+        environment: 'TESTNET',
+        networkName: 'Midnight Testnet',
+        networkId: 'midnight-testnet-01',
+        nodeRpcEndpoint: {
+          url: 'https://rpc.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        indexerEndpoint: {
+          url: 'https://indexer.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      });
+
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        mockAccount: {
+          address: 'midnight1lenderaddress00000000000000000000000000000',
+          publicKey: DEFAULT_LENDER_PK_BYTES,
+          publicKeyHex: DEFAULT_LENDER_PK_HEX,
+          role: 'LENDER',
+        },
+        walletNetwork: null,
+        signingAvailable: true,
+        submissionAvailable: true,
+      });
+      adapter.connect('LENDER');
+
+      const sessionService = new WalletSessionService(adapter);
+      const execService = new TransactionExecutionService(sessionService, adapter);
+      const account = {
+        role: 'LENDER',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        connectionStatus: 'CONNECTED',
+      };
+
+      const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+      const result = execService.prepareAndValidate(request, verifiedLoan, account);
+
+      assert.equal(result.isReady, false);
+      assert.equal(result.errorCode, 'UNKNOWN_NETWORK');
+      assert.equal(request.status, 'BLOCKED');
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 309 (Commit #29): Disconnected wallet blocks transaction request', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'DISCONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = execService.prepareAndValidate(request, verifiedLoan, account);
+
+    assert.equal(result.isReady, false);
+    assert.equal(result.errorCode, 'NOT_CONNECTED');
+    assert.equal(request.status, 'BLOCKED');
+  });
+
+  it('Test 310 (Commit #29): Missing signing capability blocks signing request', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      signingAvailable: false,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const signingResult = await execService.requestSignature(request);
+
+    assert.equal(signingResult.success, false);
+    assert.equal(signingResult.status, 'UNSUPPORTED');
+    assert.equal(request.status, 'UNSUPPORTED');
+  });
+
+  it('Test 311 (Commit #29): Missing submission capability blocks submission request', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      signingAvailable: true,
+      submissionAvailable: false,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.success, false);
+    assert.equal(subResult.status, 'UNSUPPORTED');
+    assert.equal(request.status, 'UNSUPPORTED');
+  });
+
+  it('Test 312 (Commit #29): User rejection at signing stage', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldRejectSignature: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const signingResult = await execService.requestSignature(request);
+
+    assert.equal(signingResult.success, false);
+    assert.equal(signingResult.status, 'REJECTED');
+    assert.equal(signingResult.errorCode, 'USER_REJECTED_SIGNATURE');
+    assert.equal(request.status, 'REJECTED');
+  });
+
+  it('Test 313 (Commit #29): User rejection at submission stage', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldRejectSubmission: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.success, false);
+    assert.equal(subResult.status, 'REJECTED');
+    assert.equal(subResult.errorCode, 'USER_REJECTED_SUBMISSION');
+    assert.equal(request.status, 'REJECTED');
+  });
+
+  it('Test 314 (Commit #29): Provider signing failure handled gracefully', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldFailSigning: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const signingResult = await execService.requestSignature(request);
+
+    assert.equal(signingResult.success, false);
+    assert.equal(signingResult.status, 'FAILED');
+    assert.equal(signingResult.errorCode, 'SIGNING_FAILED');
+    assert.equal(request.status, 'FAILED');
+  });
+
+  it('Test 315 (Commit #29): Provider submission failure handled gracefully', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldFailSubmission: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.success, false);
+    assert.equal(subResult.status, 'FAILED');
+    assert.equal(subResult.errorCode, 'SUBMISSION_FAILED');
+    assert.equal(request.status, 'FAILED');
+  });
+
+  it('Test 316 (Commit #29): Successful provider-confirmed flow updates LoanRegistry', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const registry = createDefaultLoanRegistry();
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      mockTxResult: {
+        success: true,
+        status: 'CONFIRMED',
+        transactionId: 'tx-confirmed-316',
+        blockHeight: 12345n,
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const pipelineResult = await execService.executePipeline(request, verifiedLoan, account, registry);
+
+    assert.equal(pipelineResult.success, true);
+    assert.equal(pipelineResult.status, 'CONFIRMED');
+    assert.equal(pipelineResult.registryUpdated, true);
+
+    const updated = (pipelineResult.updatedRegistry ?? registry).getLoan('loan-002');
+    assert.equal(updated.status, LoanStatus.funded);
+    assert.deepEqual(updated.lenderBytes, DEFAULT_LENDER_PK_BYTES);
+  });
+
+  it('Test 317 (Commit #29 & Anti-Fabrication): Status tracking never infers confirmation from submission', async () => {
+    const statusService = resetTransactionStatusService();
+
+    const tracked = statusService.trackTransaction('tx-sub-001', 'SUBMITTED', {
+      loanId: 'loan-002',
+      action: 'FUND_LOAN',
+    });
+
+    assert.equal(tracked.status, 'SUBMITTED');
+    assert.notEqual(tracked.status, 'CONFIRMED');
+    assert.equal(statusService.getStatus('tx-sub-001')?.status, 'SUBMITTED');
+
+    // Only genuine update transitions status
+    statusService.updateStatus('tx-sub-001', 'CONFIRMED', { blockHeight: 500n });
+    assert.equal(statusService.getStatus('tx-sub-001')?.status, 'CONFIRMED');
+    assert.equal(statusService.getStatus('tx-sub-001')?.blockHeight, 500n);
+  });
+
+  it('Test 318 (Commit #29 & Anti-Fabrication): No synthetic transaction hashes are generated in prototype mode', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const provider = new LocalPrototypeWalletProvider();
+    await provider.connect('LENDER');
+
+    const sessionService = new WalletSessionService(provider);
+    const execService = new TransactionExecutionService(sessionService, provider);
+    const account = {
+      role: 'LENDER',
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x0a',
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.success, false);
+    assert.equal(subResult.status, 'UNSUPPORTED');
+    assert.equal(subResult.transactionId, undefined);
+  });
+
+  it('Test 319 (Commit #29 & Anti-Fabrication): No fake block heights are generated', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const provider = new LocalPrototypeWalletProvider();
+    await provider.connect('LENDER');
+
+    const sessionService = new WalletSessionService(provider);
+    const execService = new TransactionExecutionService(sessionService, provider);
+    const account = {
+      role: 'LENDER',
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x0a',
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.blockHeight, undefined);
+  });
+
+  it('Test 320 (Commit #29 & Anti-Fabrication): No fake confirmations are generated', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      mockTxResult: {
+        success: true,
+        status: 'PENDING',
+        transactionId: 'tx-pending-320',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const subResult = await execService.submitTransaction(request);
+
+    assert.equal(subResult.status, 'SUBMITTED');
+    assert.notEqual(subResult.status, 'CONFIRMED');
+  });
+
+  it('Test 321 (Commit #29 & Anti-Fabrication): No fake signatures are generated when signing is rejected or fails', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldRejectSignature: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const signingResult = await execService.requestSignature(request);
+
+    assert.equal(signingResult.success, false);
+    assert.equal(signingResult.signatureBytes, undefined);
+    assert.equal(signingResult.signatureHex, undefined);
+  });
+
+  it('Test 322 (Commit #29 & Registry Immutability): Blocked preparation leaves LoanRegistry completely untouched', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const registry = createDefaultLoanRegistry();
+    const adapter = new MidnightWalletAdapter();
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'DISCONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = await execService.executePipeline(request, verifiedLoan, account, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.registryUpdated, false);
+    const loan = registry.getLoan('loan-002');
+    assert.equal(loan.status, LoanStatus.requested);
+    assert.equal(loan.lenderBytes, null);
+  });
+
+  it('Test 323 (Commit #29 & Registry Immutability): Rejected signing leaves LoanRegistry completely untouched', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const registry = createDefaultLoanRegistry();
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldRejectSignature: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = await execService.executePipeline(request, verifiedLoan, account, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.registryUpdated, false);
+    const loan = registry.getLoan('loan-002');
+    assert.equal(loan.status, LoanStatus.requested);
+    assert.equal(loan.lenderBytes, null);
+  });
+
+  it('Test 324 (Commit #29 & Registry Immutability): Failed submission leaves LoanRegistry completely untouched', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const registry = createDefaultLoanRegistry();
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      shouldFailSubmission: true,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = await execService.executePipeline(request, verifiedLoan, account, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.registryUpdated, false);
+    const loan = registry.getLoan('loan-002');
+    assert.equal(loan.status, LoanStatus.requested);
+    assert.equal(loan.lenderBytes, null);
+  });
+
+  it('Test 325 (Commit #29 & Registry Immutability): Unconfirmed pending submission leaves LoanRegistry completely untouched', async () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const registry = createDefaultLoanRegistry();
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1lenderaddress00000000000000000000000000000',
+        publicKey: DEFAULT_LENDER_PK_BYTES,
+        publicKeyHex: DEFAULT_LENDER_PK_HEX,
+        role: 'LENDER',
+      },
+      mockTxResult: {
+        success: true,
+        status: 'PENDING',
+        transactionId: 'tx-pending-325',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'LENDER',
+      publicKey: DEFAULT_LENDER_PK_BYTES,
+      publicKeyHex: DEFAULT_LENDER_PK_HEX,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const result = await execService.executePipeline(request, verifiedLoan, account, registry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.status, 'SUBMITTED');
+    assert.equal(result.registryUpdated, false);
+    const loan = registry.getLoan('loan-002');
+    assert.equal(loan.status, LoanStatus.requested);
+    assert.equal(loan.lenderBytes, null);
+  });
+
+  it('Test 326 (Commit #29): Role authorization guard: borrower cannot fund own loan', () => {
+    const verifiedLoan = MOCK_LOANS['loan-002'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1borroweraddress00000000000000000000000000',
+        publicKey: verifiedLoan.borrowerBytes,
+        publicKeyHex: verifiedLoan.borrower,
+        role: 'BORROWER',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.connect('BORROWER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'BORROWER',
+      publicKey: verifiedLoan.borrowerBytes,
+      publicKeyHex: verifiedLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(verifiedLoan, account, 'FUND_LOAN', 'loan-002');
+    const prepResult = execService.prepareAndValidate(request, verifiedLoan, account);
+
+    assert.equal(prepResult.isReady, false);
+    assert.equal(prepResult.errorCode, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 327 (Commit #29): Role authorization guard: unauthorized third-party cannot repay or settle loan', () => {
+    const fundedLoan = MOCK_LOANS['loan-003'];
+    const adapter = new MidnightWalletAdapter();
+    const thirdPartyPk = new Uint8Array(32).fill(88);
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1thirdpartyaddress00000000000000000000000',
+        publicKey: thirdPartyPk,
+        publicKeyHex: '0x58',
+        role: 'PARTICIPANT',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.connect('PARTICIPANT');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'PARTICIPANT',
+      publicKey: thirdPartyPk,
+      publicKeyHex: '0x58',
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(fundedLoan, account, 'REPAY_LOAN', 'loan-003');
+    const prepResult = execService.prepareAndValidate(request, fundedLoan, account);
+
+    assert.equal(prepResult.isReady, false);
+    assert.equal(prepResult.errorCode, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 328 (Commit #29): Terminal state guard: settled loan cannot be repaid, funded, or settled again', () => {
+    const settledLoan = MOCK_LOANS['loan-005'];
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1borroweraddress00000000000000000000000000',
+        publicKey: settledLoan.borrowerBytes,
+        publicKeyHex: settledLoan.borrower,
+        role: 'BORROWER',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.connect('BORROWER');
+
+    const sessionService = new WalletSessionService(adapter);
+    const execService = new TransactionExecutionService(sessionService, adapter);
+    const account = {
+      role: 'BORROWER',
+      publicKey: settledLoan.borrowerBytes,
+      publicKeyHex: settledLoan.borrower,
+      connectionStatus: 'CONNECTED',
+    };
+
+    const request = execService.createTransactionRequest(settledLoan, account, 'SETTLE_LOAN', 'loan-005');
+    const prepResult = execService.prepareAndValidate(request, settledLoan, account);
+
+    assert.equal(prepResult.isReady, false);
+    assert.equal(prepResult.errorCode, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 329 (Commit #29): Prototype provider honesty: explicitly throws UNSUPPORTED_OPERATION on signing and submission', async () => {
+    const provider = new LocalPrototypeWalletProvider();
+    await provider.connect('LENDER');
+
+    const dummySigningReq = {
+      requestId: 'test-req',
+      loanId: 'loan-001',
+      action: 'FUND_LOAN',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      parameters: {
+        loanId: 'loan-001',
+        action: 'FUND_LOAN',
+        circuitName: 'fundLoan',
+        callerPublicKey: PROTOTYPE_LENDER_PK,
+        callerPublicKeyHex: '0x0a',
+        amount: 1000n,
+        interestRateBps: 500n,
+        durationBlocks: 100n,
+      },
+      createdAt: Date.now(),
+    };
+
+    await assert.rejects(
+      async () => provider.requestSignature(dummySigningReq),
+      (err) => err.code === 'UNSUPPORTED_OPERATION'
+    );
+
+    await assert.rejects(
+      async () => provider.submitTransaction({ loanId: 'loan-001', action: 'FUND', callerPublicKey: PROTOTYPE_LENDER_PK }),
+      (err) => err.code === 'UNSUPPORTED_OPERATION'
+    );
+
+    await assert.rejects(
+      async () => provider.getTransactionStatus('tx-123'),
+      (err) => err.code === 'UNSUPPORTED_OPERATION'
+    );
+  });
+
+  it('Test 330 (Commit #29): types/index.ts re-exports all transaction request domain models and errors', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('TransactionRequestStatus'));
+    assert.ok(content.includes('TransactionSigningStatus'));
+    assert.ok(content.includes('TransactionSubmissionStatus'));
+    assert.ok(content.includes('TrackedTransactionStatus'));
+    assert.ok(content.includes('TransactionRequestErrorCode'));
+    assert.ok(content.includes('TransactionRequestParameters'));
+    assert.ok(content.includes('TransactionSigningRequest'));
+    assert.ok(content.includes('TransactionSigningResult'));
+    assert.ok(content.includes('TransactionSubmissionRequest'));
+    assert.ok(content.includes('TransactionSubmissionResult'));
+    assert.ok(content.includes('TransactionStatusResult'));
+    assert.ok(content.includes('TransactionRequestError'));
+    assert.ok(content.includes('TransactionRequestResult'));
+  });
+
+  it('Test 331 (Commit #29 & Strict Privacy Audit): All frontend source files (>= 56 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 56, `Must audit all frontend source files including transaction request modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

@@ -1951,3 +1951,157 @@ The `WalletSessionPanel` component renders real-time handshake and network diagn
 4. **Contract Immutability**: `contracts/src/index.compact` remains 100% untouched and authoritative.
 5. **Strict Zero-Knowledge Isolation**: All 68+ frontend source files pass automated static analysis verifying zero occurrences of prohibited underwriting credentials or private financial terms.
 
+---
+
+## 29. Transaction Request Signing & Network Submission Boundary
+
+Commit #29 implements the production-grade, asynchronous **Transaction Request Signing and Submission Boundary** (`frontend/src/types/transaction-request.ts`, `frontend/src/lib/transaction-status-service.ts`, `frontend/src/lib/transaction-execution-service.ts`, `frontend/src/lib/wallet-provider.ts`, `frontend/src/lib/midnight-provider.ts`, `frontend/src/lib/midnight-wallet-adapter.ts`).
+
+This milestone establishes a formal, multi-stage transaction execution pipeline that cleanly decouples preparation, cryptographic signing, node submission, and post-submission lifecycle tracking, eliminating any single-step "execute" shortcuts or synthetic confirmations.
+
+```
++───────────────────────────────────────────────────────────────────────────────────────────+
+|                 5-STAGE TRANSACTION REQUEST LIFECYCLE PIPELINE                             |
++───────────────────────────────────────────────────────────────────────────────────────────+
+|                                                                                           |
+|  [ User Lifecycle Intent ] (e.g. Fund Loan / Repay / Settle)                              |
+|            │                                                                              |
+|            ▼                                                                              |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 1: TRANSACTION CREATION (DRAFT) │                                               |
+|  │  - createTransactionRequest()          │                                               |
+|  │  - Action to circuit mapping (1:1)     │                                               |
+|  │  - Caller public identity binding      │                                               |
+|  └────────────────────────────────────────┘                                               |
+|            │                                                                              |
+|            ▼                                                                              |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 2: PREPARATION & VALIDATION     │                                               |
+|  │  - prepareAndValidate()                │                                               |
+|  │  - Read-only guard & capability check  │                                               |
+|  │  - Network compatibility verification  │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|           ┌──────────┴──────────┐                                                         |
+|           ▼                     ▼                                                         |
+|     [BLOCKED / FAILED]     [PREPARED / READY]                                             |
+|     (Registry untouched)        │                                                         |
+|                                 ▼                                                         |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 3: WALLET SIGNING REQUEST       │                                               |
+|  │  - requestSignature() via provider     │                                               |
+|  │  - User enclave approval / rejection   │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|           ┌──────────┴──────────┐                                                         |
+|           ▼                     ▼                                                         |
+|     [REJECTED / FAILED]    [SIGNED]                                                       |
+|     (Registry untouched)        │                                                         |
+|                                 ▼                                                         |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 4: TRANSACTION SUBMISSION       │                                               |
+|  │  - submitTransaction() via provider    │                                               |
+|  │  - Relay to node RPC endpoint          │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|           ┌──────────┴──────────┐                                                         |
+|           ▼                     ▼                                                         |
+|     [REJECTED / FAILED]    [SUBMITTED]                                                    |
+|     (Registry untouched)        │                                                         |
+|                                 ▼                                                         |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 5: STATUS TRACKING & CONFIRM    │                                               |
+|  │  - TransactionStatusService            │                                               |
+|  │  - Invariant: SUBMITTED != CONFIRMED   │                                               |
+|  │  - LoanRegistry MUTATED ONLY ON        │                                               |
+|  │    GENUINE PROVIDER CONFIRMATION       │                                               |
+|  └────────────────────────────────────────┘                                               |
++───────────────────────────────────────────────────────────────────────────────────────────+
+```
+
+### 29.1 The Five-Stage Pipeline Architecture
+
+1. **Stage 1: Application Action to Transaction Request (`DRAFT`)**:
+   - The user selects a lifecycle action in the UI.
+   - `createTransactionRequest(loan, account, action, loanId)` creates an un-executed, standardized `TransactionRequest` object in `DRAFT` status with public parameters and caller public identity.
+2. **Stage 2: Read-Only Transaction Preparation (`PREPARED` / `BLOCKED`)**:
+   - `prepareAndValidate(request, loan, account)` evaluates Compact contract guards (`canFundLoan`, `canRepayLoan`, `canSettleLoan`), wallet network compatibility (`MATCH`), and capability prerequisites without modifying state.
+   - If guards or capabilities fail, transitions to `BLOCKED` with typed error code (`GUARD_VALIDATION_FAILED`, `NETWORK_MISMATCH`, `NOT_CONNECTED`, `UNKNOWN_NETWORK`).
+3. **Stage 3: Wallet Signing Request (`SIGNING` $\to$ `SIGNED` / `REJECTED` / `FAILED`)**:
+   - `requestSignature(request)` delegates to the active `WalletProvider.requestSignature()`.
+   - In real wallet mode (Lace/Midnight), the wallet connector prompts the user to cryptographically sign the transaction.
+   - If user cancels in wallet UI, returns typed `USER_REJECTED_SIGNATURE` (`status: 'REJECTED'`).
+   - In prototype mode, throws typed `ProviderError('UNSUPPORTED_OPERATION')` without generating synthetic signatures.
+4. **Stage 4: Network Transaction Submission (`SUBMITTING` $\to$ `SUBMITTED` / `FAILED`)**:
+   - `submitTransaction(request, signingResult)` dispatches the signed payload to the provider for network broadcast.
+   - If user rejects at submission prompt, returns typed `USER_REJECTED_SUBMISSION` (`status: 'REJECTED'`).
+   - If provider network submission fails, returns `status: 'FAILED'`.
+   - On successful broadcast, transitions to `status: 'SUBMITTED'`.
+5. **Stage 5: Transaction Status Tracking & State Mutation (`CONFIRMED`)**:
+   - Managed via `TransactionStatusService` (`frontend/src/lib/transaction-status-service.ts`).
+   - **Crucial Anti-Fabrication Invariant**: A transaction in `SUBMITTED` status is **never inferred or assumed to be `CONFIRMED`**.
+   - The central `LoanRegistry` is mutated **only and strictly when the provider returns genuine confirmation** (`status: 'CONFIRMED'`).
+   - Blocked, rejected, failed, unsupported, or unconfirmed pending transactions leave the central `LoanRegistry` completely untouched.
+
+### 29.2 Standardized Transaction Request Domain Models
+
+Implemented in `frontend/src/types/transaction-request.ts`:
+
+- `TransactionRequestStatus`: `'DRAFT' | 'PREPARING' | 'PREPARED' | 'SIGNING' | 'SIGNED' | 'SUBMITTING' | 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'FAILED' | 'BLOCKED' | 'UNSUPPORTED'`
+- `TransactionSigningStatus`: `'UNSIGNED' | 'PENDING' | 'SIGNED' | 'REJECTED' | 'FAILED' | 'UNSUPPORTED'`
+- `TransactionSubmissionStatus`: `'NOT_SUBMITTED' | 'SUBMITTING' | 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'FAILED' | 'UNSUPPORTED'`
+- `TrackedTransactionStatus`: `'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED' | 'REJECTED'`
+- `TransactionRequestErrorCode`: Typed error identifiers for all edge cases (`WALLET_NOT_CONNECTED`, `NETWORK_MISMATCH`, `UNKNOWN_NETWORK`, `SIGNING_UNAVAILABLE`, `SUBMISSION_UNAVAILABLE`, `USER_REJECTED_SIGNATURE`, `USER_REJECTED_SUBMISSION`, `SIGNING_FAILED`, `SUBMISSION_FAILED`, `GUARD_VALIDATION_FAILED`, `CONTRACT_ERROR`, `UNSUPPORTED_OPERATION`).
+- `TransactionSigningRequest`, `TransactionSigningResult`: Standardized types encapsulating signing payloads and public signatures.
+- `TransactionSubmissionRequest`, `TransactionSubmissionResult`: Encapsulating network broadcast payloads and tracking references.
+- `TransactionStatusResult`: Status tracking outcome with optional genuine block height.
+- `TransactionRequestResult`: End-to-end outcome including pipeline status, receipt, and updated registry.
+
+### 29.3 Wallet Provider Interface Evolution
+
+The core `WalletProvider` interface (`frontend/src/lib/wallet-provider.ts`) was extended to support distinct signing, submission, and status polling:
+
+```typescript
+export interface WalletProvider {
+  // ... existing connection, identity, network methods ...
+  requestSignature?(request: TransactionSigningRequest): Promise<TransactionSigningResult>;
+  submitTransaction?(
+    request: TransactionSubmissionRequest | LegacyTransactionSubmission
+  ): Promise<TransactionSubmissionResult | LegacyTransactionResult>;
+  getTransactionStatus?(transactionId: string): Promise<TransactionStatusResult>;
+}
+```
+
+- **`LocalPrototypeWalletProvider`**:
+  Explicitly rejects signing, submission, and status queries with typed `ProviderError('UNSUPPORTED_OPERATION')`, maintaining absolute prototype honesty and preventing mock blockchain hallucination.
+- **`MidnightWalletAdapter`**:
+  Implements `requestSignature`, `submitTransaction`, and `getTransactionStatus` with dual-mode support: delegates to genuine connector methods when available, and provides complete backward compatibility with mock testing connectors.
+
+### 29.4 Anti-Fabrication & Ledger Safety Invariants
+
+1. **Zero Synthetic Hashes**: No fake transaction hashes (`0x...` or UUID hashes) are generated in prototype mode.
+2. **Distinct Submission vs. Confirmation**: Submission to the network does not imply confirmation. Status remains `SUBMITTED` until genuine network proof or block inclusion is confirmed.
+3. **No Fake Block Heights**: Block heights are never fabricated in prototype or mock failure paths.
+4. **No Fake Signatures**: Rejection or failure at the signing stage results in `signatureBytes: undefined` and `signatureHex: undefined`.
+5. **LoanRegistry Immutability**: `LoanRegistry` is never mutated if any stage in the pipeline is blocked, rejected, failed, unsupported, or pending unconfirmed.
+
+### 29.5 User Interface: 5-Stage Transaction Pipeline Ribbon
+
+The `TransactionReviewPanel` (`frontend/src/components/TransactionReviewPanel.tsx`) renders the real-time 5-stage pipeline ribbon with dedicated test-id `transaction-pipeline-ribbon`:
+
+- **Stage Chips**:
+  1. `1. Draft`
+  2. `2. Prepared`
+  3. `3. Signing`
+  4. `4. Submitted`
+  5. `5. Confirmed`
+- **Dynamic State Indicators**:
+  Active stage is highlighted in primary blue/indigo; completed stages display green checks; rejected or blocked stages display high-visibility badges with detailed technical disclosures.
+- **Action Readiness Integration**:
+  The review panel surfaces precise blocking reasons (such as `NETWORK_MISMATCH` or `USER_REJECTED_SIGNATURE`) directly in the confirmation card.
+
+### 29.6 Zero-Knowledge Privacy Invariants
+
+All transaction request parameters, signing payloads, and status tracking descriptors operate strictly on public loan parameters (`amount`, `interestRateBasisPoints`, `durationBlocks`, public keys, agreement IDs). Automated static analysis verifies that across all 56+ frontend modules, zero occurrences of forbidden underwriting terms, witness variables, or private financial credentials exist.
+
+

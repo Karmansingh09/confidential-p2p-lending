@@ -11,6 +11,13 @@ import type {
   TransactionResult,
 } from '../types/transaction.ts';
 import type { TransactionReceipt } from '../types/transaction-execution.ts';
+import type {
+  TransactionSigningRequest,
+  TransactionSigningResult,
+  TransactionSubmissionRequest,
+  TransactionSubmissionResult,
+  TransactionStatusResult,
+} from '../types/transaction-request.ts';
 import {
   WalletAdapterError,
   type WalletProviderKind,
@@ -287,15 +294,25 @@ export class MidnightWalletAdapter implements WalletProvider {
   }
 
   /**
-   * Submits an on-chain contract transaction.
+   * Requests transaction signing from the connected wallet.
    * ANTI-FABRICATION GUARANTEE:
-   * Throws typed UNSUPPORTED_OPERATION rather than generating fake transaction hashes or block heights.
+   * Throws typed UNSUPPORTED_OPERATION rather than generating fake signatures.
    */
-  async submitTransaction(request: TransactionRequest): Promise<TransactionResult> {
+  async requestSignature(
+    request: TransactionSigningRequest
+  ): Promise<TransactionSigningResult> {
     if (this.status !== 'CONNECTED') {
       throw new WalletAdapterError(
         'CONNECTION_FAILED',
-        'Cannot submit transaction: Wallet is not connected.'
+        'Cannot request signature: Wallet is not connected.'
+      );
+    }
+
+    const caps = this.getCapabilities();
+    if (!caps.SIGN_TRANSACTION) {
+      throw new WalletAdapterError(
+        'UNSUPPORTED_OPERATION',
+        'Connected wallet does not support transaction signing.'
       );
     }
 
@@ -307,11 +324,79 @@ export class MidnightWalletAdapter implements WalletProvider {
           'User rejected transaction signing in wallet.'
         );
       }
+      if (mockObj.shouldFailSigning) {
+        throw new WalletAdapterError(
+          'CONNECTION_FAILED',
+          'Signature generation failed in wallet runtime.'
+        );
+      }
+      if (mockObj.mockSignatureResult) {
+        return mockObj.mockSignatureResult as TransactionSigningResult;
+      }
+      if (
+        mockObj.mockSignatureBytes ||
+        mockObj.mockSignatureHex ||
+        mockObj.allowSigning ||
+        mockObj.mockAccount ||
+        mockObj.mockTxResult ||
+        mockObj.shouldFailSubmission ||
+        mockObj.shouldRejectSubmission
+      ) {
+        return {
+          success: true,
+          status: 'SIGNED',
+          signatureBytes: (mockObj.mockSignatureBytes as Uint8Array) ?? new Uint8Array(64).fill(1),
+          signatureHex: (mockObj.mockSignatureHex as string) ?? '0xmock_signature',
+          signedAt: Date.now(),
+        };
+      }
+    }
+
+    throw new WalletAdapterError(
+      'UNSUPPORTED_OPERATION',
+      'On-chain transaction signing is unavailable until live Midnight wallet connector SDK is integrated.'
+    );
+  }
+
+  /**
+   * Submits an on-chain contract transaction.
+   * ANTI-FABRICATION GUARANTEE:
+   * Throws typed UNSUPPORTED_OPERATION rather than generating fake transaction hashes or block heights.
+   */
+  async submitTransaction(
+    request: TransactionSubmissionRequest | TransactionRequest
+  ): Promise<TransactionSubmissionResult | TransactionResult> {
+    if (this.status !== 'CONNECTED') {
+      throw new WalletAdapterError(
+        'CONNECTION_FAILED',
+        'Cannot submit transaction: Wallet is not connected.'
+      );
+    }
+
+    const caps = this.getCapabilities();
+    if (!caps.SUBMIT_TRANSACTION) {
+      throw new WalletAdapterError(
+        'UNSUPPORTED_OPERATION',
+        'Connected wallet does not support transaction submission.'
+      );
+    }
+
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (mockObj.shouldRejectSubmission || mockObj.shouldRejectSignature) {
+        throw new WalletAdapterError(
+          'USER_REJECTED',
+          'User rejected transaction submission in wallet.'
+        );
+      }
       if (mockObj.shouldFailSubmission) {
         throw new WalletAdapterError(
           'CONNECTION_FAILED',
           'Network submission failed on RPC endpoint.'
         );
+      }
+      if (mockObj.mockSubmissionResult) {
+        return mockObj.mockSubmissionResult as TransactionSubmissionResult;
       }
       if (mockObj.mockTxResult) {
         return mockObj.mockTxResult as TransactionResult;
@@ -327,7 +412,9 @@ export class MidnightWalletAdapter implements WalletProvider {
   /**
    * Queries transaction status from provider or testing mock.
    */
-  async getTransactionStatus(transactionId: string): Promise<TransactionReceipt | null> {
+  async getTransactionStatus(
+    transactionId: string
+  ): Promise<TransactionReceipt | TransactionStatusResult | null> {
     if (this.status !== 'CONNECTED') {
       return null;
     }
@@ -335,7 +422,10 @@ export class MidnightWalletAdapter implements WalletProvider {
     if (this.mockConnector && typeof this.mockConnector === 'object') {
       const mockObj = this.mockConnector as Record<string, unknown>;
       if (typeof mockObj.mockGetStatus === 'function') {
-        return (mockObj.mockGetStatus as (txId: string) => Promise<TransactionReceipt | null>)(transactionId);
+        return (mockObj.mockGetStatus as (txId: string) => Promise<TransactionReceipt | TransactionStatusResult | null>)(transactionId);
+      }
+      if (mockObj.mockStatusResult) {
+        return mockObj.mockStatusResult as TransactionStatusResult;
       }
     }
 

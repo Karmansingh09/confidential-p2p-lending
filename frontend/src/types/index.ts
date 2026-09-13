@@ -187,3 +187,20 @@ export {
   type WalletHandshakeRequest,
   type WalletHandshakeResult,
 } from './wallet-handshake.ts';
+
+export {
+  TransactionRequestError,
+  type TransactionRequestStatus,
+  type TransactionSigningStatus,
+  type TransactionSubmissionStatus,
+  type TrackedTransactionStatus,
+  type TransactionRequestErrorCode,
+  type TransactionRequestParameters,
+  type TransactionSigningRequest,
+  type TransactionSigningResult,
+  type TransactionSubmissionRequest,
+  type TransactionSubmissionResult,
+  type TransactionStatusResult,
+  type TransactionRequest as TransactionLifecycleRequest,
+  type TransactionRequestResult,
+} from './transaction-request.ts';

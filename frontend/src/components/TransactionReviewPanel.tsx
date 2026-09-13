@@ -58,9 +58,12 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
       : callerHex;
 
   const getStatusBadge = () => {
+    if (isExecuting) {
+      return { text: 'SIGNING / SUBMITTING...', bg: '#1e3a8a', color: '#93c5fd' };
+    }
     switch (prep.status) {
       case 'READY':
-        return { text: 'READY TO EXECUTE', bg: '#14532d', color: '#86efac' };
+        return { text: 'READY TO SIGN & SUBMIT', bg: '#14532d', color: '#86efac' };
       case 'BLOCKED':
         return { text: 'BLOCKED BY GUARDS', bg: '#7f1d1d', color: '#fca5a5' };
       case 'UNSUPPORTED':
@@ -203,6 +206,40 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
             {netContext.networkName}
           </div>
         </div>
+      </div>
+
+      {/* 5-Stage Boundary Pipeline Chips */}
+      <div
+        style={{
+          background: '#1e293b',
+          padding: '10px 14px',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '8px',
+          alignItems: 'center',
+        }}
+        data-testid="transaction-pipeline-ribbon"
+      >
+        <span style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>
+          Boundary Pipeline:
+        </span>
+        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: isReady ? '#14532d' : '#7f1d1d', color: isReady ? '#86efac' : '#fca5a5' }}>
+          1. Validated
+        </span>
+        <span style={{ fontSize: '11px', color: '#64748b' }}>➔</span>
+        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: providerCaps.SIGN_TRANSACTION ? '#1e3a8a' : '#475569', color: providerCaps.SIGN_TRANSACTION ? '#93c5fd' : '#cbd5e1' }}>
+          2. Sign {providerCaps.SIGN_TRANSACTION ? '(Available)' : '(Unavailable)'}
+        </span>
+        <span style={{ fontSize: '11px', color: '#64748b' }}>➔</span>
+        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: providerCaps.SUBMIT_TRANSACTION ? '#1e3a8a' : '#475569', color: providerCaps.SUBMIT_TRANSACTION ? '#93c5fd' : '#cbd5e1' }}>
+          3. Submit {providerCaps.SUBMIT_TRANSACTION ? '(Available)' : '(Unavailable)'}
+        </span>
+        <span style={{ fontSize: '11px', color: '#64748b' }}>➔</span>
+        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#334155', color: '#cbd5e1' }}>
+          4. Status Tracking
+        </span>
       </div>
 
       {/* Capabilities Comparison */}

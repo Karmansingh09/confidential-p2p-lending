@@ -139,7 +139,15 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #28)
+### Current Status & Features (Commit #29)
+- **Transaction Request Signing & Network Submission Boundary (Commit #29)**:
+  - **5-Stage Transaction Request Lifecycle Pipeline**: Establishes formal end-to-end asynchronous transaction pipeline: `Application Action (Draft)` $\to$ `Transaction Preparation & Validation` $\to$ `Wallet Signing Request` $\to$ `Network Transaction Submission` $\to$ `Transaction Status Tracking`.
+  - **Standardized Domain Models**: Introduces comprehensive request and result models (`frontend/src/types/transaction-request.ts`) covering `TransactionRequest`, `TransactionSigningRequest`, `TransactionSigningResult`, `TransactionSubmissionRequest`, `TransactionSubmissionResult`, `TransactionStatusResult`, and typed domain error codes (`TransactionRequestError`).
+  - **Asynchronous Status Tracking Service**: Implements `TransactionStatusService` (`frontend/src/lib/transaction-status-service.ts`) ensuring `SUBMITTED` transactions are **never inferred or assumed to be `CONFIRMED`** without genuine provider verification.
+  - **Wallet Provider Interface Evolution**: Extends `WalletProvider` with distinct `requestSignature`, `submitTransaction`, and `getTransactionStatus` methods; prototype provider explicitly throws typed `UNSUPPORTED_OPERATION` without generating fake signatures or synthetic transaction hashes.
+  - **LoanRegistry Mutation Integrity**: `LoanRegistry` is strictly preserved and updated **only upon genuine provider transaction confirmation**. All blocked, rejected, failed, unsupported, or pending unconfirmed states leave the registry completely untouched.
+  - **5-Stage Transaction Pipeline Ribbon UI**: `TransactionReviewPanel.tsx` visualizes real-time execution stages (`1. Draft`, `2. Prepared`, `3. Signing`, `4. Submitted`, `5. Confirmed`) with dynamic chip state indicators and granular error disclosures.
+  - **386 Passing Automated Tests**: 100% test pass rate across 8 test suites verifying full 5-stage pipeline, user rejection handling, provider failure handling, registry immutability, anti-fabrication invariants, and strict privacy isolation.
 - **Wallet Connection Handshake & Network-Aware Transaction Preparation (Commit #28)**:
   - **8-Stage Handshake State Machine**: Implements `WalletHandshakeService` (`frontend/src/lib/wallet-handshake-service.ts`) orchestrating connector detection (`NOT_DETECTED`, `DETECTED`), connection request (`CONNECTING`), connection establishment (`CONNECTED`), public identity resolution (`identityResolved`), network identification (`walletNetwork`), network compatibility evaluation (`networkCompatibility`), dynamic capability verification (`capabilities`), and final handshake status (`READY`, `REJECTED`, `FAILED`, `UNSUPPORTED`).
   - **Strict Network Compatibility Evaluation**: Implements `evaluateNetworkCompatibility` (`frontend/src/lib/wallet-network-compatibility.ts`) establishing that `UNKNOWN` network reporting is never treated as a `MATCH`, and network mismatches strictly block transaction preparation with typed reason `NETWORK_MISMATCH`.
@@ -231,5 +239,5 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Wallet Handshake Boundary** (Commit #28). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `WalletHandshakeService`, `TransactionExecutionService`, and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Wallet Transaction Signing/Submission Boundary** (Commit #29). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `TransactionExecutionService`, `WalletHandshakeService`, `TransactionStatusService`, and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
 

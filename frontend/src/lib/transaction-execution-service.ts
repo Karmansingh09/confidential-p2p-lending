@@ -25,6 +25,31 @@ import type {
   ConfirmationState,
 } from '../types/transaction-execution.ts';
 import { TransactionExecutionError } from '../types/transaction-execution.ts';
+import type {
+  TransactionRequestStatus,
+  TransactionSigningStatus,
+  TransactionSubmissionStatus,
+  TrackedTransactionStatus,
+  TransactionRequestErrorCode,
+  TransactionRequestParameters,
+  TransactionSigningRequest,
+  TransactionSigningResult,
+  TransactionSubmissionRequest,
+  TransactionSubmissionResult,
+  TransactionStatusResult,
+  TransactionRequest,
+  TransactionRequestResult,
+} from '../types/transaction-request.ts';
+import { TransactionRequestError } from '../types/transaction-request.ts';
+import {
+  TransactionStatusService,
+  getTransactionStatusService,
+} from './transaction-status-service.ts';
+import type { TransactionPreparation } from '../types/transaction-orchestration.ts';
+
+function bytesToHex(bytes: Uint8Array): string {
+  return '0x' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * TransactionExecutionService establishes the real-wallet transaction execution boundary.
@@ -361,6 +386,51 @@ export class TransactionExecutionService {
       return { result };
     }
 
+    // -------------------------------------------------------------------------
+    // Phase 4: Wallet Signing Request (if supported by provider)
+    // -------------------------------------------------------------------------
+    if (provider.requestSignature && prep.callerPublicKey) {
+      const signingReq: TransactionSigningRequest = {
+        requestId: `req-${Date.now()}`,
+        loanId,
+        action,
+        circuitName,
+        callerPublicKey: prep.callerPublicKey,
+        parameters: {
+          loanId,
+          action,
+          circuitName,
+          callerPublicKey: prep.callerPublicKey,
+          callerPublicKeyHex: prep.callerPublicKeyHex,
+          amount: loan.amount,
+          interestRateBps: (loan as any).interestRateBps ?? loan.interestRateBasisPoints,
+          durationBlocks: loan.durationBlocks,
+        },
+        createdAt: Date.now(),
+      };
+
+      try {
+        const signingResult = await provider.requestSignature(signingReq);
+        if (!signingResult.success) {
+          const result: TransactionExecutionResult = {
+            success: false,
+            status: signingResult.status === 'REJECTED' ? 'REJECTED' : 'FAILED',
+            action,
+            circuitName,
+            loanId,
+            message: signingResult.error ?? 'Transaction signing failed or was rejected.',
+            errorCode: signingResult.status === 'REJECTED' ? 'REJECTED_SIGNATURE' : 'PROVIDER_ERROR',
+            error: signingResult.error,
+            registryUpdated: false,
+            confirmationState: 'NOT_CONFIRMED',
+          };
+          return { result };
+        }
+      } catch (err: unknown) {
+        return this.mapProviderException(err, action, circuitName, loanId);
+      }
+    }
+
     const txAction = action === 'FUND_LOAN' ? 'FUND' : action === 'REPAY_LOAN' ? 'REPAY' : 'SETTLE';
 
     try {
@@ -369,6 +439,20 @@ export class TransactionExecutionService {
         action: txAction,
         callerPublicKey: prep.callerPublicKey,
       });
+
+      if (txResult.transactionId) {
+        const statusService = getTransactionStatusService();
+        statusService.trackTransaction(
+          txResult.transactionId,
+          txResult.status === 'CONFIRMED' ? 'CONFIRMED' : 'SUBMITTED',
+          {
+            loanId,
+            action,
+            blockHeight: txResult.blockHeight,
+            error: txResult.error,
+          }
+        );
+      }
 
       // Handle Provider PENDING Submission
       if (txResult.status === 'PENDING') {
@@ -452,7 +536,9 @@ export class TransactionExecutionService {
   /**
    * Queries transaction status via provider if supported.
    */
-  async getTransactionStatus(transactionId: string): Promise<TransactionReceipt | null> {
+  async getTransactionStatus(
+    transactionId: string
+  ): Promise<TransactionReceipt | TransactionStatusResult | null> {
     const provider = this.getProvider();
     if (provider.getTransactionStatus) {
       return provider.getTransactionStatus(transactionId);
@@ -560,6 +646,573 @@ export class TransactionExecutionService {
       confirmationState: 'NOT_CONFIRMED',
     };
     return { result };
+  }
+
+  /**
+   * Creates an un-executed, standardized TransactionRequest instance in DRAFT status.
+   * PRIVACY INVARIANT: Operates strictly on public loan parameters and public account identity.
+   */
+  createTransactionRequest(
+    loan: LoanDetailsModel,
+    account: NetworkAccount | WalletAccountIdentity | null,
+    action: LifecycleTransactionAction,
+    loanId?: string
+  ): TransactionRequest {
+    const circuitName = getCircuitNameForAction(action);
+    const callerPk = account?.publicKey ?? null;
+    const callerHex = account?.publicKeyHex ?? (callerPk ? bytesToHex(callerPk) : null);
+    const effectiveLoanId = loanId ?? (loan as any).loanId ?? (loan as any).id ?? 'active-loan';
+    const id = `tx-req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const now = Date.now();
+
+    const parameters: TransactionRequestParameters = {
+      loanId: effectiveLoanId,
+      action,
+      circuitName,
+      callerPublicKey: callerPk,
+      callerPublicKeyHex: callerHex,
+      amount: loan.amount,
+      interestRateBps: (loan as any).interestRateBps ?? loan.interestRateBasisPoints,
+      durationBlocks: loan.durationBlocks,
+    };
+
+    return {
+      id,
+      loanId: effectiveLoanId,
+      action,
+      circuitName,
+      status: 'DRAFT',
+      parameters,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * Stage 2: Read-Only Transaction Preparation & Validation.
+   * Validates account context, network compatibility, connector availability,
+   * Compact contract guards, and required capabilities without mutating state.
+   */
+  prepareAndValidate(
+    request: TransactionRequest,
+    loan: LoanDetailsModel,
+    account: NetworkAccount | WalletAccountIdentity | null
+  ): {
+    isReady: boolean;
+    reason?: string;
+    errorCode?: TransactionRequestErrorCode;
+    prep: TransactionPreparation;
+  } {
+    request.status = 'PREPARING';
+    request.updatedAt = Date.now();
+
+    const provider = this.getProvider();
+    const session = this.sessionService.getSession();
+
+    // 1. Session Connection Check
+    if (session.status !== 'CONNECTED' || !session.account) {
+      request.status = 'BLOCKED';
+      request.error = 'Wallet is disconnected.';
+      request.errorCode = 'NOT_CONNECTED';
+      request.updatedAt = Date.now();
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      return { isReady: false, reason: 'Wallet is disconnected.', errorCode: 'NOT_CONNECTED', prep };
+    }
+
+    // 2. Network Config Check
+    const netConfig = getNetworkConfigService().getNetworkConfig();
+    const isNetworkBlocked =
+      netConfig.status !== 'CONFIGURED' ||
+      (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url));
+
+    if (isNetworkBlocked) {
+      request.status = 'BLOCKED';
+      request.error = 'Network configuration required.';
+      request.errorCode = 'UNKNOWN_NETWORK';
+      request.updatedAt = Date.now();
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      return { isReady: false, reason: 'Network configuration required.', errorCode: 'UNKNOWN_NETWORK', prep };
+    }
+
+    // 3. Wallet Network Compatibility Check
+    if (netConfig.environment !== 'LOCAL') {
+      const walletNetwork =
+        typeof provider.getReportedNetworkId === 'function' ? provider.getReportedNetworkId() : null;
+      const comp = evaluateNetworkCompatibility(netConfig, walletNetwork);
+      if (comp.compatibility === 'MISMATCH') {
+        request.status = 'BLOCKED';
+        request.error = comp.reason;
+        request.errorCode = 'NETWORK_MISMATCH';
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        return { isReady: false, reason: comp.reason, errorCode: 'NETWORK_MISMATCH', prep };
+      }
+      if (comp.compatibility === 'UNKNOWN') {
+        request.status = 'BLOCKED';
+        request.error = comp.reason;
+        request.errorCode = 'UNKNOWN_NETWORK';
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        return { isReady: false, reason: comp.reason, errorCode: 'UNKNOWN_NETWORK', prep };
+      }
+    }
+
+    // 4. Connector Detection Check
+    const isConnectorMissing =
+      !provider.isPrototype &&
+      provider.getDetectionStatus &&
+      (provider.getDetectionStatus() === 'NOT_DETECTED' ||
+        provider.getDetectionStatus() === 'UNSUPPORTED');
+
+    if (isConnectorMissing) {
+      request.status = 'UNSUPPORTED';
+      request.error = 'Wallet connector not detected.';
+      request.errorCode = 'UNSUPPORTED_PROVIDER';
+      request.updatedAt = Date.now();
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      return { isReady: false, reason: 'Wallet connector not detected.', errorCode: 'UNSUPPORTED_PROVIDER', prep };
+    }
+
+    // 5. Contract Guard and Capability Evaluation
+    const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+
+    if (prep.status === 'INVALID') {
+      request.status = 'FAILED';
+      request.error = prep.authorizationReason ?? 'Invalid agreement parameters.';
+      request.errorCode = 'MALFORMED_REQUEST';
+      request.updatedAt = Date.now();
+      return { isReady: false, reason: prep.authorizationReason, errorCode: 'MALFORMED_REQUEST', prep };
+    }
+
+    if (prep.status === 'BLOCKED') {
+      request.status = 'BLOCKED';
+      request.error = prep.authorizationReason ?? 'Lifecycle transaction rejected by canonical contract guards.';
+      request.errorCode = 'GUARD_VALIDATION_FAILED';
+      request.updatedAt = Date.now();
+      return { isReady: false, reason: prep.authorizationReason, errorCode: 'GUARD_VALIDATION_FAILED', prep };
+    }
+
+    if (prep.status === 'UNSUPPORTED') {
+      request.status = 'UNSUPPORTED';
+      const reason = `Missing required provider capabilities: ${prep.missingCapabilities.join(', ')}`;
+      request.error = reason;
+      request.errorCode = 'MISSING_CAPABILITY';
+      request.updatedAt = Date.now();
+      return { isReady: false, reason, errorCode: 'MISSING_CAPABILITY', prep };
+    }
+
+    request.status = 'PREPARED';
+    request.updatedAt = Date.now();
+    return { isReady: true, prep };
+  }
+
+  /**
+   * Stage 3: Wallet Signing Request.
+   * Delegates signing request to the active provider boundary.
+   */
+  async requestSignature(
+    request: TransactionRequest
+  ): Promise<TransactionSigningResult> {
+    const provider = this.getProvider();
+    request.status = 'SIGNATURE_REQUESTED';
+    request.updatedAt = Date.now();
+
+    if (!request.parameters.callerPublicKey) {
+      const result: TransactionSigningResult = {
+        success: false,
+        status: 'FAILED',
+        error: 'Cannot sign transaction: Missing caller identity.',
+        errorCode: 'MALFORMED_REQUEST',
+      };
+      request.status = 'FAILED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.signingResult = result;
+      return result;
+    }
+
+    if (provider.isPrototype) {
+      const result: TransactionSigningResult = {
+        success: false,
+        status: 'UNSUPPORTED',
+        error: 'Wallet signature generation is unavailable in prototype mode.',
+        errorCode: 'UNSUPPORTED_OPERATION',
+      };
+      request.status = 'UNSUPPORTED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.signingResult = result;
+      return result;
+    }
+
+    if (!provider.requestSignature) {
+      const result: TransactionSigningResult = {
+        success: false,
+        status: 'UNSUPPORTED',
+        error: 'Active provider does not support signature requests.',
+        errorCode: 'UNSUPPORTED_OPERATION',
+      };
+      request.status = 'UNSUPPORTED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.signingResult = result;
+      return result;
+    }
+
+    const signingReq: TransactionSigningRequest = {
+      requestId: request.id,
+      loanId: request.loanId,
+      action: request.action,
+      circuitName: request.circuitName,
+      callerPublicKey: request.parameters.callerPublicKey,
+      parameters: request.parameters,
+      createdAt: Date.now(),
+    };
+    request.signingRequest = signingReq;
+
+    try {
+      const signingResult = await provider.requestSignature(signingReq);
+      request.signingResult = signingResult;
+      request.updatedAt = Date.now();
+
+      if (signingResult.success) {
+        request.status = 'SIGNED';
+      } else {
+        request.status = signingResult.status === 'REJECTED'
+          ? 'REJECTED'
+          : signingResult.status === 'UNSUPPORTED'
+          ? 'UNSUPPORTED'
+          : 'FAILED';
+        request.error = signingResult.error;
+        request.errorCode = signingResult.errorCode;
+      }
+      return signingResult;
+    } catch (err: unknown) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const errCode = (err as any)?.code;
+
+      let status: TransactionSigningStatus = 'FAILED';
+      let errorCode: TransactionRequestErrorCode = 'SIGNING_FAILED';
+
+      if (errCode === 'USER_REJECTED' || rawMsg.toLowerCase().includes('reject')) {
+        status = 'REJECTED';
+        errorCode = 'USER_REJECTED_SIGNATURE';
+      } else if (errCode === 'UNSUPPORTED_OPERATION' || rawMsg.toLowerCase().includes('unsupported')) {
+        status = 'UNSUPPORTED';
+        errorCode = 'UNSUPPORTED_OPERATION';
+      }
+
+      const signingResult: TransactionSigningResult = {
+        success: false,
+        status,
+        error: rawMsg,
+        errorCode,
+      };
+
+      request.status = status;
+      request.error = rawMsg;
+      request.errorCode = errorCode;
+      request.signingResult = signingResult;
+      request.updatedAt = Date.now();
+      return signingResult;
+    }
+  }
+
+  /**
+   * Stage 4: Network Transaction Submission.
+   * Delegates submission to provider boundary and records in TransactionStatusService.
+   */
+  async submitTransaction(
+    request: TransactionRequest,
+    signingResult?: TransactionSigningResult
+  ): Promise<TransactionSubmissionResult> {
+    const provider = this.getProvider();
+    request.status = 'SUBMITTING';
+    request.updatedAt = Date.now();
+
+    if (!request.parameters.callerPublicKey) {
+      const result: TransactionSubmissionResult = {
+        success: false,
+        status: 'FAILED',
+        error: 'Cannot submit transaction: Missing caller identity.',
+        errorCode: 'MALFORMED_REQUEST',
+      };
+      request.status = 'FAILED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.submissionResult = result;
+      return result;
+    }
+
+    if (provider.isPrototype) {
+      const result: TransactionSubmissionResult = {
+        success: false,
+        status: 'UNSUPPORTED',
+        error: 'Live transaction submission is unavailable in prototype mode.',
+        errorCode: 'UNSUPPORTED_OPERATION',
+      };
+      request.status = 'UNSUPPORTED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.submissionResult = result;
+      return result;
+    }
+
+    if (!provider.submitTransaction) {
+      const result: TransactionSubmissionResult = {
+        success: false,
+        status: 'UNSUPPORTED',
+        error: 'Active provider does not support transaction submission.',
+        errorCode: 'UNSUPPORTED_OPERATION',
+      };
+      request.status = 'UNSUPPORTED';
+      request.error = result.error;
+      request.errorCode = result.errorCode;
+      request.submissionResult = result;
+      return result;
+    }
+
+    const subReq: TransactionSubmissionRequest = {
+      requestId: request.id,
+      loanId: request.loanId,
+      action: request.action,
+      callerPublicKey: request.parameters.callerPublicKey,
+      signatureReference: signingResult?.signatureHex,
+      createdAt: Date.now(),
+    };
+    request.submissionRequest = subReq;
+
+    try {
+      const txAction = request.action === 'FUND_LOAN' ? 'FUND' : request.action === 'REPAY_LOAN' ? 'REPAY' : 'SETTLE';
+      const txResult = await provider.submitTransaction({
+        loanId: request.loanId,
+        action: txAction,
+        callerPublicKey: request.parameters.callerPublicKey,
+      });
+
+      let status: TransactionSubmissionStatus = 'SUBMITTED';
+      if (txResult.status === 'CONFIRMED' && txResult.success) {
+        status = 'CONFIRMED';
+      } else if (txResult.status === 'FAILED' || !txResult.success) {
+        status = 'FAILED';
+      }
+
+      const submissionResult: TransactionSubmissionResult = {
+        success: txResult.success,
+        status,
+        transactionId: txResult.transactionId,
+        blockHeight: txResult.blockHeight,
+        error: txResult.error,
+        submittedAt: Date.now(),
+      };
+
+      request.submissionResult = submissionResult;
+      request.status = status;
+      request.updatedAt = Date.now();
+
+      // Track in TransactionStatusService if transactionId returned
+      if (txResult.transactionId) {
+        const statusService = getTransactionStatusService();
+        const trackedStatus: TrackedTransactionStatus =
+          status === 'CONFIRMED' ? 'CONFIRMED' : 'SUBMITTED';
+        request.statusResult = statusService.trackTransaction(
+          txResult.transactionId,
+          trackedStatus,
+          {
+            loanId: request.loanId,
+            action: request.action,
+            blockHeight: txResult.blockHeight,
+            error: txResult.error,
+          }
+        );
+      }
+
+      return submissionResult;
+    } catch (err: unknown) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const errCode = (err as any)?.code;
+
+      let status: TransactionSubmissionStatus = 'FAILED';
+      let errorCode: TransactionRequestErrorCode = 'SUBMISSION_FAILED';
+
+      if (errCode === 'USER_REJECTED' || rawMsg.toLowerCase().includes('reject')) {
+        status = 'REJECTED';
+        errorCode = 'USER_REJECTED_SUBMISSION';
+      } else if (errCode === 'UNSUPPORTED_OPERATION' || rawMsg.toLowerCase().includes('unsupported')) {
+        status = 'UNSUPPORTED';
+        errorCode = 'UNSUPPORTED_OPERATION';
+      }
+
+      const submissionResult: TransactionSubmissionResult = {
+        success: false,
+        status,
+        error: rawMsg,
+        errorCode,
+      };
+
+      request.status = status;
+      request.error = rawMsg;
+      request.errorCode = errorCode;
+      request.submissionResult = submissionResult;
+      request.updatedAt = Date.now();
+      return submissionResult;
+    }
+  }
+
+  /**
+   * Orchestrates the complete 5-stage pipeline for a transaction request.
+   * Invariant: LoanRegistry is mutated ONLY when provider confirms the transaction.
+   */
+  async executePipeline(
+    request: TransactionRequest,
+    loan: LoanDetailsModel,
+    account: NetworkAccount | WalletAccountIdentity | null,
+    loanRegistry?: LoanRegistry
+  ): Promise<TransactionRequestResult> {
+    const { action, circuitName, loanId } = request;
+
+    // Stage 1 & 2: Prepare & Validate
+    const prepResult = this.prepareAndValidate(request, loan, account);
+    if (!prepResult.isReady) {
+      request.status = prepResult.prep.status === 'BLOCKED'
+        ? 'BLOCKED'
+        : prepResult.prep.status === 'UNSUPPORTED'
+        ? 'UNSUPPORTED'
+        : 'FAILED';
+      request.error = prepResult.reason;
+      request.errorCode = prepResult.errorCode;
+      request.updatedAt = Date.now();
+
+      return {
+        success: false,
+        status: request.status,
+        action,
+        circuitName,
+        loanId,
+        message: prepResult.reason ?? 'Transaction blocked by validation guards.',
+        request,
+        registryUpdated: false,
+        error: prepResult.reason,
+        errorCode: prepResult.errorCode,
+      };
+    }
+
+    // Special case for VERIFY_ELIGIBILITY (off-chain zero-knowledge proof)
+    if (action === 'VERIFY_ELIGIBILITY') {
+      let registryUpdated = false;
+      const callerPk = request.parameters.callerPublicKey;
+
+      if (loanRegistry && callerPk) {
+        try {
+          loanRegistry.verifyLoanEligibility(loanId, callerPk);
+          registryUpdated = true;
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : 'Failed to update registry verification state.';
+          request.status = 'FAILED';
+          request.error = errMsg;
+          request.errorCode = 'CONTRACT_ERROR';
+          request.updatedAt = Date.now();
+          return {
+            success: false,
+            status: 'FAILED',
+            action,
+            circuitName,
+            loanId,
+            message: errMsg,
+            request,
+            registryUpdated: false,
+            error: errMsg,
+            errorCode: 'CONTRACT_ERROR',
+          };
+        }
+      }
+
+      request.status = 'CONFIRMED';
+      request.updatedAt = Date.now();
+      return {
+        success: true,
+        status: 'CONFIRMED',
+        action,
+        circuitName,
+        loanId,
+        message: 'Borrower eligibility verified in zero-knowledge off-chain.',
+        request,
+        registryUpdated,
+      };
+    }
+
+    // Stage 3: Wallet Signing Request
+    const signingResult = await this.requestSignature(request);
+    if (!signingResult.success) {
+      return {
+        success: false,
+        status: request.status,
+        action,
+        circuitName,
+        loanId,
+        message: signingResult.error ?? 'Transaction signing failed or was rejected.',
+        request,
+        signingResult,
+        registryUpdated: false,
+        error: signingResult.error,
+        errorCode: signingResult.errorCode,
+      };
+    }
+
+    // Stage 4: Network Transaction Submission
+    const submissionResult = await this.submitTransaction(request, signingResult);
+    if (!submissionResult.success) {
+      return {
+        success: false,
+        status: request.status,
+        action,
+        circuitName,
+        loanId,
+        message: submissionResult.error ?? 'Transaction submission failed.',
+        request,
+        signingResult,
+        submissionResult,
+        registryUpdated: false,
+        error: submissionResult.error,
+        errorCode: submissionResult.errorCode,
+      };
+    }
+
+    // Stage 5: Status Tracking & Registry Mutation Gateway
+    let registryUpdated = false;
+    let updatedRegistry: LoanRegistry | undefined;
+    if (submissionResult.status === 'CONFIRMED') {
+      const callerPk = request.parameters.callerPublicKey;
+      if (loanRegistry && callerPk) {
+        if (action === 'FUND_LOAN') {
+          updatedRegistry = loanRegistry.fundLoan(loanId, callerPk, callerPk);
+          registryUpdated = true;
+        } else if (action === 'REPAY_LOAN') {
+          updatedRegistry = loanRegistry.repayLoan(loanId, callerPk);
+          registryUpdated = true;
+        } else if (action === 'SETTLE_LOAN') {
+          updatedRegistry = loanRegistry.settleLoan(loanId, callerPk);
+          registryUpdated = true;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      status: request.status,
+      action,
+      circuitName,
+      loanId,
+      message: submissionResult.status === 'CONFIRMED'
+        ? `Transaction confirmed on Midnight Network via ${circuitName}().`
+        : 'Transaction submitted to Midnight Network. Awaiting on-chain confirmation.',
+      request,
+      signingResult,
+      submissionResult,
+      statusResult: request.statusResult,
+      registryUpdated,
+      updatedRegistry,
+    };
   }
 }
 

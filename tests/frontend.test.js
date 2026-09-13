@@ -185,6 +185,16 @@ import {
 import {
   TransactionPersistenceError,
 } from '../frontend/src/types/transaction-persistence.ts';
+import {
+  TransactionEventService,
+  getTransactionEventService,
+  resetTransactionEventService,
+} from '../frontend/src/lib/transaction-event-service.ts';
+import {
+  TransactionReconciliationService,
+  getTransactionReconciliationService,
+  resetTransactionReconciliationService,
+} from '../frontend/src/lib/transaction-reconciliation-service.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -8052,6 +8062,947 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 59, `Must audit all frontend source files including transaction persistence modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // =========================================================================
+  // COMMIT #31: Transaction Reconciliation & Lifecycle Event Tracking Tests
+  // =========================================================================
+
+  it('Test 366 (Commit #31): Event creation: appendEvent produces valid immutable event with safe public metadata', () => {
+    const eventService = new TransactionEventService();
+    const event = eventService.appendEvent({
+      transactionId: 'tx-100',
+      eventType: 'CREATED',
+      action: 'FUND_LOAN',
+      agreementId: 'loan-002',
+      status: 'DRAFT',
+      source: 'EXECUTION_SERVICE',
+      message: 'Transaction request created in draft state.',
+    });
+
+    assert.ok(event.eventId.startsWith('evt-tx-100-'));
+    assert.equal(event.transactionId, 'tx-100');
+    assert.equal(event.eventType, 'CREATED');
+    assert.equal(event.action, 'FUND_LOAN');
+    assert.equal(event.agreementId, 'loan-002');
+    assert.equal(event.status, 'DRAFT');
+    assert.equal(event.source, 'EXECUTION_SERVICE');
+    assert.equal(event.sequenceNumber, 1);
+    assert.ok(event.timestamp > 0);
+  });
+
+  it('Test 367 (Commit #31): Event ordering: events for transaction are ordered monotonically by sequenceNumber', () => {
+    const eventService = new TransactionEventService();
+    eventService.appendEvent({ transactionId: 'tx-seq', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-seq', eventType: 'PREPARED', action: 'FUND_LOAN', status: 'PREPARED', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-seq', eventType: 'SUBMITTED', action: 'FUND_LOAN', status: 'SUBMITTED', source: 'EXECUTION_SERVICE' });
+
+    const events = eventService.getEventsForTransaction('tx-seq');
+    assert.equal(events.length, 3);
+    assert.equal(events[0].sequenceNumber, 1);
+    assert.equal(events[1].sequenceNumber, 2);
+    assert.equal(events[2].sequenceNumber, 3);
+    assert.equal(events[0].eventType, 'CREATED');
+    assert.equal(events[1].eventType, 'PREPARED');
+    assert.equal(events[2].eventType, 'SUBMITTED');
+  });
+
+  it('Test 368 (Commit #31): Duplicate event prevention: duplicate eventId does not duplicate or corrupt event store', () => {
+    const eventService = new TransactionEventService();
+    const e1 = eventService.appendEvent({
+      eventId: 'fixed-evt-id',
+      transactionId: 'tx-dup',
+      eventType: 'CREATED',
+      action: 'FUND_LOAN',
+      status: 'DRAFT',
+      source: 'EXECUTION_SERVICE',
+    });
+    const e2 = eventService.appendEvent({
+      eventId: 'fixed-evt-id',
+      transactionId: 'tx-dup',
+      eventType: 'PREPARED',
+      action: 'FUND_LOAN',
+      status: 'PREPARED',
+      source: 'EXECUTION_SERVICE',
+    });
+
+    assert.equal(e1.eventId, 'fixed-evt-id');
+    assert.equal(e2.eventId, 'fixed-evt-id');
+    const all = eventService.getEventsForTransaction('tx-dup');
+    assert.equal(all.length, 1);
+  });
+
+  it('Test 369 (Commit #31): Event retrieval: getEventsForTransaction returns only events for specified transaction', () => {
+    const eventService = new TransactionEventService();
+    eventService.appendEvent({ transactionId: 'tx-A', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-B', eventType: 'CREATED', action: 'REPAY_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+
+    const txAEvents = eventService.getEventsForTransaction('tx-A');
+    assert.equal(txAEvents.length, 1);
+    assert.equal(txAEvents[0].transactionId, 'tx-A');
+  });
+
+  it('Test 370 (Commit #31): Event retrieval: getEventsForAgreement returns all events associated with an agreement ID', () => {
+    const eventService = new TransactionEventService();
+    eventService.appendEvent({ transactionId: 'tx-1', agreementId: 'loan-agree-1', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-2', agreementId: 'loan-agree-1', eventType: 'SUBMITTED', action: 'FUND_LOAN', status: 'SUBMITTED', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-3', agreementId: 'loan-agree-2', eventType: 'CREATED', action: 'REPAY_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+
+    const loan1Events = eventService.getEventsForAgreement('loan-agree-1');
+    assert.equal(loan1Events.length, 2);
+  });
+
+  it('Test 371 (Commit #31): Event retrieval: getLatestEvent returns most recent lifecycle event for a transaction', () => {
+    const eventService = new TransactionEventService();
+    eventService.appendEvent({ transactionId: 'tx-latest', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-latest', eventType: 'PREPARED', action: 'FUND_LOAN', status: 'PREPARED', source: 'EXECUTION_SERVICE' });
+    eventService.appendEvent({ transactionId: 'tx-latest', eventType: 'CONFIRMED', action: 'FUND_LOAN', status: 'CONFIRMED', source: 'STATUS_SERVICE' });
+
+    const latest = eventService.getLatestEvent('tx-latest');
+    assert.ok(latest);
+    assert.equal(latest.eventType, 'CONFIRMED');
+    assert.equal(latest.sequenceNumber, 3);
+  });
+
+  it('Test 372 (Commit #31): Event immutability: snapshots returned by getAllEvents and getters are frozen/immutable', () => {
+    const eventService = new TransactionEventService();
+    const event = eventService.appendEvent({
+      transactionId: 'tx-imm',
+      eventType: 'CREATED',
+      action: 'FUND_LOAN',
+      status: 'DRAFT',
+      source: 'EXECUTION_SERVICE',
+    });
+
+    assert.ok(Object.isFrozen(event));
+    assert.throws(() => {
+      event.status = 'CONFIRMED';
+    });
+  });
+
+  it('Test 373 (Commit #31): Event store reset: clearEvents removes all records and resets sequence counters', () => {
+    const eventService = new TransactionEventService();
+    eventService.appendEvent({ transactionId: 'tx-clear', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    assert.equal(eventService.getAllEvents().length, 1);
+
+    eventService.clearEvents();
+    assert.equal(eventService.getAllEvents().length, 0);
+    assert.equal(eventService.getEventsForTransaction('tx-clear').length, 0);
+
+    const reAdded = eventService.appendEvent({ transactionId: 'tx-clear', eventType: 'CREATED', action: 'FUND_LOAN', status: 'DRAFT', source: 'EXECUTION_SERVICE' });
+    assert.equal(reAdded.sequenceNumber, 1);
+  });
+
+  it('Test 374 (Commit #31): Reconciliation: missing transaction record returns NOT_REQUIRED / TRANSACTION_NOT_FOUND', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const service = new TransactionReconciliationService(persistence);
+
+    const result = await service.reconcileTransaction('nonexistent-tx-id');
+    assert.equal(result.reconciliationStatus, 'NOT_REQUIRED');
+    assert.equal(result.reason, 'TRANSACTION_NOT_FOUND');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.success, false);
+  });
+
+  it('Test 375 (Commit #31): Reconciliation: disconnected wallet provider returns UNSUPPORTED / STATUS_UNAVAILABLE without mutating registry', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-disc',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const disconnectedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => false,
+      getConnectionStatus: () => 'DISCONNECTED',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-disc', disconnectedProvider, registry);
+    assert.equal(result.reconciliationStatus, 'UNSUPPORTED');
+    assert.equal(result.reason, 'STATUS_UNAVAILABLE');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 376 (Commit #31): Reconciliation: provider without getTransactionStatus returns UNSUPPORTED / PROVIDER_UNSUPPORTED', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-no-status',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const noStatusProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+    };
+
+    const result = await service.reconcileTransaction('tx-no-status', noStatusProvider, registry);
+    assert.equal(result.reconciliationStatus, 'UNSUPPORTED');
+    assert.equal(result.reason, 'PROVIDER_UNSUPPORTED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 377 (Commit #31): Reconciliation: transaction without provider reference returns FAILED / LOCAL_RECORD_ONLY', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-local-only',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTING',
+      recoveryStatus: 'RECOVERABLE',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-local-only', mockProvider);
+    assert.equal(result.reconciliationStatus, 'FAILED');
+    assert.equal(result.reason, 'LOCAL_RECORD_ONLY');
+    assert.equal(result.registryMutationAllowed, false);
+  });
+
+  it('Test 378 (Commit #31): Reconciliation: network mismatch blocks reconciliation with FAILED / NETWORK_MISMATCH', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-mismatch',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mismatchProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'different-network-999',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-mismatch', {
+      provider: mismatchProvider,
+      expectedNetworkId: 'midnight-testnet',
+    });
+    assert.equal(result.reconciliationStatus, 'FAILED');
+    assert.equal(result.reason, 'NETWORK_MISMATCH');
+    assert.equal(result.registryMutationAllowed, false);
+  });
+
+  it('Test 379 (Commit #31): Reconciliation: provider returns CONFIRMED updates transaction to CONFIRMED and emits CONFIRMED event', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const eventService = new TransactionEventService();
+    const service = new TransactionReconciliationService(persistence, eventService);
+
+    persistence.saveTransaction({
+      id: 'tx-conf-event',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 120n }),
+    };
+
+    const result = await service.reconcileTransaction('tx-conf-event', confirmedProvider);
+    assert.equal(result.reconciliationStatus, 'RECONCILED');
+    assert.equal(result.reason, 'PROVIDER_CONFIRMED');
+    assert.equal(result.registryMutationAllowed, true);
+
+    const saved = persistence.getTransaction('tx-conf-event');
+    assert.equal(saved.status, 'CONFIRMED');
+
+    const events = eventService.getEventsForTransaction('tx-conf-event');
+    const eventTypes = events.map((e) => e.eventType);
+    assert.ok(eventTypes.includes('RECONCILIATION_STARTED'));
+    assert.ok(eventTypes.includes('CONFIRMATION_CHECK_STARTED'));
+    assert.ok(eventTypes.includes('CONFIRMED'));
+    assert.ok(eventTypes.includes('RECONCILIATION_COMPLETED'));
+  });
+
+  it('Test 380 (Commit #31): Reconciliation: confirmed FUND_LOAN allows registry mutation and transitions loan to funded', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-fund-reg',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      callerPublicKey: new Uint8Array(32).fill(2),
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xfund-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 125n }),
+    };
+
+    const result = await service.reconcileTransaction('tx-fund-reg', confirmedProvider, registry);
+    assert.equal(result.reconciliationStatus, 'RECONCILED');
+    assert.equal(result.registryMutationAllowed, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    assert.equal(result.updatedRegistry.getLoan('loan-002').status, LoanStatus.funded);
+  });
+
+  it('Test 381 (Commit #31): Reconciliation: confirmed REPAY_LOAN allows registry mutation and transitions loan to repaid', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-repay-reg',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-003',
+      circuitName: 'repayLoan',
+      callerPublicKeyHex: '0x02',
+      callerPublicKey: registry.getLoan('loan-003').borrowerBytes,
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xrepay-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 130n }),
+    };
+
+    const result = await service.reconcileTransaction('tx-repay-reg', confirmedProvider, registry);
+    assert.equal(result.reconciliationStatus, 'RECONCILED');
+    assert.equal(result.registryMutationAllowed, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    assert.equal(result.updatedRegistry.getLoan('loan-003').status, LoanStatus.repaid);
+  });
+
+  it('Test 382 (Commit #31): Reconciliation: confirmed SETTLE_LOAN allows registry mutation and transitions loan to settled', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-settle-reg',
+      action: 'SETTLE_LOAN',
+      loanId: 'loan-004',
+      circuitName: 'settleLoan',
+      callerPublicKeyHex: '0x01',
+      callerPublicKey: new Uint8Array(32).fill(1),
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xsettle-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 135n }),
+    };
+
+    const result = await service.reconcileTransaction('tx-settle-reg', confirmedProvider, registry);
+    assert.equal(result.reconciliationStatus, 'RECONCILED');
+    assert.equal(result.registryMutationAllowed, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    assert.equal(result.updatedRegistry.getLoan('loan-004').status, LoanStatus.settled);
+  });
+
+  it('Test 383 (Commit #31): Registry mutation protection: provider returning PENDING/SUBMITTED strictly forbids registry mutation', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-pending-protect',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xpend-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const pendingProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'PENDING' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-pending-protect', pendingProvider, registry);
+    assert.equal(result.reconciliationStatus, 'PENDING');
+    assert.equal(result.reason, 'PROVIDER_PENDING');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 384 (Commit #31): Registry mutation protection: provider returning REJECTED strictly forbids registry mutation', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-rej-protect',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xrej-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const rejProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'REJECTED', error: 'User denied' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-rej-protect', rejProvider, registry);
+    assert.equal(result.reconciliationStatus, 'FAILED');
+    assert.equal(result.reason, 'PROVIDER_REJECTED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 385 (Commit #31): Registry mutation protection: provider returning FAILED strictly forbids registry mutation', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-fail-protect',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xfail-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const failProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'FAILED', error: 'Gas exhausted' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-fail-protect', failProvider, registry);
+    assert.equal(result.reconciliationStatus, 'FAILED');
+    assert.equal(result.reason, 'PROVIDER_FAILED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 386 (Commit #31): Registry mutation protection: provider query exception strictly forbids registry mutation', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-err-protect',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xerr-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const errorProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => {
+        throw new Error('RPC connection reset by peer');
+      },
+    };
+
+    const result = await service.reconcileTransaction('tx-err-protect', errorProvider, registry);
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 387 (Commit #31): Registry mutation protection: unrecognized provider status maps to DISCREPANCY and forbids registry mutation', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-unrec-protect',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xunrec-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const unrecProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'SOME_WEIRD_STATE' }),
+    };
+
+    const result = await service.reconcileTransaction('tx-unrec-protect', unrecProvider, registry);
+    assert.equal(result.reconciliationStatus, 'DISCREPANCY');
+    assert.equal(result.reason, 'UNKNOWN_PROVIDER_STATE');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 388 (Commit #31): Local SUBMITTED status NEVER implies confirmation without genuine provider status', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-sub-not-conf',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xpending-hash',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    // Provider is offline or returns nothing
+    const emptyProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => null,
+    };
+
+    const result = await service.reconcileTransaction('tx-sub-not-conf', emptyProvider, registry);
+    assert.notEqual(result.reconciliationStatus, 'RECONCILED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+  });
+
+  it('Test 389 (Commit #31): Multiple reconciliation attempts: idempotent execution preserves confirmed registry state', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-idem',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      callerPublicKey: new Uint8Array(32).fill(2),
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xidem-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 140n }),
+    };
+
+    // First reconciliation
+    const r1 = await service.reconcileTransaction('tx-idem', confirmedProvider, registry);
+    assert.equal(r1.reconciliationStatus, 'RECONCILED');
+    assert.equal(r1.registryUpdated, true);
+    assert.ok(r1.updatedRegistry);
+    assert.equal(r1.updatedRegistry.getLoan('loan-002').status, LoanStatus.funded);
+
+    // Second reconciliation: idempotent no-op for registry
+    const r2 = await service.reconcileTransaction('tx-idem', confirmedProvider, r1.updatedRegistry);
+    assert.equal(r2.reconciliationStatus, 'RECONCILED');
+    assert.equal(r2.registryUpdated, false);
+    assert.ok(r2.updatedRegistry);
+    assert.equal(r2.updatedRegistry.getLoan('loan-002').status, LoanStatus.funded);
+  });
+
+  it('Test 390 (Commit #31): Multiple reconciliation attempts: repeatedly reconciling pending transaction leaves registry untouched across all calls', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-rep-pend',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xpend-multi',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const pendingProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'PENDING' }),
+    };
+
+    for (let i = 0; i < 3; i++) {
+      const res = await service.reconcileTransaction('tx-rep-pend', pendingProvider, registry);
+      assert.equal(res.reconciliationStatus, 'PENDING');
+      assert.equal(res.registryMutationAllowed, false);
+      assert.equal(registry.getLoan('loan-002').status, LoanStatus.requested);
+    }
+  });
+
+  it('Test 391 (Commit #31): Lifecycle recovery integration: recoverPendingTransactions emits RECOVERY_STARTED events', () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const eventService = new TransactionEventService();
+    const recovery = new TransactionRecoveryService(persistence, undefined, eventService);
+
+    persistence.saveTransaction({
+      id: 'tx-rec-event',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const recovered = recovery.recoverPendingTransactions();
+    assert.equal(recovered.length, 1);
+
+    const events = eventService.getEventsForTransaction('tx-rec-event');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].eventType, 'RECOVERY_STARTED');
+    assert.equal(events[0].source, 'RECOVERY_SERVICE');
+  });
+
+  it('Test 392 (Commit #31): Lifecycle recovery integration: successful recovery reconciliation emits RECOVERY_COMPLETED event', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const eventService = new TransactionEventService();
+    const recovery = new TransactionRecoveryService(persistence, undefined, eventService);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-rec-complete',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      callerPublicKey: new Uint8Array(32).fill(2),
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 150n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-rec-complete', confirmedProvider, registry);
+    assert.equal(result.success, true);
+
+    const events = eventService.getEventsForTransaction('tx-rec-complete');
+    const eventTypes = events.map((e) => e.eventType);
+    assert.ok(eventTypes.includes('RECOVERY_COMPLETED'));
+  });
+
+  it('Test 393 (Commit #31): Status tracking integration: trackTransaction and updateStatus append lifecycle events', () => {
+    const statusService = new TransactionStatusService();
+    const eventService = getTransactionEventService();
+    const beforeCount = eventService.getAllEvents().length;
+
+    statusService.trackTransaction('tx-track-test', 'SUBMITTED', { loanId: 'loan-001', action: 'FUND_LOAN' });
+    statusService.updateStatus('tx-track-test', 'CONFIRMED', { blockHeight: 160n });
+
+    const txEvents = eventService.getEventsForTransaction('tx-track-test');
+    assert.ok(txEvents.length >= 2);
+    const eventTypes = txEvents.map((e) => e.eventType);
+    assert.ok(eventTypes.includes('SUBMITTED'));
+    assert.ok(eventTypes.includes('CONFIRMED'));
+  });
+
+  it('Test 394 (Commit #31): Execution service integration: pipeline execution appends CREATED and PREPARED events', () => {
+    const eventService = getTransactionEventService();
+    const execService = new TransactionExecutionService();
+    const loan = MOCK_LOANS['loan-002'];
+    const account = getMockAccount('LENDER');
+
+    const req = execService.createTransactionRequest(loan, account, 'FUND_LOAN');
+    assert.ok(req);
+
+    const events = eventService.getEventsForTransaction(req.id);
+    assert.ok(events.length >= 1);
+    assert.equal(events[0].eventType, 'CREATED');
+    assert.equal(events[0].source, 'EXECUTION_SERVICE');
+
+    execService.prepareAndValidate(req, loan, account);
+    const updatedEvents = eventService.getEventsForTransaction(req.id);
+    assert.ok(updatedEvents.length >= 2);
+  });
+
+  it('Test 395 (Commit #31): TransactionHistoryPanel renders lifecycle timeline and technical diagnostic section', () => {
+    const panelPath = path.join(srcDir, 'components', 'TransactionHistoryPanel.tsx');
+    const content = fs.readFileSync(panelPath, 'utf8');
+
+    assert.ok(content.includes('tx-timeline-'));
+    assert.ok(content.includes('tx-diagnostic-'));
+    assert.ok(content.includes('LOCAL:'));
+    assert.ok(content.includes('PROVIDER:'));
+    assert.ok(content.includes('RECONCILIATION:'));
+    assert.ok(content.includes('REGISTRY:'));
+    assert.ok(content.includes('Lifecycle Events Recorded:'));
+  });
+
+  it('Test 396 (Commit #31): types/index.ts re-exports all transaction events and reconciliation domain models', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('TransactionLifecycleEventType'));
+    assert.ok(content.includes('TransactionEventSource'));
+    assert.ok(content.includes('TransactionLifecycleEvent'));
+    assert.ok(content.includes('ReconciliationStatus'));
+    assert.ok(content.includes('ReconciliationReason'));
+    assert.ok(content.includes('TransactionReconciliationResult'));
+  });
+
+  it('Test 397 (Commit #31 & Anti-Fabrication): Reconciliation and events never synthesize hashes, block heights, or confirmations', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const service = new TransactionReconciliationService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-no-synth',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xproto-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const protoProvider = new LocalPrototypeWalletProvider();
+    await protoProvider.connect('LENDER');
+
+    const result = await service.reconcileTransaction('tx-no-synth', protoProvider);
+    assert.equal(result.reconciliationStatus, 'UNSUPPORTED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(result.blockHeight, undefined);
+  });
+
+  it('Test 398 (Commit #31 & Strict Privacy Audit): All frontend source files (>= 62 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 62, `Must audit all frontend source files including transaction reconciliation modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

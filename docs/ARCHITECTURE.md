@@ -2224,4 +2224,142 @@ The `TransactionRecoveryService` (`frontend/src/lib/transaction-recovery-service
 2. **Anti-Fabrication**: In local prototype mode, `LocalPrototypeWalletProvider` explicitly rejects status queries with `UNSUPPORTED_OPERATION`. No synthetic transaction IDs, confirmations, or block heights are generated.
 3. **Automated Verification**: Verified by 420 unit and integration tests, including automated static analysis confirming zero occurrences of forbidden underwriting terms across all 74+ frontend modules.
 
+---
+
+## 31. Commit #31 — Transaction Reconciliation & Lifecycle Event Tracking
+
+### 31.1 Architectural Overview & Core Invariant
+
+Commit #31 elevates transaction lifecycle visibility, auditability, and determinism by establishing a formal reconciliation layer and an append-only lifecycle event tracking engine. The core operational principle of the architecture is the strict triadic separation:
+
+$$\text{LOCAL TRANSACTION RECORD} \neq \text{PROVIDER-VERIFIED TRANSACTION STATUS} \neq \text{CANONICAL LOAN REGISTRY STATE}$$
+
+```
++───────────────────────────────────────────────────────────────────────────────────────────+
+|                                    COMMIT #31 ARCHITECTURE                                |
+|                                                                                           |
+|  ┌───────────────────────┐         ┌───────────────────────┐        ┌──────────────────┐  |
+|  │ LOCAL TRANSACTION     │         │ PROVIDER-VERIFIED     │        │ CANONICAL        │  |
+|  │ RECORD                │  =/=    │ TRANSACTION STATUS    │  =/=   │ LOAN REGISTRY    │  |
+|  │ (Local Persistence)   │         │ (Wallet Provider RPC) │        │ (Source of Truth)│  |
+|  └──────────┬────────────┘         └───────────┬───────────┘        └─────────▲────────┘  |
+|             │                                  │                              │           |
+|             ▼                                  ▼                              │           |
+|     ┌─────────────────────────────────────────────────────────┐               │           |
+|     │           TransactionReconciliationService              │               │           |
+|     │                                                         │               │           |
+|     │  - Network Matching Evaluation                          │               │           |
+|     │  - Provider Capabilities Check                          │               │           |
+|     │  - Genuine Provider Status Query                        │               │           |
+|     │  - Deterministic Reason Code Resolution                 │               │           |
+|     │  - Safe Idempotent Transition Application               │───────────────┘           |
+|     └──────────────────────────┬──────────────────────────────┘      (Only on CONFIRMED   |
+|                                │                                      with genuine block) |
+|                                ▼                                                          |
+|     ┌─────────────────────────────────────────────────────────┐                           |
+|     │              TransactionEventService                    │                           |
+|     │             (Append-Only Event Store)                   │                           |
+|     │                                                         │                           |
+|     │  - 17 Standardized Lifecycle Event Types                │                           |
+|     │  - 6 Component Event Sources                            │                           |
+|     │  - Monotonic Deterministic Sequence Counters            │                           |
+|     │  - Immutable Snapshot Freezing (Object.freeze)          │                           |
+|     └──────────────────────────┬──────────────────────────────┘                           |
+|                                │                                                          |
+|                                ▼                                                          |
+|     ┌─────────────────────────────────────────────────────────┐                           |
+|     │             TransactionHistoryPanel UI                  │                           |
+|     │                                                         │                           |
+|     │  - Compact Lifecycle Timeline                           │                           |
+|     │  - Technical Diagnostic Section:                        │                           |
+|     │    LOCAL | PROVIDER | RECONCILIATION | REGISTRY         │                           |
+|     │  - Recorded Events Count Badge                          │                           |
+|     └─────────────────────────────────────────────────────────┘                           |
++───────────────────────────────────────────────────────────────────────────────────────────+
+```
+
+1. **Local Transaction Record**: Represents client-side intention, submission attempts, and persistent off-chain metadata. It never serves as authoritative proof of blockchain finality.
+2. **Provider-Verified Transaction Status**: Genuine blockchain status queried directly from the active `WalletProvider` via `getTransactionStatus(providerTxId)`.
+3. **Canonical Loan Registry State**: The application's authoritative state. Mutated **only** when genuine provider confirmation is verified, with callers authorized under Compact smart contract rules.
+
+### 31.2 Lifecycle Events Domain Model
+
+Implemented in `frontend/src/types/transaction-events.ts`:
+
+- **`TransactionLifecycleEventType`** (17 distinct lifecycle states):
+  - Initialization: `CREATED`, `PREPARED`
+  - Signing Phase: `SIGNING_STARTED`, `SIGNED`
+  - Submission Phase: `SUBMISSION_STARTED`, `SUBMITTED`
+  - Verification & Status: `CONFIRMATION_CHECK_STARTED`, `CONFIRMED`
+  - Failure & Blocking: `REJECTED`, `FAILED`, `BLOCKED`, `UNSUPPORTED`
+  - Recovery Workflow: `RECOVERY_STARTED`, `RECOVERY_COMPLETED`
+  - Reconciliation Workflow: `RECONCILIATION_STARTED`, `RECONCILIATION_COMPLETED`, `RECONCILIATION_FAILED`
+
+- **`TransactionEventSource`** (6 architectural components):
+  `'EXECUTION_SERVICE' | 'STATUS_SERVICE' | 'RECOVERY_SERVICE' | 'RECONCILIATION_SERVICE' | 'WALLET_PROVIDER' | 'USER_ACTION'`
+
+- **`TransactionLifecycleEvent`**: Immutable event record containing `id`, `sequenceNumber`, `transactionId`, `agreementId`, `action`, `eventType`, `source`, `timestamp`, `networkId`, `providerKind`, `status`, optional `blockHeight`, `message`, `errorCode`, and `details`.
+
+### 31.3 Append-Only Event Store (`TransactionEventService`)
+
+The `TransactionEventService` (`frontend/src/lib/transaction-event-service.ts`) provides a deterministic, thread-safe (in-memory) event audit trail:
+
+- **Strict Monotonic Sequencing**: Each event is assigned a globally incremental sequence number starting at 1.
+- **Deduplication Safeguards**: Drops duplicate events if an event with the same ID already exists.
+- **Deep Immutability**: Emits frozen records via `Object.freeze()` so consumers and UI components cannot tamper with historical audit records.
+- **Filtering & Audit Methods**: `getEventsForTransaction(txId)`, `getEventsForAgreement(agreementId)`, `getLatestEvent(txId)`, `getAllEvents()`, and `clearEvents()`.
+
+### 31.4 Deterministic Transaction Reconciliation (`TransactionReconciliationService`)
+
+The `TransactionReconciliationService` (`frontend/src/lib/transaction-reconciliation-service.ts`) implements deterministic state machine reconciliation:
+
+```
+Missing Tx Record ────────────────────────► NOT_REQUIRED (TRANSACTION_NOT_FOUND)
+Disconnected Provider ────────────────────► UNSUPPORTED (STATUS_UNAVAILABLE)
+Network Mismatch ─────────────────────────► FAILED (NETWORK_MISMATCH)
+Provider Lacks Status Support ────────────► UNSUPPORTED (PROVIDER_UNSUPPORTED)
+Missing Provider Tx ID ───────────────────► FAILED (LOCAL_RECORD_ONLY)
+Provider Query Exception ─────────────────► FAILED (STATUS_UNAVAILABLE)
+Provider returns PENDING / SUBMITTED ─────► PENDING (PROVIDER_PENDING) -> Registry UNCHANGED
+Provider returns REJECTED ────────────────► FAILED (PROVIDER_REJECTED) -> Registry UNCHANGED
+Provider returns FAILED ──────────────────► FAILED (PROVIDER_FAILED)   -> Registry UNCHANGED
+Provider returns Unknown Status ──────────► DISCREPANCY (UNKNOWN_PROVIDER_STATE) -> Registry UNCHANGED
+Provider returns CONFIRMED ───────────────► RECONCILED (PROVIDER_CONFIRMED) -> Registry Mutated (Idempotent)
+```
+
+- **`ReconciliationStatus`**: `'NOT_REQUIRED' | 'RECONCILED' | 'PENDING' | 'FAILED' | 'DISCREPANCY' | 'UNSUPPORTED'`
+- **`ReconciliationReason`**: Standardized explanatory reason codes (`'TRANSACTION_NOT_FOUND'`, `'LOCAL_RECORD_ONLY'`, `'PROVIDER_PENDING'`, `'PROVIDER_CONFIRMED'`, `'PROVIDER_REJECTED'`, `'PROVIDER_FAILED'`, `'PROVIDER_UNSUPPORTED'`, `'NETWORK_MISMATCH'`, `'STATUS_UNAVAILABLE'`, `'UNKNOWN_PROVIDER_STATE'`, `'ALREADY_SETTLED'`).
+- **`TransactionReconciliationResult`**: Complete reconciliation response containing `reconciliationStatus`, `reason`, `registryMutationAllowed: boolean`, `registryUpdated: boolean`, `updatedRegistry?: LoanRegistry`, verified `blockHeight`, timestamps, and detailed human-readable message.
+
+### 31.5 Registry Mutation Protection Rules
+
+The canonical `LoanRegistry` is protected by strict gating rules:
+
+1. **Confirmation Authorization**: Registry updates are permitted **if and only if** `statusResult.status === 'CONFIRMED'`.
+2. **Pending & Intermediate Protection**: `PENDING`, `SUBMITTING`, `SUBMITTED`, `SIGNING_STARTED` never authorize registry updates (`registryMutationAllowed = false`).
+3. **Failure Isolation**: `REJECTED`, `FAILED`, and network errors leave `LoanRegistry` completely unchanged.
+4. **Idempotency**: Repeated reconciliation of an already-reconciled confirmed transaction detects the matching loan status (e.g. `loan.status === LoanStatus.funded`) and returns `registryUpdated: false` without error.
+
+### 31.6 Cross-Service Lifecycle Event Integration
+
+- **`TransactionExecutionService`**: Records `CREATED` and `PREPARED` events during transaction initialization; records `SIGNING_STARTED` and `SIGNED` during wallet signature handling; records `SUBMISSION_STARTED` and `SUBMITTED` upon relay to the provider.
+- **`TransactionStatusService`**: Emits lifecycle events as status transitions occur during ongoing tracking.
+- **`TransactionRecoveryService`**: Emits `RECOVERY_STARTED` when scanning for unconfirmed transactions and `RECOVERY_COMPLETED` upon successful reconciliation, delegating core verification logic to `TransactionReconciliationService`.
+
+### 31.7 User Interface: Lifecycle Timeline & Technical Diagnostics
+
+The `TransactionHistoryPanel` (`frontend/src/components/TransactionHistoryPanel.tsx`) features comprehensive diagnostic surfaces:
+
+- **Lifecycle Timeline**: Displays recorded events in chronological order with visual indicators, sequence indices, source tags, and timestamps.
+- **Technical Diagnostic Section**: An explicit audit row displaying:
+  `LOCAL: <status> | PROVIDER: <providerStatus> | RECONCILIATION: <reconciliationStatus> | REGISTRY: <UNCHANGED | UPDATED>`
+- **Event Counter**: Highlights the total number of verified lifecycle events captured for each transaction.
+
+### 31.8 Zero-Knowledge Privacy & Anti-Fabrication Invariants
+
+1. **Zero Secret Exposure**: None of the 14 forbidden underwriting or financial credential terms exist in any frontend source file.
+2. **Anti-Fabrication**: In local prototype mode, no synthetic transaction hashes, block numbers, or confirmations are forged. Status queries honestly report `UNSUPPORTED_OPERATION`.
+3. **Automated Test Coverage**: Verified by 453 automated tests across contracts and frontend test suites.
+
+
 

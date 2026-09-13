@@ -7,6 +7,7 @@ import type {
 } from '../types/transaction-persistence.ts';
 import { getTransactionPersistenceService } from '../lib/transaction-persistence-service.ts';
 import { getTransactionRecoveryService } from '../lib/transaction-recovery-service.ts';
+import { getTransactionEventService } from '../lib/transaction-event-service.ts';
 
 export interface TransactionHistoryPanelProps {
   onTransactionReconciled?: (result: TransactionReconciliationResult) => void;
@@ -32,6 +33,7 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
 }) => {
   const persistenceService = getTransactionPersistenceService();
   const recoveryService = getTransactionRecoveryService();
+  const eventService = getTransactionEventService();
 
   const [transactions, setTransactions] = useState<PersistedTransaction[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -178,6 +180,30 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
   const formatTimestamp = (ts?: number) => {
     if (!ts) return 'N/A';
     return new Date(ts).toLocaleTimeString();
+  };
+
+  const getTimelineSteps = (tx: PersistedTransaction) => {
+    const isConfirmed = tx.status === 'CONFIRMED';
+    const isRejected = tx.status === 'REJECTED';
+    const isFailed = tx.status === 'FAILED';
+    const isUnsupported = tx.status === 'UNSUPPORTED' || tx.status === 'BLOCKED';
+    const isSubmitted = tx.status === 'SUBMITTED' || tx.status === 'SUBMITTING' || isConfirmed;
+    const isSigned = tx.status === 'SIGNED' || isSubmitted;
+    const isPrepared = tx.status !== 'DRAFT';
+
+    return [
+      { name: 'Created', completed: true, active: false, failed: false },
+      { name: 'Prepared', completed: isPrepared, active: tx.status === 'PREPARING', failed: isUnsupported && !isPrepared },
+      { name: 'Signing', completed: isSigned, active: tx.status === 'SIGNATURE_REQUESTED', failed: isRejected && !isSubmitted },
+      { name: 'Submitted', completed: isSubmitted, active: tx.status === 'SUBMITTING', failed: isFailed && !isConfirmed },
+      { name: 'Checking Network', completed: isConfirmed, active: tx.recoveryStatus === 'PENDING', failed: false },
+      {
+        name: isConfirmed ? 'Confirmed' : isRejected ? 'Rejected' : isFailed ? 'Failed' : isUnsupported ? 'Unsupported' : 'Pending Verification',
+        completed: isConfirmed,
+        active: tx.recoveryStatus === 'PENDING',
+        failed: isRejected || isFailed || isUnsupported,
+      },
+    ];
   };
 
   return (
@@ -514,6 +540,91 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
                     </div>
                   )}
                 </div>
+
+                {/* Compact Lifecycle Timeline */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    margin: '8px 0',
+                    padding: '6px 10px',
+                    background: '#0f172a',
+                    borderRadius: '6px',
+                    border: '1px solid #334155',
+                    fontSize: '0.74rem',
+                    flexWrap: 'wrap',
+                  }}
+                  data-testid={`tx-timeline-${tx.id}`}
+                >
+                  <span style={{ color: '#94a3b8', fontWeight: 600, marginRight: '4px' }}>Timeline:</span>
+                  {getTimelineSteps(tx).map((step, idx, arr) => (
+                    <React.Fragment key={step.name}>
+                      <span
+                        style={{
+                          color: step.active ? '#93c5fd' : step.completed ? '#86efac' : step.failed ? '#fca5a5' : '#64748b',
+                          fontWeight: step.active || step.completed ? 600 : 400,
+                        }}
+                      >
+                        {step.completed ? '✓ ' : step.failed ? '✗ ' : ''}{step.name}
+                      </span>
+                      {idx < arr.length - 1 && <span style={{ color: '#475569' }}>→</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                {/* Technical Diagnostic Section */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '12px',
+                    padding: '8px 10px',
+                    background: '#090d16',
+                    borderRadius: '4px',
+                    border: '1px solid #1e293b',
+                    fontSize: '0.72rem',
+                    fontFamily: 'monospace',
+                    margin: '8px 0',
+                    flexWrap: 'wrap',
+                  }}
+                  data-testid={`tx-diagnostic-${tx.id}`}
+                >
+                  <div>
+                    <span style={{ color: '#64748b' }}>LOCAL: </span>
+                    <span style={{ color: '#f8fafc', fontWeight: 600 }}>{tx.status}</span>
+                  </div>
+                  <div style={{ color: '#334155' }}>|</div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>PROVIDER: </span>
+                    <span style={{ color: tx.status === 'CONFIRMED' ? '#86efac' : tx.recoveryStatus === 'PENDING' ? '#fde68a' : '#94a3b8', fontWeight: 600 }}>
+                      {tx.status === 'CONFIRMED' ? 'CONFIRMED' : tx.providerTransactionId ? tx.recoveryStatus : 'UNAVAILABLE'}
+                    </span>
+                  </div>
+                  <div style={{ color: '#334155' }}>|</div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>RECONCILIATION: </span>
+                    <span style={{ color: tx.recoveryStatus === 'CONFIRMED' ? '#86efac' : '#93c5fd', fontWeight: 600 }}>
+                      {tx.recoveryStatus === 'CONFIRMED' ? 'RECONCILED' : tx.recoveryStatus}
+                    </span>
+                  </div>
+                  <div style={{ color: '#334155' }}>|</div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>REGISTRY: </span>
+                    <span style={{ color: tx.status === 'CONFIRMED' ? '#86efac' : '#94a3b8', fontWeight: 600 }}>
+                      {tx.status === 'CONFIRMED' ? 'UPDATED' : 'UNCHANGED'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Event count */}
+                {(() => {
+                  const txEvents = eventService.getEventsForTransaction(tx.id);
+                  return (
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 8px 0' }}>
+                      Lifecycle Events Recorded: <span style={{ color: '#93c5fd', fontWeight: 600 }}>{txEvents.length}</span>
+                    </div>
+                  );
+                })()}
 
                 {/* Error/Notice Message if any */}
                 {tx.error && (

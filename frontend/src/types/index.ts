@@ -213,3 +213,15 @@ export {
   type TransactionPersistenceErrorCode,
   type TransactionReconciliationResult,
 } from './transaction-persistence.ts';
+
+export {
+  type TransactionLifecycleEventType,
+  type TransactionEventSource,
+  type TransactionLifecycleEvent,
+} from './transaction-events.ts';
+
+export {
+  type ReconciliationStatus,
+  type ReconciliationReason,
+} from './transaction-reconciliation.ts';
+

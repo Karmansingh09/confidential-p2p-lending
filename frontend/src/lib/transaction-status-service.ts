@@ -3,6 +3,8 @@ import type {
   TransactionStatusResult,
 } from '../types/transaction-request.ts';
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
+import type { TransactionLifecycleEventType } from '../types/transaction-events.ts';
+import { getTransactionEventService } from './transaction-event-service.ts';
 
 /**
  * Granular statuses for transaction reconciliation between local client operations
@@ -106,6 +108,20 @@ export class TransactionStatusService {
     };
 
     this.records.set(transactionId, record);
+
+    try {
+      const eventService = getTransactionEventService();
+      eventService.appendEvent({
+        transactionId,
+        eventType: initialStatus === 'CONFIRMED' ? 'CONFIRMED' : 'SUBMITTED',
+        action: details?.action ?? 'UNKNOWN',
+        agreementId: details?.loanId,
+        status: initialStatus,
+        source: 'STATUS_SERVICE',
+        message: `Tracking initiated with status ${initialStatus}.`,
+      });
+    } catch {}
+
     return this.toResult(record);
   }
 
@@ -136,6 +152,19 @@ export class TransactionStatusService {
         error: details?.error,
       };
       this.records.set(transactionId, newRecord);
+
+      try {
+        const eventService = getTransactionEventService();
+        eventService.appendEvent({
+          transactionId,
+          eventType: status === 'CONFIRMED' ? 'CONFIRMED' : status === 'REJECTED' ? 'REJECTED' : status === 'FAILED' ? 'FAILED' : 'CONFIRMATION_CHECK_STARTED',
+          action: 'UNKNOWN',
+          status,
+          source: 'STATUS_SERVICE',
+          message: details?.error ?? `Status initialized to ${status}.`,
+        });
+      } catch {}
+
       return this.toResult(newRecord);
     }
 
@@ -144,6 +173,26 @@ export class TransactionStatusService {
     if (details?.blockHeight !== undefined) existing.blockHeight = details.blockHeight;
     if (details?.confirmations !== undefined) existing.confirmations = details.confirmations;
     if (details?.error !== undefined) existing.error = details.error;
+
+    try {
+      const eventService = getTransactionEventService();
+      let eventType: TransactionLifecycleEventType = 'CONFIRMATION_CHECK_STARTED';
+      if (status === 'CONFIRMED') eventType = 'CONFIRMED';
+      else if (status === 'REJECTED') eventType = 'REJECTED';
+      else if (status === 'FAILED') eventType = 'FAILED';
+      else if (status === 'UNSUPPORTED') eventType = 'UNSUPPORTED';
+      else if (status === 'SUBMITTED') eventType = 'SUBMITTED';
+
+      eventService.appendEvent({
+        transactionId,
+        eventType,
+        action: existing.action ?? 'UNKNOWN',
+        agreementId: existing.loanId,
+        status,
+        source: 'STATUS_SERVICE',
+        message: details?.error ?? `Status updated to ${status}.`,
+      });
+    } catch {}
 
     return this.toResult(existing);
   }
@@ -162,6 +211,19 @@ export class TransactionStatusService {
     }
   ): TransactionStatusResult {
     const canonicalStatus = normalizeProviderStatus(rawProviderStatus);
+
+    try {
+      const eventService = getTransactionEventService();
+      eventService.appendEvent({
+        transactionId,
+        eventType: 'CONFIRMATION_CHECK_STARTED',
+        action: 'UNKNOWN',
+        status: canonicalStatus,
+        source: 'STATUS_SERVICE',
+        message: `Status observation: provider reported "${rawProviderStatus ?? 'null'}".`,
+      });
+    } catch {}
+
     return this.updateStatus(transactionId, canonicalStatus, details);
   }
 

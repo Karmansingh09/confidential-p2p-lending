@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 420 passing tests across 8 test suites
+# 453 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,15 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #30)
+### Current Status & Features (Commit #31)
+- **Transaction Reconciliation & Lifecycle Event Tracking (Commit #31)**:
+  - **Triadic Architectural Separation**: Formally distinguishes $\text{LOCAL TRANSACTION RECORD} \neq \text{PROVIDER-VERIFIED TRANSACTION STATUS} \neq \text{CANONICAL LOAN REGISTRY STATE}$. Only genuine provider verification authorizes `LoanRegistry` mutation.
+  - **Lifecycle Events Domain Model & Append-Only Event Store**: Introduces `TransactionLifecycleEventType` (17 events across creation, preparation, signing, submission, confirmation, failure, recovery, and reconciliation), `TransactionEventSource` (6 components), and `TransactionEventService` (`frontend/src/lib/transaction-event-service.ts`) providing monotonic sequence numbering, deduplication, and immutable snapshot freezing.
+  - **Deterministic State Machine Reconciliation**: Implements `TransactionReconciliationService` (`frontend/src/lib/transaction-reconciliation-service.ts`) evaluating network compatibility, provider capabilities, genuine provider status, and reason codes (`NOT_REQUIRED`, `RECONCILED`, `PENDING`, `FAILED`, `DISCREPANCY`, `UNSUPPORTED`).
+  - **Registry Mutation Protection & Idempotency**: Strict gating ensures `PENDING`, `REJECTED`, `FAILED`, and unknown statuses leave `LoanRegistry` completely untouched. Idempotent state transitions permit repeated reconciliation of confirmed transactions without error.
+  - **Cross-Service Event Integration**: Seamlessly integrated with `TransactionExecutionService`, `TransactionStatusService`, and `TransactionRecoveryService` to record lifecycle events across all pipeline phases.
+  - **Lifecycle Timeline & Technical Diagnostics UI**: `TransactionHistoryPanel.tsx` visualizes recorded event timelines and a technical diagnostic status row (`LOCAL | PROVIDER | RECONCILIATION | REGISTRY`).
+  - **453 Passing Automated Tests**: 100% test pass rate across 8 test suites verifying all reconciliation paths, event sequencing, registry mutation protections, anti-fabrication invariants, and strict privacy boundaries.
 - **Transaction Lifecycle Persistence & Recovery (Commit #30)**:
   - **5-Stage Persistence & Recovery Architecture**: Establishes formal end-to-end lifecycle recovery pipeline: `Transaction Request` $\to$ `Persistent Transaction Record` $\to$ `Lifecycle Recovery` $\to$ `Status Reconciliation` $\to$ `LoanRegistry Synchronization`.
   - **Standardized Domain Models**: Introduces domain models (`frontend/src/types/transaction-persistence.ts`) covering `PersistedTransaction`, `TransactionPersistenceState`, `TransactionRecoveryStatus`, `TransactionReconciliationResult`, and typed domain errors (`TransactionPersistenceError`, `TransactionPersistenceErrorCode`).
@@ -247,5 +255,5 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Transaction Lifecycle Persistence & Recovery** (Commit #30). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, network submission, and on-chain status tracking) is structured behind `MidnightWalletAdapter`, coordinated by `TransactionExecutionService`, `WalletHandshakeService`, `TransactionStatusService`, `TransactionPersistenceService`, `TransactionRecoveryService`, and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit. Local persistence stores public transaction metadata and execution states, strictly preserving the authoritative `LoanRegistry` state until genuine provider confirmation.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Transaction Lifecycle Persistence, Recovery & Reconciliation** (Commit #31). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, network submission, and on-chain status tracking) is structured behind `MidnightWalletAdapter`, coordinated by `TransactionExecutionService`, `WalletHandshakeService`, `TransactionStatusService`, `TransactionPersistenceService`, `TransactionRecoveryService`, `TransactionReconciliationService`, `TransactionEventService`, and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit. Local records and persistent stores reflect off-chain execution state, strictly preserving the authoritative `LoanRegistry` state until genuine provider confirmation.
 

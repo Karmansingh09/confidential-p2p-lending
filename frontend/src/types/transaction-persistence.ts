@@ -98,21 +98,8 @@ export interface TransactionPersistenceState {
   transactions: Record<string, PersistedTransaction>;
 }
 
-/**
- * Result of reconciling a persisted transaction with the active wallet provider.
- */
-export interface TransactionReconciliationResult {
-  transactionId: string;
-  success: boolean;
-  previousStatus: TransactionRequestStatus;
-  reconciledStatus: TransactionRequestStatus;
-  recoveryStatus: TransactionRecoveryStatus;
-  providerTransactionId?: string;
-  blockHeight?: bigint;
-  registryUpdated: boolean;
-  updatedRegistry?: LoanRegistry;
-  reconciledAt: number;
-  message: string;
-  error?: string;
-  errorCode?: TransactionPersistenceErrorCode;
-}
+export type {
+  ReconciliationStatus,
+  ReconciliationReason,
+  TransactionReconciliationResult,
+} from './transaction-reconciliation.ts';

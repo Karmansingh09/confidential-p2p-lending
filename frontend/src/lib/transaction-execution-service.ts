@@ -49,6 +49,11 @@ import {
   TransactionPersistenceService,
   getTransactionPersistenceService,
 } from './transaction-persistence-service.ts';
+import {
+  TransactionEventService,
+  getTransactionEventService,
+} from './transaction-event-service.ts';
+import type { TransactionLifecycleEventType } from '../types/transaction-events.ts';
 import type {
   PersistedTransaction,
   TransactionRecoveryStatus,
@@ -137,6 +142,64 @@ export class TransactionExecutionService {
       this.persistenceService.saveTransaction(persisted);
     } catch {
       // Safe non-blocking persistence
+    }
+
+    try {
+      let eventType: TransactionLifecycleEventType = 'CREATED';
+      switch (request.status) {
+        case 'DRAFT':
+          eventType = 'CREATED';
+          break;
+        case 'PREPARING':
+        case 'PREPARED':
+          eventType = 'PREPARED';
+          break;
+        case 'SIGNATURE_REQUESTED':
+          eventType = 'SIGNING_STARTED';
+          break;
+        case 'READY_TO_SUBMIT':
+        case 'SIGNED':
+          eventType = 'SIGNED';
+          break;
+        case 'SUBMITTING':
+          eventType = 'SUBMISSION_STARTED';
+          break;
+        case 'SUBMITTED':
+          eventType = 'SUBMITTED';
+          break;
+        case 'CONFIRMED':
+          eventType = 'CONFIRMED';
+          break;
+        case 'REJECTED':
+          eventType = 'REJECTED';
+          break;
+        case 'FAILED':
+          eventType = 'FAILED';
+          break;
+        case 'BLOCKED':
+          eventType = 'BLOCKED';
+          break;
+        case 'UNSUPPORTED':
+          eventType = 'UNSUPPORTED';
+          break;
+        default:
+          eventType = 'CREATED';
+      }
+
+      const eventService = getTransactionEventService();
+      eventService.appendEvent({
+        transactionId: request.id,
+        eventType,
+        action: request.action,
+        agreementId: request.loanId,
+        providerKind,
+        networkId,
+        status: request.status,
+        message: request.error ?? `Transaction transitioned to ${request.status}.`,
+        source: 'EXECUTION_SERVICE',
+      });
+    } catch {
+      // Safe non-blocking event logging
     }
   }
 

@@ -8,6 +8,7 @@ import {
 } from './lib/account-service.js';
 import { subscribeToWalletSession } from './lib/wallet-session-service.ts';
 import { createDefaultLoanRegistry } from './lib/application-store.js';
+import { getTransactionRecoveryService } from './lib/transaction-recovery-service.ts';
 import type { LoanRegistry } from './lib/loan-registry.js';
 import type { LoanDetailsModel } from './types/index.js';
 import type { AccountContext, AccountRole } from './types/account.js';
@@ -28,6 +29,19 @@ export const App: React.FC = () => {
   const [accountContext, setAccountContext] = useState<AccountContext>(() =>
     connectMockAccount('BORROWER')
   );
+
+  // Startup Transaction Lifecycle Recovery (Commit #30)
+  useEffect(() => {
+    const recoveryService = getTransactionRecoveryService();
+    recoveryService.reconcileAll(registry).then((results) => {
+      const lastUpdated = results.filter((r) => r.updatedRegistry).pop();
+      if (lastUpdated?.updatedRegistry) {
+        setRegistry(lastUpdated.updatedRegistry);
+      }
+    }).catch(() => {
+      // Graceful non-blocking startup reconciliation
+    });
+  }, []);
 
   // Synchronize global account context when wallet session transitions
   useEffect(() => {
@@ -99,6 +113,8 @@ export const App: React.FC = () => {
           onSwitchRole={handleSwitchRole}
           onDisconnect={handleDisconnect}
           onConnect={handleConnect}
+          loanRegistry={registry}
+          onRegistryUpdated={(updated) => setRegistry(updated)}
         />
       ) : (
         <CreateLoanPage

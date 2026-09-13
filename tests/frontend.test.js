@@ -169,6 +169,22 @@ import {
   resetTransactionStatusService,
 } from '../frontend/src/lib/transaction-status-service.ts';
 import { TransactionRequestError } from '../frontend/src/types/transaction-request.ts';
+import {
+  InMemoryTransactionPersistence,
+  LocalStorageTransactionPersistence,
+  TransactionPersistenceService,
+  getTransactionPersistenceService,
+  resetTransactionPersistenceService,
+  TRANSACTION_STORAGE_KEY,
+} from '../frontend/src/lib/transaction-persistence-service.ts';
+import {
+  TransactionRecoveryService,
+  getTransactionRecoveryService,
+  resetTransactionRecoveryService,
+} from '../frontend/src/lib/transaction-recovery-service.ts';
+import {
+  TransactionPersistenceError,
+} from '../frontend/src/types/transaction-persistence.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -6904,6 +6920,1138 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 56, `Must audit all frontend source files including transaction request modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // =========================================================================
+  // COMMIT #30 TESTS: Transaction Lifecycle Persistence & Recovery
+  // =========================================================================
+
+  it('Test 332 (Commit #30): Transaction persistence: save and retrieve transaction record', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    const tx = {
+      id: 'tx-rec-001',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'DRAFT',
+      recoveryStatus: 'RECOVERABLE',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    service.saveTransaction(tx);
+    const retrieved = service.getTransaction('tx-rec-001');
+
+    assert.ok(retrieved);
+    assert.equal(retrieved.id, 'tx-rec-001');
+    assert.equal(retrieved.action, 'FUND_LOAN');
+    assert.equal(retrieved.status, 'DRAFT');
+  });
+
+  it('Test 333 (Commit #30): Transaction persistence: list transactions sorted by createdAt descending', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    const baseTime = 1000000;
+    service.saveTransaction({
+      id: 'tx-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'DRAFT',
+      recoveryStatus: 'RECOVERABLE',
+      createdAt: baseTime + 100,
+      updatedAt: baseTime + 100,
+    });
+    service.saveTransaction({
+      id: 'tx-2',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'repayLoan',
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: baseTime + 300,
+      updatedAt: baseTime + 300,
+    });
+    service.saveTransaction({
+      id: 'tx-3',
+      action: 'SETTLE_LOAN',
+      loanId: 'loan-003',
+      circuitName: 'settleLoan',
+      callerPublicKeyHex: '0x03',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'CONFIRMED',
+      recoveryStatus: 'CONFIRMED',
+      createdAt: baseTime + 200,
+      updatedAt: baseTime + 200,
+    });
+
+    const list = service.listTransactions();
+    assert.equal(list.length, 3);
+    assert.equal(list[0].id, 'tx-2'); // 300
+    assert.equal(list[1].id, 'tx-3'); // 200
+    assert.equal(list[2].id, 'tx-1'); // 100
+  });
+
+  it('Test 334 (Commit #30): Transaction persistence: update existing transaction fields and updatedAt', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    const tx = {
+      id: 'tx-update-001',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 1000,
+      updatedAt: 1000,
+    };
+    service.saveTransaction(tx);
+
+    const updated = service.updateTransaction('tx-update-001', {
+      status: 'CONFIRMED',
+      recoveryStatus: 'CONFIRMED',
+      blockHeight: 500n,
+    });
+
+    assert.equal(updated.status, 'CONFIRMED');
+    assert.equal(updated.recoveryStatus, 'CONFIRMED');
+    assert.equal(updated.blockHeight, 500n);
+    assert.ok(updated.updatedAt >= 1000);
+
+    const retrieved = service.getTransaction('tx-update-001');
+    assert.equal(retrieved?.status, 'CONFIRMED');
+    assert.equal(retrieved?.blockHeight, 500n);
+  });
+
+  it('Test 335 (Commit #30): Transaction persistence: update non-existent transaction throws TRANSACTION_NOT_FOUND', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    assert.throws(
+      () => service.updateTransaction('missing-tx', { status: 'CONFIRMED' }),
+      (err) => err instanceof TransactionPersistenceError && err.code === 'TRANSACTION_NOT_FOUND'
+    );
+  });
+
+  it('Test 336 (Commit #30): Transaction persistence: remove transaction by id returns boolean', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    service.saveTransaction({
+      id: 'tx-del-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'DRAFT',
+      recoveryStatus: 'RECOVERABLE',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const removedFirst = service.removeTransaction('tx-del-1');
+    assert.equal(removedFirst, true);
+    assert.equal(service.getTransaction('tx-del-1'), null);
+
+    const removedSecond = service.removeTransaction('tx-del-1');
+    assert.equal(removedSecond, false);
+  });
+
+  it('Test 337 (Commit #30): Transaction persistence: clear all transactions removes all records', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const service = new TransactionPersistenceService(adapter);
+
+    service.saveTransaction({
+      id: 'tx-c1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'DRAFT',
+      recoveryStatus: 'RECOVERABLE',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    service.saveTransaction({
+      id: 'tx-c2',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'repayLoan',
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 2000,
+      updatedAt: 2000,
+    });
+
+    assert.equal(service.listTransactions().length, 2);
+    service.clearTransactions();
+    assert.equal(service.listTransactions().length, 0);
+  });
+
+  it('Test 338 (Commit #30): Safe serialization: round-trip BigInt amounts, interest rates, block heights in LocalStorage persistence', () => {
+    const mockStorage = {};
+    const originalWindow = global.window;
+    global.window = {
+      localStorage: {
+        getItem: (k) => mockStorage[k] ?? null,
+        removeItem: (k) => { delete mockStorage[k]; },
+      },
+    };
+    Object.defineProperty(global.window.localStorage, TRANSACTION_STORAGE_KEY, {
+      get: () => mockStorage[TRANSACTION_STORAGE_KEY],
+      set: (val) => { mockStorage[TRANSACTION_STORAGE_KEY] = val; },
+      configurable: true,
+    });
+
+    try {
+      const adapter1 = new LocalStorageTransactionPersistence();
+      adapter1.saveTransaction({
+        id: 'tx-bigint-1',
+        action: 'FUND_LOAN',
+        loanId: 'loan-001',
+        circuitName: 'fundLoan',
+        callerPublicKeyHex: '0x01',
+        networkId: 'undeployed',
+        providerKind: 'MIDNIGHT_WALLET',
+        status: 'CONFIRMED',
+        recoveryStatus: 'CONFIRMED',
+        amount: 2500000n,
+        interestRateBps: 850n,
+        durationBlocks: 1440n,
+        blockHeight: 888888n,
+        createdAt: 5000,
+        updatedAt: 5000,
+      });
+
+      // Reload in fresh adapter instance reading the same mock storage
+      const adapter2 = new LocalStorageTransactionPersistence();
+      const loaded = adapter2.getTransaction('tx-bigint-1');
+
+      assert.ok(loaded);
+      assert.equal(typeof loaded.amount, 'bigint');
+      assert.equal(loaded.amount, 2500000n);
+      assert.equal(typeof loaded.interestRateBps, 'bigint');
+      assert.equal(loaded.interestRateBps, 850n);
+      assert.equal(typeof loaded.durationBlocks, 'bigint');
+      assert.equal(loaded.durationBlocks, 1440n);
+      assert.equal(typeof loaded.blockHeight, 'bigint');
+      assert.equal(loaded.blockHeight, 888888n);
+    } finally {
+      global.window = originalWindow;
+    }
+  });
+
+  it('Test 339 (Commit #30): Safe serialization: round-trip Uint8Array public keys and caller identities', () => {
+    const mockStorage = {};
+    const originalWindow = global.window;
+    global.window = {
+      localStorage: {
+        getItem: (k) => mockStorage[k] ?? null,
+        removeItem: (k) => { delete mockStorage[k]; },
+      },
+    };
+    Object.defineProperty(global.window.localStorage, TRANSACTION_STORAGE_KEY, {
+      get: () => mockStorage[TRANSACTION_STORAGE_KEY],
+      set: (val) => { mockStorage[TRANSACTION_STORAGE_KEY] = val; },
+      configurable: true,
+    });
+
+    try {
+      const callerBytes = new Uint8Array([10, 20, 30, 40, 50, 60]);
+      const adapter1 = new LocalStorageTransactionPersistence();
+      adapter1.saveTransaction({
+        id: 'tx-bytes-1',
+        action: 'FUND_LOAN',
+        loanId: 'loan-001',
+        circuitName: 'fundLoan',
+        callerPublicKeyHex: '0x0a14',
+        callerPublicKey: callerBytes,
+        networkId: 'undeployed',
+        providerKind: 'MIDNIGHT_WALLET',
+        status: 'DRAFT',
+        recoveryStatus: 'RECOVERABLE',
+        createdAt: 6000,
+        updatedAt: 6000,
+      });
+
+      const adapter2 = new LocalStorageTransactionPersistence();
+      const loaded = adapter2.getTransaction('tx-bytes-1');
+
+      assert.ok(loaded);
+      assert.ok(loaded.callerPublicKey instanceof Uint8Array);
+      assert.deepEqual(Array.from(loaded.callerPublicKey), Array.from(callerBytes));
+    } finally {
+      global.window = originalWindow;
+    }
+  });
+
+  it('Test 340 (Commit #30): Corrupted LocalStorage handling: recover gracefully without throwing exceptions', () => {
+    const originalWindow = global.window;
+    global.window = {
+      localStorage: {
+        [TRANSACTION_STORAGE_KEY]: '{"corrupted": json-not-valid ...',
+        getItem: () => '{"corrupted": json-not-valid ...',
+        removeItem: () => {},
+      },
+    };
+
+    try {
+      const adapter = new LocalStorageTransactionPersistence();
+      const list = adapter.listTransactions();
+      assert.deepEqual(list, []);
+      assert.equal(adapter.getTransaction('any'), null);
+    } finally {
+      global.window = originalWindow;
+    }
+  });
+
+  it('Test 341 (Commit #30): Fallback to in-memory persistence when localStorage is unavailable', () => {
+    const originalWindow = global.window;
+    global.window = undefined;
+
+    try {
+      const adapter = new LocalStorageTransactionPersistence();
+      adapter.saveTransaction({
+        id: 'tx-fallback-1',
+        action: 'FUND_LOAN',
+        loanId: 'loan-001',
+        circuitName: 'fundLoan',
+        callerPublicKeyHex: '0x01',
+        networkId: 'undeployed',
+        providerKind: 'PROTOTYPE',
+        status: 'DRAFT',
+        recoveryStatus: 'RECOVERABLE',
+        createdAt: 1000,
+        updatedAt: 1000,
+      });
+
+      const retrieved = adapter.getTransaction('tx-fallback-1');
+      assert.ok(retrieved);
+      assert.equal(retrieved.id, 'tx-fallback-1');
+      assert.equal(adapter.listTransactions().length, 1);
+    } finally {
+      global.window = originalWindow;
+    }
+  });
+
+  it('Test 342 (Commit #30): Lifecycle recovery: recoverPendingTransactions returns only pending/recoverable transactions', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-pending-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    persistence.saveTransaction({
+      id: 'tx-confirmed-1',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'repayLoan',
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'CONFIRMED',
+      recoveryStatus: 'CONFIRMED',
+      createdAt: 2000,
+      updatedAt: 2000,
+    });
+    persistence.saveTransaction({
+      id: 'tx-submitting-1',
+      action: 'SETTLE_LOAN',
+      loanId: 'loan-003',
+      circuitName: 'settleLoan',
+      callerPublicKeyHex: '0x03',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTING',
+      recoveryStatus: 'PENDING',
+      createdAt: 3000,
+      updatedAt: 3000,
+    });
+
+    const pending = recovery.recoverPendingTransactions();
+    assert.equal(pending.length, 2);
+    const ids = pending.map((t) => t.id);
+    assert.ok(ids.includes('tx-pending-1'));
+    assert.ok(ids.includes('tx-submitting-1'));
+    assert.ok(!ids.includes('tx-confirmed-1'));
+  });
+
+  it('Test 343 (Commit #30): Lifecycle recovery: getRecoverableTransactions filters eligible transactions', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-recov-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    persistence.saveTransaction({
+      id: 'tx-recov-2',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'CONFIRMED',
+      recoveryStatus: 'CONFIRMED',
+      createdAt: 2000,
+      updatedAt: 2000,
+    });
+
+    const recoverable = recovery.getRecoverableTransactions();
+    assert.equal(recoverable.length, 1);
+    assert.equal(recoverable[0].id, 'tx-recov-1');
+  });
+
+  it('Test 344 (Commit #30): Reconciliation: non-existent transaction returns not found result without modifying registry', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 10n }),
+    };
+
+    const result = await recovery.reconcileTransaction('missing-id', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'NOT_FOUND');
+    assert.equal(result.registryUpdated, false);
+  });
+
+  it('Test 345 (Commit #30): Reconciliation: disconnected wallet provider marks transaction UNSUPPORTED', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-disc-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xabc1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockDisconnected = {
+      isConnected: () => false,
+      getConnectionStatus: () => 'DISCONNECTED',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-disc-1', mockDisconnected);
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'UNSUPPORTED');
+    assert.equal(result.errorCode, 'NOT_CONNECTED');
+  });
+
+  it('Test 346 (Commit #30): Reconciliation: provider without getTransactionStatus marks UNSUPPORTED', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-nostat-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xabc2',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockNoStatus = {
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+    };
+
+    const result = await recovery.reconcileTransaction('tx-nostat-1', mockNoStatus);
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'UNSUPPORTED');
+    assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION');
+  });
+
+  it('Test 347 (Commit #30): Reconciliation: transaction without providerTransactionId marked STALE', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-notxid-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-notxid-1', mockProvider);
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'STALE');
+    assert.equal(result.registryUpdated, false);
+  });
+
+  it('Test 348 (Commit #30): Reconciliation: confirmed provider status updates transaction record to CONFIRMED', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-conf-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xgenuine-hash-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async (id) => ({
+        transactionId: id,
+        status: 'CONFIRMED',
+        blockHeight: 333n,
+      }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-conf-1', mockProvider);
+    assert.equal(result.success, true);
+    assert.equal(result.reconciledStatus, 'CONFIRMED');
+    assert.equal(result.recoveryStatus, 'CONFIRMED');
+    assert.equal(result.blockHeight, 333n);
+
+    const saved = persistence.getTransaction('tx-conf-1');
+    assert.equal(saved?.status, 'CONFIRMED');
+    assert.equal(saved?.recoveryStatus, 'CONFIRMED');
+    assert.equal(saved?.blockHeight, 333n);
+  });
+
+  it('Test 349 (Commit #30): Reconciliation: confirmed FUND_LOAN updates LoanRegistry to funded', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    // Prepare registry with verified loan-001
+    const registry = createDefaultLoanRegistry();
+    const verifiedRegistry = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK);
+    assert.equal(verifiedRegistry.getLoan('loan-001').status, LoanStatus.requested);
+    assert.equal(verifiedRegistry.getLoan('loan-001').isEligibilityVerified, true);
+
+    persistence.saveTransaction({
+      id: 'tx-fund-rec',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xfund-tx-001',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 120n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-fund-rec', mockProvider, verifiedRegistry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    const fundedLoan = result.updatedRegistry.getLoan('loan-001');
+    assert.equal(fundedLoan.status, LoanStatus.funded);
+  });
+
+  it('Test 350 (Commit #30): Reconciliation: confirmed REPAY_LOAN updates LoanRegistry to repaid', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    // loan-003 is already funded in default mock loans
+    const registry = createDefaultLoanRegistry();
+    assert.equal(registry.getLoan('loan-003').status, LoanStatus.funded);
+
+    const borrowerPk = registry.getLoan('loan-003').borrowerBytes;
+
+    persistence.saveTransaction({
+      id: 'tx-repay-rec',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-003',
+      circuitName: 'repayLoan',
+      callerPublicKey: borrowerPk,
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xrepay-tx-003',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 150n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-repay-rec', mockProvider, registry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    assert.equal(result.updatedRegistry.getLoan('loan-003').status, LoanStatus.repaid);
+  });
+
+  it('Test 351 (Commit #30): Reconciliation: confirmed SETTLE_LOAN updates LoanRegistry to settled', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    // loan-004 is already repaid in default mock loans
+    const registry = createDefaultLoanRegistry();
+    assert.equal(registry.getLoan('loan-004').status, LoanStatus.repaid);
+
+    const lenderPk = registry.getLoan('loan-004').lenderBytes;
+
+    persistence.saveTransaction({
+      id: 'tx-settle-rec',
+      action: 'SETTLE_LOAN',
+      loanId: 'loan-004',
+      circuitName: 'settleLoan',
+      callerPublicKey: lenderPk,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xsettle-tx-004',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 200n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-settle-rec', mockProvider, registry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.registryUpdated, true);
+    assert.ok(result.updatedRegistry);
+    assert.equal(result.updatedRegistry.getLoan('loan-004').status, LoanStatus.settled);
+  });
+
+  it('Test 352 (Commit #30): Reconciliation idempotency: reconciling already funded loan does not re-mutate registry', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    // loan-003 is already funded
+    const registry = createDefaultLoanRegistry();
+    assert.equal(registry.getLoan('loan-003').status, LoanStatus.funded);
+
+    persistence.saveTransaction({
+      id: 'tx-idemp-fund',
+      action: 'FUND_LOAN',
+      loanId: 'loan-003',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xfund-idemp',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 125n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-idemp-fund', mockProvider, registry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-003').status, LoanStatus.funded);
+  });
+
+  it('Test 353 (Commit #30): Reconciliation idempotency: reconciling already repaid/settled loan does not re-mutate registry', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    // loan-005 is already settled
+    const registry = createDefaultLoanRegistry();
+    assert.equal(registry.getLoan('loan-005').status, LoanStatus.settled);
+
+    persistence.saveTransaction({
+      id: 'tx-idemp-settled',
+      action: 'SETTLE_LOAN',
+      loanId: 'loan-005',
+      circuitName: 'settleLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xsettle-idemp',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 300n }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-idemp-settled', mockProvider, registry);
+
+    assert.equal(result.success, true);
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-005').status, LoanStatus.settled);
+  });
+
+  it('Test 354 (Commit #30): Reconciliation: provider returns PENDING/SUBMITTED leaves LoanRegistry untouched', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-pending-check',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xpending-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'PENDING' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-pending-check', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'PENDING');
+    assert.equal(result.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-001').status, LoanStatus.requested);
+  });
+
+  it('Test 355 (Commit #30): Reconciliation: provider returns REJECTED updates transaction to REJECTED and leaves registry untouched', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-rej-check',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xrej-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'REJECTED', error: 'User rejected in Lace wallet' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-rej-check', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.reconciledStatus, 'REJECTED');
+    assert.equal(result.recoveryStatus, 'REJECTED');
+    assert.equal(result.registryUpdated, false);
+
+    const saved = persistence.getTransaction('tx-rej-check');
+    assert.equal(saved?.status, 'REJECTED');
+    assert.equal(saved?.recoveryStatus, 'REJECTED');
+  });
+
+  it('Test 356 (Commit #30): Reconciliation: provider returns FAILED updates transaction to FAILED and leaves registry untouched', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-fail-check',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xfail-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'FAILED', error: 'Circuit validation guard failure' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-fail-check', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.reconciledStatus, 'FAILED');
+    assert.equal(result.recoveryStatus, 'FAILED');
+    assert.equal(result.registryUpdated, false);
+
+    const saved = persistence.getTransaction('tx-fail-check');
+    assert.equal(saved?.status, 'FAILED');
+  });
+
+  it('Test 357 (Commit #30): Reconciliation: unrecognized provider status safely mapped to STALE and leaves registry untouched', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-unknown-stat',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xunknown-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => ({ status: 'SOME_NON_STANDARD_STATUS' }),
+    };
+
+    const result = await recovery.reconcileTransaction('tx-unknown-stat', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'STALE');
+    assert.equal(result.registryUpdated, false);
+  });
+
+  it('Test 358 (Commit #30): Reconciliation: provider query failure handled gracefully and leaves registry untouched', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-err-check',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKey: PROTOTYPE_LENDER_PK,
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xerr-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async () => {
+        throw new Error('RPC connection timeout');
+      },
+    };
+
+    const result = await recovery.reconcileTransaction('tx-err-check', mockProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'FAILED');
+    assert.equal(result.registryUpdated, false);
+    assert.ok(result.error?.includes('timeout'));
+  });
+
+  it('Test 359 (Commit #30): Bulk reconciliation: reconcileAll processes all recoverable transactions sequentially', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+
+    persistence.saveTransaction({
+      id: 'tx-bulk-1',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xbulk-1',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    persistence.saveTransaction({
+      id: 'tx-bulk-2',
+      action: 'REPAY_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'repayLoan',
+      callerPublicKeyHex: '0x02',
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTING',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xbulk-2',
+      createdAt: 2000,
+      updatedAt: 2000,
+    });
+
+    const mockProvider = {
+      isConnected: () => true,
+      getTransactionStatus: async (txId) => ({
+        transactionId: txId,
+        status: 'CONFIRMED',
+        blockHeight: 99n,
+      }),
+    };
+
+    const results = await recovery.reconcileAll(mockProvider);
+    assert.equal(results.length, 2);
+    assert.ok(results.every((r) => r.reconciledStatus === 'CONFIRMED'));
+  });
+
+  it('Test 360 (Commit #30 & Anti-Fabrication): Local persistence never synthesizes confirmations, block heights, or transaction hashes', () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const execService = resetTransactionExecutionService(undefined, undefined, persistence);
+
+    const loan = MOCK_LOANS['loan-001'];
+    const account = getMockAccount('BORROWER', loan);
+
+    const request = execService.createTransactionRequest(loan, account, 'FUND_LOAN', 'loan-001');
+
+    // Verify draft persisted record
+    const saved = persistence.getTransaction(request.id);
+    assert.ok(saved);
+    assert.equal(saved.status, 'DRAFT');
+    assert.equal(saved.providerTransactionId, undefined);
+    assert.equal(saved.blockHeight, undefined);
+    assert.notEqual(saved.recoveryStatus, 'CONFIRMED');
+  });
+
+  it('Test 361 (Commit #30 & Local Prototype Honesty): Prototype wallet provider rejects status queries with UNSUPPORTED_OPERATION', async () => {
+    const adapter = new InMemoryTransactionPersistence();
+    const persistence = new TransactionPersistenceService(adapter);
+    const recovery = new TransactionRecoveryService(persistence);
+    const registry = createDefaultLoanRegistry();
+
+    persistence.saveTransaction({
+      id: 'tx-proto-test',
+      action: 'FUND_LOAN',
+      loanId: 'loan-001',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'undeployed',
+      providerKind: 'PROTOTYPE',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xproto-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const prototypeProvider = new LocalPrototypeWalletProvider();
+    await prototypeProvider.connect('LENDER');
+
+    const result = await recovery.reconcileTransaction('tx-proto-test', prototypeProvider, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.recoveryStatus, 'UNSUPPORTED');
+    assert.equal(result.registryUpdated, false);
+  });
+
+  it('Test 362 (Commit #30): TransactionHistoryPanel component renders honest anti-fabrication disclosure', () => {
+    const panelPath = path.join(srcDir, 'components', 'TransactionHistoryPanel.tsx');
+    const content = fs.readFileSync(panelPath, 'utf8');
+
+    assert.ok(content.includes('LOCAL PERSISTENCE ≠ BLOCKCHAIN CONFIRMATION'));
+    assert.ok(content.includes('data-testid="transaction-history-panel"'));
+    assert.ok(content.includes('data-testid="reconcile-all-button"'));
+  });
+
+  it('Test 363 (Commit #30): TransactionHistoryPanel renders metadata and filter controls', () => {
+    const panelPath = path.join(srcDir, 'components', 'TransactionHistoryPanel.tsx');
+    const content = fs.readFileSync(panelPath, 'utf8');
+
+    assert.ok(content.includes('data-testid="filter-status-select"'));
+    assert.ok(content.includes('data-testid="filter-action-select"'));
+    assert.ok(content.includes('data-testid="clear-history-button"'));
+  });
+
+  it('Test 364 (Commit #30): types/index.ts re-exports all transaction persistence and recovery domain models and errors', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('PersistedTransaction'));
+    assert.ok(content.includes('TransactionPersistenceState'));
+    assert.ok(content.includes('TransactionRecoveryStatus'));
+    assert.ok(content.includes('TransactionPersistenceErrorCode'));
+    assert.ok(content.includes('TransactionPersistenceError'));
+    assert.ok(content.includes('TransactionReconciliationResult'));
+  });
+
+  it('Test 365 (Commit #30 & Strict Privacy Audit): All frontend source files (>= 59 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 59, `Must audit all frontend source files including transaction persistence modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

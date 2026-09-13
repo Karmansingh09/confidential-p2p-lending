@@ -5,11 +5,58 @@ import type {
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 
 /**
+ * Granular statuses for transaction reconciliation between local client operations
+ * and network provider responses.
+ */
+export type DetailedReconciliationStatus =
+  | 'LOCAL_REQUEST_CREATED'
+  | 'SIGNATURE_REQUESTED'
+  | 'SIGNED'
+  | 'SUBMITTED'
+  | 'NETWORK_PENDING'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'FAILED'
+  | 'UNKNOWN'
+  | 'UNSUPPORTED';
+
+/**
+ * Safely maps raw provider status strings to canonical TrackedTransactionStatus.
+ * Unknown or unsupported statuses are never guessed — they map safely to UNKNOWN.
+ */
+export function normalizeProviderStatus(status: string | undefined | null): TrackedTransactionStatus {
+  if (!status) return 'UNKNOWN';
+  const normalized = status.toUpperCase().trim();
+  switch (normalized) {
+    case 'CONFIRMED':
+    case 'SUCCESS':
+      return 'CONFIRMED';
+    case 'PENDING':
+    case 'NETWORK_PENDING':
+    case 'IN_PROGRESS':
+      return 'PENDING';
+    case 'SUBMITTED':
+      return 'SUBMITTED';
+    case 'REJECTED':
+    case 'USER_REJECTED':
+      return 'REJECTED';
+    case 'FAILED':
+    case 'ERROR':
+      return 'FAILED';
+    case 'UNSUPPORTED':
+      return 'UNSUPPORTED';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
+/**
  * Internal record for tracking transaction status.
  */
 interface TrackedRecord {
   transactionId: string;
   status: TrackedTransactionStatus;
+  detailedStatus?: DetailedReconciliationStatus;
   loanId?: string;
   action?: LifecycleTransactionAction;
   blockHeight?: bigint;
@@ -21,7 +68,7 @@ interface TrackedRecord {
 
 /**
  * TransactionStatusService provides an in-memory tracking service for all
- * transaction requests submitted to the network.
+ * transaction requests submitted to the network, with explicit reconciliation support.
  *
  * ANTI-FABRICATION INVARIANT:
  * This service NEVER assumes a submitted transaction is confirmed.
@@ -99,6 +146,23 @@ export class TransactionStatusService {
     if (details?.error !== undefined) existing.error = details.error;
 
     return this.toResult(existing);
+  }
+
+  /**
+   * Reconciles a tracked transaction against an authoritative provider status string.
+   * Maps unrecognized or unsupported states safely to UNKNOWN.
+   */
+  reconcileStatus(
+    transactionId: string,
+    rawProviderStatus: string | undefined,
+    details?: {
+      blockHeight?: bigint;
+      confirmations?: number;
+      error?: string;
+    }
+  ): TransactionStatusResult {
+    const canonicalStatus = normalizeProviderStatus(rawProviderStatus);
+    return this.updateStatus(transactionId, canonicalStatus, details);
   }
 
   /**

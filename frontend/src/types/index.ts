@@ -204,3 +204,12 @@ export {
   type TransactionRequest as TransactionLifecycleRequest,
   type TransactionRequestResult,
 } from './transaction-request.ts';
+
+export {
+  TransactionPersistenceError,
+  type PersistedTransaction,
+  type TransactionPersistenceState,
+  type TransactionRecoveryStatus,
+  type TransactionPersistenceErrorCode,
+  type TransactionReconciliationResult,
+} from './transaction-persistence.ts';

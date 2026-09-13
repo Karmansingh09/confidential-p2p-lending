@@ -45,6 +45,14 @@ import {
   TransactionStatusService,
   getTransactionStatusService,
 } from './transaction-status-service.ts';
+import {
+  TransactionPersistenceService,
+  getTransactionPersistenceService,
+} from './transaction-persistence-service.ts';
+import type {
+  PersistedTransaction,
+  TransactionRecoveryStatus,
+} from '../types/transaction-persistence.ts';
 import type { TransactionPreparation } from '../types/transaction-orchestration.ts';
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -64,10 +72,72 @@ function bytesToHex(bytes: Uint8Array): string {
 export class TransactionExecutionService {
   private sessionService: WalletSessionService;
   private customProvider?: WalletProvider;
+  private persistenceService: TransactionPersistenceService;
 
-  constructor(sessionService?: WalletSessionService, customProvider?: WalletProvider) {
+  constructor(
+    sessionService?: WalletSessionService,
+    customProvider?: WalletProvider,
+    persistenceService?: TransactionPersistenceService
+  ) {
     this.sessionService = sessionService ?? getWalletSessionService();
     this.customProvider = customProvider;
+    this.persistenceService = persistenceService ?? getTransactionPersistenceService();
+  }
+
+  getPersistenceService(): TransactionPersistenceService {
+    return this.persistenceService;
+  }
+
+  setPersistenceService(persistence: TransactionPersistenceService): void {
+    this.persistenceService = persistence;
+  }
+
+  /**
+   * Persists the active transaction request to persistent storage.
+   */
+  persistRequest(
+    request: TransactionRequest,
+    extra?: Partial<PersistedTransaction>
+  ): void {
+    const provider = this.getProvider();
+    const providerKind = (provider as any).isPrototype ? 'PROTOTYPE' : (provider as any).name ?? 'MIDNIGHT_WALLET';
+    const networkId = provider.getReportedNetworkId ? (provider.getReportedNetworkId() ?? 'unknown') : 'unknown';
+
+    let recoveryStatus: TransactionRecoveryStatus = 'RECOVERABLE';
+    if (request.status === 'CONFIRMED') recoveryStatus = 'CONFIRMED';
+    else if (request.status === 'SUBMITTED' || request.status === 'SUBMITTING') recoveryStatus = 'PENDING';
+    else if (request.status === 'REJECTED') recoveryStatus = 'REJECTED';
+    else if (request.status === 'FAILED') recoveryStatus = 'FAILED';
+    else if (request.status === 'UNSUPPORTED' || request.status === 'BLOCKED') recoveryStatus = 'UNSUPPORTED';
+
+    const persisted: PersistedTransaction = {
+      id: request.id,
+      action: request.action,
+      loanId: request.loanId,
+      circuitName: request.circuitName,
+      callerPublicKeyHex: request.parameters.callerPublicKeyHex,
+      callerPublicKey: request.parameters.callerPublicKey,
+      networkId,
+      providerKind,
+      status: request.status,
+      recoveryStatus,
+      providerTransactionId: request.submissionResult?.transactionId,
+      blockHeight: request.submissionResult?.blockHeight ?? request.statusResult?.blockHeight,
+      amount: request.parameters.amount,
+      interestRateBps: request.parameters.interestRateBps,
+      durationBlocks: request.parameters.durationBlocks,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      error: request.error,
+      errorCode: request.errorCode,
+      ...extra,
+    };
+
+    try {
+      this.persistenceService.saveTransaction(persisted);
+    } catch {
+      // Safe non-blocking persistence
+    }
   }
 
   /**
@@ -676,7 +746,7 @@ export class TransactionExecutionService {
       durationBlocks: loan.durationBlocks,
     };
 
-    return {
+    const req: TransactionRequest = {
       id,
       loanId: effectiveLoanId,
       action,
@@ -686,6 +756,9 @@ export class TransactionExecutionService {
       createdAt: now,
       updatedAt: now,
     };
+
+    this.persistRequest(req);
+    return req;
   }
 
   /**
@@ -716,6 +789,7 @@ export class TransactionExecutionService {
       request.errorCode = 'NOT_CONNECTED';
       request.updatedAt = Date.now();
       const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      this.persistRequest(request);
       return { isReady: false, reason: 'Wallet is disconnected.', errorCode: 'NOT_CONNECTED', prep };
     }
 
@@ -731,6 +805,7 @@ export class TransactionExecutionService {
       request.errorCode = 'UNKNOWN_NETWORK';
       request.updatedAt = Date.now();
       const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      this.persistRequest(request);
       return { isReady: false, reason: 'Network configuration required.', errorCode: 'UNKNOWN_NETWORK', prep };
     }
 
@@ -745,6 +820,7 @@ export class TransactionExecutionService {
         request.errorCode = 'NETWORK_MISMATCH';
         request.updatedAt = Date.now();
         const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        this.persistRequest(request);
         return { isReady: false, reason: comp.reason, errorCode: 'NETWORK_MISMATCH', prep };
       }
       if (comp.compatibility === 'UNKNOWN') {
@@ -753,6 +829,7 @@ export class TransactionExecutionService {
         request.errorCode = 'UNKNOWN_NETWORK';
         request.updatedAt = Date.now();
         const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        this.persistRequest(request);
         return { isReady: false, reason: comp.reason, errorCode: 'UNKNOWN_NETWORK', prep };
       }
     }
@@ -770,6 +847,7 @@ export class TransactionExecutionService {
       request.errorCode = 'UNSUPPORTED_PROVIDER';
       request.updatedAt = Date.now();
       const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      this.persistRequest(request);
       return { isReady: false, reason: 'Wallet connector not detected.', errorCode: 'UNSUPPORTED_PROVIDER', prep };
     }
 
@@ -781,6 +859,7 @@ export class TransactionExecutionService {
       request.error = prep.authorizationReason ?? 'Invalid agreement parameters.';
       request.errorCode = 'MALFORMED_REQUEST';
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return { isReady: false, reason: prep.authorizationReason, errorCode: 'MALFORMED_REQUEST', prep };
     }
 
@@ -789,6 +868,7 @@ export class TransactionExecutionService {
       request.error = prep.authorizationReason ?? 'Lifecycle transaction rejected by canonical contract guards.';
       request.errorCode = 'GUARD_VALIDATION_FAILED';
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return { isReady: false, reason: prep.authorizationReason, errorCode: 'GUARD_VALIDATION_FAILED', prep };
     }
 
@@ -798,11 +878,13 @@ export class TransactionExecutionService {
       request.error = reason;
       request.errorCode = 'MISSING_CAPABILITY';
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return { isReady: false, reason, errorCode: 'MISSING_CAPABILITY', prep };
     }
 
     request.status = 'PREPARED';
     request.updatedAt = Date.now();
+    this.persistRequest(request);
     return { isReady: true, prep };
   }
 
@@ -816,6 +898,7 @@ export class TransactionExecutionService {
     const provider = this.getProvider();
     request.status = 'SIGNATURE_REQUESTED';
     request.updatedAt = Date.now();
+    this.persistRequest(request);
 
     if (!request.parameters.callerPublicKey) {
       const result: TransactionSigningResult = {
@@ -828,6 +911,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.signingResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -842,6 +926,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.signingResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -856,6 +941,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.signingResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -886,6 +972,7 @@ export class TransactionExecutionService {
         request.error = signingResult.error;
         request.errorCode = signingResult.errorCode;
       }
+      this.persistRequest(request);
       return signingResult;
     } catch (err: unknown) {
       const rawMsg = err instanceof Error ? err.message : String(err);
@@ -914,6 +1001,7 @@ export class TransactionExecutionService {
       request.errorCode = errorCode;
       request.signingResult = signingResult;
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return signingResult;
     }
   }
@@ -941,6 +1029,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.submissionResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -955,6 +1044,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.submissionResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -969,6 +1059,7 @@ export class TransactionExecutionService {
       request.error = result.error;
       request.errorCode = result.errorCode;
       request.submissionResult = result;
+      this.persistRequest(request);
       return result;
     }
 
@@ -1027,6 +1118,7 @@ export class TransactionExecutionService {
         );
       }
 
+      this.persistRequest(request);
       return submissionResult;
     } catch (err: unknown) {
       const rawMsg = err instanceof Error ? err.message : String(err);
@@ -1055,6 +1147,7 @@ export class TransactionExecutionService {
       request.errorCode = errorCode;
       request.submissionResult = submissionResult;
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return submissionResult;
     }
   }
@@ -1082,6 +1175,7 @@ export class TransactionExecutionService {
       request.error = prepResult.reason;
       request.errorCode = prepResult.errorCode;
       request.updatedAt = Date.now();
+      this.persistRequest(request);
 
       return {
         success: false,
@@ -1112,6 +1206,7 @@ export class TransactionExecutionService {
           request.error = errMsg;
           request.errorCode = 'CONTRACT_ERROR';
           request.updatedAt = Date.now();
+          this.persistRequest(request);
           return {
             success: false,
             status: 'FAILED',
@@ -1129,6 +1224,7 @@ export class TransactionExecutionService {
 
       request.status = 'CONFIRMED';
       request.updatedAt = Date.now();
+      this.persistRequest(request);
       return {
         success: true,
         status: 'CONFIRMED',
@@ -1144,6 +1240,7 @@ export class TransactionExecutionService {
     // Stage 3: Wallet Signing Request
     const signingResult = await this.requestSignature(request);
     if (!signingResult.success) {
+      this.persistRequest(request);
       return {
         success: false,
         status: request.status,
@@ -1162,6 +1259,7 @@ export class TransactionExecutionService {
     // Stage 4: Network Transaction Submission
     const submissionResult = await this.submitTransaction(request, signingResult);
     if (!submissionResult.success) {
+      this.persistRequest(request);
       return {
         success: false,
         status: request.status,
@@ -1197,6 +1295,7 @@ export class TransactionExecutionService {
       }
     }
 
+    this.persistRequest(request);
     return {
       success: true,
       status: request.status,
@@ -1235,8 +1334,9 @@ export function getTransactionExecutionService(
  */
 export function resetTransactionExecutionService(
   sessionService?: WalletSessionService,
-  provider?: WalletProvider
+  provider?: WalletProvider,
+  persistenceService?: TransactionPersistenceService
 ): TransactionExecutionService {
-  globalExecutionService = new TransactionExecutionService(sessionService, provider);
+  globalExecutionService = new TransactionExecutionService(sessionService, provider, persistenceService);
   return globalExecutionService;
 }

@@ -2104,4 +2104,124 @@ The `TransactionReviewPanel` (`frontend/src/components/TransactionReviewPanel.ts
 
 All transaction request parameters, signing payloads, and status tracking descriptors operate strictly on public loan parameters (`amount`, `interestRateBasisPoints`, `durationBlocks`, public keys, agreement IDs). Automated static analysis verifies that across all 56+ frontend modules, zero occurrences of forbidden underwriting terms, witness variables, or private financial credentials exist.
 
+---
+
+## 30. Transaction Lifecycle Persistence & Recovery Architecture (Commit #30)
+
+Commit #30 establishes the transaction lifecycle persistence and crash recovery architecture (`frontend/src/lib/transaction-persistence-service.ts`, `frontend/src/lib/transaction-recovery-service.ts`, `frontend/src/types/transaction-persistence.ts`, and `frontend/src/components/TransactionHistoryPanel.tsx`). It ensures that transaction requests, off-chain preparation states, provider signatures, and network submission metadata are reliably stored across browser reloads, network disruptions, or application restarts, while strictly upholding the anti-fabrication invariant that **local persistence does NOT imply blockchain confirmation**.
+
+### 30.1 Architectural Flow: Persistence, Recovery & Reconciliation
+
+```
++───────────────────────────────────────────────────────────────────────────────────────────+
+|               TRANSACTION LIFECYCLE PERSISTENCE & RECOVERY PIPELINE                       |
++───────────────────────────────────────────────────────────────────────────────────────────+
+|                                                                                           |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 1: TRANSACTION REQUEST CREATION │                                               |
+|  │  - createTransactionRequest() (DRAFT)  │                                               |
+|  │  - Persisted to storage immediately    │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|                      ▼                                                                    |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 2: PREPARATION & SIGNING        │                                               |
+|  │  - prepareAndValidate()                │                                               |
+|  │  - requestSignature() via provider     │                                               |
+|  │  - Storage updated at each transition  │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|                      ▼                                                                    |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 3: SUBMISSION & NETWORK REF     │                                               |
+|  │  - submitTransaction() via provider    │                                               |
+|  │  - providerTransactionId recorded      │                                               |
+|  │  - status: SUBMITTED, recovery: PENDING│                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|                      ▼                                                                    |
+|  ┌────────────────────────────────────────┐                                               |
+|  │  STAGE 4: LIFECYCLE RECOVERY & QUERY   │                                               |
+|  │  - On app startup or user action       │                                               |
+|  │  - recoverPendingTransactions()        │                                               |
+|  │  - Query provider.getTransactionStatus │                                               |
+|  └───────────────────┬────────────────────┘                                               |
+|                      │                                                                    |
+|           ┌──────────┴──────────┐                                                         |
+|           ▼                     ▼                                                         |
+|     [PENDING / REJECTED]   [CONFIRMED]                                                    |
+|     - Mapped safely to     - Verified block height                                        |
+|       PENDING/REJECTED/    - Idempotent LoanRegistry                                      |
+|       UNSUPPORTED/STALE      synchronization:                                             |
+|     - Registry UNTOUCHED     FUND_LOAN   -> LoanStatus.funded                             |
+|                              REPAY_LOAN  -> LoanStatus.repaid                             |
+|                              SETTLE_LOAN -> LoanStatus.settled                            |
+|                                                                                           |
++───────────────────────────────────────────────────────────────────────────────────────────+
+```
+
+### 30.2 Fundamental Architectural Principle: Local Persistence != Confirmation
+
+A critical architectural invariant enforced in Commit #30 is:
+$$\text{LOCAL PERSISTENCE} \neq \text{BLOCKCHAIN CONFIRMATION}$$
+
+1. **Locally Persisted State**: Records execution requests, user intentions, caller public identities, and off-chain lifecycle progress in local storage.
+2. **On-Chain Confirmation**: Originates exclusively from the active `WalletProvider` through `provider.getTransactionStatus(id)`.
+3. **Registry Mutation Gateway**: The centralized `LoanRegistry` is **never mutated** on persisted records alone. Only when `provider.getTransactionStatus()` explicitly returns `status: 'CONFIRMED'` with genuine block verification does the recovery service advance the canonical agreement status.
+4. **Offline Prototype Honesty**: When operating with `LocalPrototypeWalletProvider`, status queries throw `UNSUPPORTED_OPERATION`. The recovery service catches this, marks the transaction `recoveryStatus: 'UNSUPPORTED'`, and preserves the registry without synthetic confirmation.
+
+### 30.3 Domain Models & Error Types
+
+Implemented in `frontend/src/types/transaction-persistence.ts`:
+
+- **`PersistedTransaction`**: Standardized domain record containing public agreement terms (`amount`, `interestRateBps`, `durationBlocks`), public caller keys (`callerPublicKeyHex`, `callerPublicKey`), network identifier, provider kind, request status, recovery status, genuine provider transaction ID, and genuine block height.
+- **`TransactionRecoveryStatus`**: `'PENDING' | 'CONFIRMED' | 'FAILED' | 'REJECTED' | 'UNSUPPORTED' | 'STALE' | 'NOT_FOUND' | 'RECOVERABLE'`
+- **`TransactionPersistenceState`**: Versioned persistence snapshot schema (`version: '1.0'`, `lastSavedAt: number`, `transactions: Record<string, PersistedTransaction>`).
+- **`TransactionReconciliationResult`**: Complete reconciliation outcome including `success`, `previousStatus`, `reconciledStatus`, `recoveryStatus`, `providerTransactionId`, `blockHeight`, `registryUpdated`, `updatedRegistry`, and detailed explanatory message.
+- **`TransactionPersistenceError`**: Strongly typed domain error hierarchy with codes (`STORAGE_UNAVAILABLE`, `STORAGE_QUOTA_EXCEEDED`, `CORRUPTED_DATA`, `SERIALIZATION_ERROR`, `TRANSACTION_NOT_FOUND`, `INVALID_TRANSACTION_STATE`).
+
+### 30.4 Persistence Adapters & Safe Serialization
+
+The architecture provides two persistence adapters via `TransactionPersistence` interface:
+
+1. **`InMemoryTransactionPersistence`**: Ephemeral in-memory store for server-side environments, unit tests, and non-persistent client sessions. Sorts transactions by `createdAt` descending.
+2. **`LocalStorageTransactionPersistence`**: Browser-backed storage under key `midnight_confidential_p2p_transactions_v1`.
+   - **BigInt Serialization**: Transparently converts `bigint` primitives to numeric strings during serialization and reconstructs genuine `bigint` values upon deserialization for `amount`, `interestRateBps`, `durationBlocks`, and `blockHeight`.
+   - **Uint8Array Serialization**: Serializes 32-byte public keys to numeric byte arrays and reconstructs genuine `Uint8Array` instances.
+   - **Corrupted Storage Auto-Recovery**: If storage contains invalid JSON or truncated data, it logs a warning, falls back gracefully, and initializes a clean state without throwing or crashing the UI.
+   - **Fallback Mechanism**: Automatically delegates to in-memory storage if `localStorage` is unavailable or throws quota exceptions.
+
+### 30.5 Transaction Recovery & Reconciliation Service
+
+The `TransactionRecoveryService` (`frontend/src/lib/transaction-recovery-service.ts`) orchestrates recovery and provider synchronization:
+
+- **`recoverPendingTransactions()`**: Discovers all interrupted or unresolved transactions (`SUBMITTED`, `SUBMITTING`, `SIGNATURE_REQUESTED`, `PREPARING`, `PENDING`).
+- **`getRecoverableTransactions()`**: Discovers transactions ready for on-chain status verification.
+- **`reconcileTransaction(txId, provider, loanRegistry)`**:
+  - Queries `provider.getTransactionStatus(providerTxId)`.
+  - Maps `CONFIRMED` $\to$ updates record, extracts block height, and applies idempotent `LoanRegistry` state transitions.
+  - Maps `PENDING` / `SUBMITTED` $\to$ leaves registry untouched, preserves `PENDING` status.
+  - Maps `REJECTED` $\to$ records user/network rejection, leaves registry untouched.
+  - Maps `FAILED` $\to$ records execution failure, leaves registry untouched.
+  - Maps unrecognized statuses $\to$ safely tags as `STALE`, leaves registry untouched.
+  - Handles disconnected provider or unsupported operations $\to$ safely tags as `UNSUPPORTED`.
+- **`reconcileAll(provider, loanRegistry)`**: Iteratively reconciles all recoverable transactions and chains registry updates.
+- **Idempotency Safeguard**: If `loan.status` already matches the target state (e.g. loan is already funded), reconciliation succeeds without throwing `INVALID_TRANSITION`, returning `registryUpdated: false`.
+
+### 30.6 User Interface: Transaction History Panel
+
+`TransactionHistoryPanel.tsx` (`frontend/src/components/TransactionHistoryPanel.tsx`) renders the transaction history and recovery management UI:
+
+- **Metadata Inspection**: Displays action type, loan ID, Compact circuit name, network ID, provider kind, created time, provider transaction ID, and verified block height.
+- **Dynamic Status Badges**: Visual indicators for pipeline status (`CONFIRMED`, `SUBMITTED`, `REJECTED`, `FAILED`, `UNSUPPORTED`) and recovery state.
+- **Filtering Controls**: Filter by transaction status (`ALL`, `PENDING`, `CONFIRMED`, `FAILED`, `REJECTED`, `UNSUPPORTED`) and action type.
+- **Reconciliation Actions**: Individual "Reconcile Status" button per recoverable transaction and top-level "Reconcile All" button for bulk recovery.
+- **Honest Disclosures**: Prominently displays: `"LOCAL PERSISTENCE != BLOCKCHAIN CONFIRMATION: This panel records locally persisted lifecycle metadata and off-chain execution requests. Canonical loan registry status is updated strictly when the active wallet provider verifies on-chain confirmation."`
+
+### 30.7 Zero-Knowledge Privacy & Anti-Fabrication Invariants
+
+1. **Zero Secret Persistence**: Persisted transactions store strictly public parameters and public identity keys. No private keys, wallet secrets, seed phrases, ZK witness contexts, or confidential borrower financial data are ever accepted or serialized.
+2. **Anti-Fabrication**: In local prototype mode, `LocalPrototypeWalletProvider` explicitly rejects status queries with `UNSUPPORTED_OPERATION`. No synthetic transaction IDs, confirmations, or block heights are generated.
+3. **Automated Verification**: Verified by 420 unit and integration tests, including automated static analysis confirming zero occurrences of forbidden underwriting terms across all 74+ frontend modules.
+
 

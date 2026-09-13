@@ -17,6 +17,7 @@ import { NetworkStatusPanel } from '../components/NetworkStatusPanel.js';
 import { WalletConnectionPanel } from '../components/WalletConnectionPanel.js';
 import { WalletSessionPanel } from '../components/WalletSessionPanel.js';
 import { TransactionReviewPanel } from '../components/TransactionReviewPanel.js';
+import { TransactionHistoryPanel } from '../components/TransactionHistoryPanel.tsx';
 import type {
   LifecycleTransactionAction,
   TransactionOrchestrationResult,
@@ -24,6 +25,7 @@ import type {
 import type { TransactionExecutionResult } from '../types/index.js';
 import { executeLifecycleTransaction } from '../lib/transaction-orchestrator.ts';
 import { getTransactionExecutionService } from '../lib/transaction-execution-service.ts';
+import type { LoanRegistry } from '../lib/loan-registry.ts';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -47,6 +49,8 @@ interface DashboardPageProps {
   onSwitchRole?: (role: AccountRole) => void;
   onDisconnect?: () => void;
   onConnect?: (role?: AccountRole) => void;
+  loanRegistry?: LoanRegistry;
+  onRegistryUpdated?: (registry: LoanRegistry) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -59,9 +63,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onLoanRepaid,
   onLoanSettled,
   accountContext: propAccountContext,
+  selectedRole,
   onSwitchRole: propSwitchRole,
   onDisconnect: propDisconnect,
   onConnect: propConnect,
+  loanRegistry,
+  onRegistryUpdated,
 }) => {
   // Local fallback selection if not controlled by parent store
   const [localSelectedLoanId, setLocalSelectedLoanId] = useState<string>(
@@ -524,6 +531,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               selectedLoanId={effectiveLoanId}
               onSelectLoan={handleSelectLoan}
             />
+
+            {/* Transaction History & Lifecycle Recovery Panel (Commit #30) */}
+            <section className="transaction-history-section">
+              <TransactionHistoryPanel
+                loanRegistry={loanRegistry}
+                onTransactionReconciled={(res) => {
+                  if (res.updatedRegistry && onRegistryUpdated) {
+                    onRegistryUpdated(res.updatedRegistry);
+                  }
+                }}
+              />
+            </section>
           </>
         )}
       </main>

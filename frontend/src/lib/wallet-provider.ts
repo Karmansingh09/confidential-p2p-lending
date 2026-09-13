@@ -14,6 +14,7 @@ import type {
   WalletProviderKind,
   WalletDetectionStatus,
 } from '../types/wallet-adapter.ts';
+import type { TransactionReceipt } from '../types/transaction-execution.ts';
 
 /**
  * Clean architectural interface representing the minimum wallet and network
@@ -77,4 +78,14 @@ export interface WalletProvider {
    * In prototype mode, throws a typed ProviderError indicating live transactions are unavailable.
    */
   submitTransaction?(request: TransactionRequest): Promise<TransactionResult>;
+
+  /**
+   * Optional method to query transaction status from the provider/indexer.
+   */
+  getTransactionStatus?(transactionId: string): Promise<TransactionReceipt | null>;
+
+  /**
+   * Optional method to await reliable transaction confirmation from the network.
+   */
+  waitForConfirmation?(transactionId: string, timeoutMs?: number): Promise<TransactionReceipt>;
 }

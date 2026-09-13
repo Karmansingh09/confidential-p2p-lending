@@ -375,6 +375,18 @@ export async function executeLifecycleTransaction(
         callerPublicKey: preparation.callerPublicKey,
       });
 
+      if (txResult.status === 'PENDING') {
+        return {
+          success: true,
+          status: 'PENDING',
+          action,
+          loanId,
+          circuitName: preparation.circuitName,
+          message: 'Transaction submitted but pending on-chain confirmation.',
+          transactionId: txResult.transactionId,
+        };
+      }
+
       return {
         success: txResult.success,
         status: txResult.status === 'CONFIRMED' ? 'CONFIRMED' : 'FAILED',
@@ -388,14 +400,36 @@ export async function executeLifecycleTransaction(
         blockHeight: txResult.blockHeight,
       };
     } catch (err: any) {
+      const msg = err?.message ?? '';
+      const code = err?.code;
+      if (code === 'USER_REJECTED' || msg.toLowerCase().includes('reject')) {
+        return {
+          success: false,
+          status: 'REJECTED',
+          action,
+          loanId,
+          circuitName: preparation.circuitName,
+          message: msg || 'Transaction signing was rejected by user.',
+        };
+      }
+      if (code === 'CONNECTION_FAILED' || msg.toLowerCase().includes('network') || msg.toLowerCase().includes('endpoint')) {
+        return {
+          success: false,
+          status: 'FAILED',
+          action,
+          loanId,
+          circuitName: preparation.circuitName,
+          message: msg || 'Transaction submission failed on network endpoint.',
+        };
+      }
       return {
         success: false,
         status: 'UNSUPPORTED',
         action,
         loanId,
         circuitName: preparation.circuitName,
-        message: err?.message ?? 'Live wallet transactions are unavailable in prototype mode.',
-        unsupportedReason: err?.message ?? 'Unsupported operation in prototype provider.',
+        message: msg || 'Live wallet transactions are unavailable in prototype mode.',
+        unsupportedReason: msg || 'Unsupported operation in prototype provider.',
       };
     }
   }

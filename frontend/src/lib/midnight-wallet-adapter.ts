@@ -10,6 +10,7 @@ import type {
   TransactionRequest,
   TransactionResult,
 } from '../types/transaction.ts';
+import type { TransactionReceipt } from '../types/transaction-execution.ts';
 import {
   WalletAdapterError,
   type WalletProviderKind,
@@ -241,9 +242,73 @@ export class MidnightWalletAdapter implements WalletProvider {
       );
     }
 
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (mockObj.shouldRejectSignature) {
+        throw new WalletAdapterError(
+          'USER_REJECTED',
+          'User rejected transaction signing in wallet.'
+        );
+      }
+      if (mockObj.shouldFailSubmission) {
+        throw new WalletAdapterError(
+          'CONNECTION_FAILED',
+          'Network submission failed on RPC endpoint.'
+        );
+      }
+      if (mockObj.mockTxResult) {
+        return mockObj.mockTxResult as TransactionResult;
+      }
+    }
+
     throw new WalletAdapterError(
       'UNSUPPORTED_OPERATION',
       'On-chain transaction submission is unavailable until live Midnight wallet connector SDK is integrated.'
+    );
+  }
+
+  /**
+   * Queries transaction status from provider or testing mock.
+   */
+  async getTransactionStatus(transactionId: string): Promise<TransactionReceipt | null> {
+    if (this.status !== 'CONNECTED') {
+      return null;
+    }
+
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (typeof mockObj.mockGetStatus === 'function') {
+        return (mockObj.mockGetStatus as (txId: string) => Promise<TransactionReceipt | null>)(transactionId);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Awaits transaction confirmation from the network.
+   */
+  async waitForConfirmation(transactionId: string, timeoutMs?: number): Promise<TransactionReceipt> {
+    if (this.status !== 'CONNECTED') {
+      throw new WalletAdapterError(
+        'CONNECTION_FAILED',
+        'Cannot await confirmation: Wallet is not connected.'
+      );
+    }
+
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (typeof mockObj.mockWaitForConfirmation === 'function') {
+        return (mockObj.mockWaitForConfirmation as (txId: string, timeout?: number) => Promise<TransactionReceipt>)(
+          transactionId,
+          timeoutMs
+        );
+      }
+    }
+
+    throw new WalletAdapterError(
+      'UNSUPPORTED_OPERATION',
+      'Transaction confirmation polling is unavailable without live Midnight indexer integration.'
     );
   }
 }

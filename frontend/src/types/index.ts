@@ -155,4 +155,15 @@ export {
   type WalletSessionResult,
 } from './wallet-session.ts';
 
+export {
+  TransactionExecutionError,
+  type ProviderSubmissionStatus,
+  type ConfirmationState,
+  type TransactionExecutionErrorCode,
+  type TransactionReceipt,
+  type TransactionExecutionContext,
+  type TransactionExecutionRequest,
+  type TransactionExecutionResult,
+} from './transaction-execution.ts';
+
 

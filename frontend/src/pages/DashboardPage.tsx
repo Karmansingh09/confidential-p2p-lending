@@ -21,7 +21,9 @@ import type {
   LifecycleTransactionAction,
   TransactionOrchestrationResult,
 } from '../types/transaction-orchestration.ts';
+import type { TransactionExecutionResult } from '../types/index.js';
 import { executeLifecycleTransaction } from '../lib/transaction-orchestrator.ts';
+import { getTransactionExecutionService } from '../lib/transaction-execution-service.ts';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -69,7 +71,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [isRepayingLoan, setIsRepayingLoan] = useState<boolean>(false);
   const [isSettlingLoan, setIsSettlingLoan] = useState<boolean>(false);
   const [reviewAction, setReviewAction] = useState<LifecycleTransactionAction | null>(null);
-  const [reviewResult, setReviewResult] = useState<TransactionOrchestrationResult | null>(null);
+  const [reviewResult, setReviewResult] = useState<TransactionOrchestrationResult | TransactionExecutionResult | null>(null);
   const [isExecutingReview, setIsExecutingReview] = useState<boolean>(false);
   const [, setProviderTick] = useState<number>(0);
 
@@ -186,20 +188,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setIsExecutingReview(true);
     setReviewResult(null);
     try {
-      const result = await executeLifecycleTransaction(
-        currentLoan,
-        effectiveAccountContext,
-        reviewAction
-      );
+      const execService = getTransactionExecutionService();
+      const { result } = await execService.executeTransaction({
+        loanId: effectiveLoanId,
+        action: reviewAction,
+        loan: currentLoan,
+        account: effectiveAccountContext,
+      });
       setReviewResult(result);
     } catch (err: unknown) {
       setReviewResult({
         success: false,
         status: 'FAILED',
         action: reviewAction,
-        loanId: effectiveLoanId,
         circuitName: 'unknown',
+        loanId: effectiveLoanId,
         message: err instanceof Error ? err.message : 'Transaction execution failed.',
+        registryUpdated: false,
+        confirmationState: 'NOT_CONFIRMED',
       });
     } finally {
       setIsExecutingReview(false);
@@ -524,7 +530,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       <footer className="dashboard-footer">
         <p>
-          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #25 Wallet Session &amp; Transaction Readiness
+          Confidential P2P Micro-Lending Desk &bull; Midnight Compact ZK Contracts &bull; Commit #26 Real-Wallet Transaction Execution Boundary
         </p>
       </footer>
     </div>

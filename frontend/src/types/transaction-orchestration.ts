@@ -18,17 +18,8 @@ export type TransactionPreparationStatus =
   | 'UNSUPPORTED'
   | 'INVALID';
 
-/**
- * Lifecycle execution state representing progress through the provider boundary.
- */
-export type TransactionExecutionStatus =
-  | 'NOT_STARTED'
-  | 'PREPARING'
-  | 'SUBMITTING'
-  | 'CONFIRMED'
-  | 'REJECTED'
-  | 'UNSUPPORTED'
-  | 'FAILED';
+import type { TransactionExecutionStatus } from './transaction-execution.ts';
+export type { TransactionExecutionStatus };
 
 /**
  * Structured preparation descriptor produced before attempting lifecycle transaction dispatch.

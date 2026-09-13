@@ -5,6 +5,7 @@ import type {
   LifecycleTransactionAction,
   TransactionOrchestrationResult,
 } from '../types/transaction-orchestration.ts';
+import type { TransactionExecutionResult } from '../types/transaction-execution.ts';
 import {
   prepareLifecycleTransaction,
   getCircuitNameForAction,
@@ -20,7 +21,7 @@ export interface TransactionReviewPanelProps {
   onExecute?: () => void;
   onClose: () => void;
   isExecuting?: boolean;
-  executionResult?: TransactionOrchestrationResult | null;
+  executionResult?: TransactionOrchestrationResult | TransactionExecutionResult | null;
 }
 
 /**
@@ -266,6 +267,9 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
           {prep.status === 'UNSUPPORTED' && (
             <>
               Live transaction signing/submission is unavailable in the current environment.{' '}
+              {provider.isPrototype
+                ? 'Live transaction submission is unavailable in prototype mode.'
+                : 'Wallet detected, but this transaction capability is not available through the current adapter.'}{' '}
               {prep.authorizationReason}
             </>
           )}
@@ -283,30 +287,78 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
       </div>
 
       {/* Execution Result (if dispatched) */}
-      {executionResult && (
-        <div
-          style={{
-            background: executionResult.success ? '#064e3b' : '#450a0a',
-            border: `1px solid ${executionResult.success ? '#059669' : '#b91c1c'}`,
-            borderRadius: '6px',
-            padding: '12px',
-            marginBottom: '16px',
-          }}
-          data-testid="execution-result-banner"
-        >
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc' }}>
-            {executionResult.success ? 'Dispatch Outcome: Success' : `Dispatch Outcome: ${executionResult.status}`}
-          </div>
-          <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '4px' }}>
-            {executionResult.message}
-          </div>
-          {executionResult.unsupportedReason && (
-            <div style={{ fontSize: '11px', color: '#fca5a5', marginTop: '4px' }}>
-              Reason: {executionResult.unsupportedReason}
+      {executionResult && (() => {
+        const receipt = 'receipt' in executionResult ? executionResult.receipt : undefined;
+        const txId = (executionResult as { transactionId?: string }).transactionId ?? receipt?.transactionId;
+        const blockHeight = (executionResult as { blockHeight?: bigint }).blockHeight ?? receipt?.blockHeight;
+        const confState = 'confirmationState' in executionResult ? executionResult.confirmationState : undefined;
+
+        let bg = '#450a0a';
+        let border = '#b91c1c';
+        let title = `Dispatch Outcome: ${executionResult.status}`;
+
+        if (executionResult.status === 'CONFIRMED') {
+          bg = '#064e3b';
+          border = '#059669';
+          title = 'Transaction Confirmed';
+        } else if (executionResult.status === 'PENDING') {
+          bg = '#1e3a8a';
+          border = '#3b82f6';
+          title = 'Submission Pending Confirmation';
+        } else if (executionResult.status === 'REJECTED') {
+          bg = '#7f1d1d';
+          border = '#ef4444';
+          title = 'Transaction Rejected by User';
+        } else if (executionResult.status === 'UNSUPPORTED') {
+          bg = '#854d0e';
+          border = '#f59e0b';
+          title = 'Operation Unsupported';
+        } else if (executionResult.status === 'FAILED') {
+          bg = '#7f1d1d';
+          border = '#b91c1c';
+          title = 'Transaction Failed';
+        }
+
+        return (
+          <div
+            style={{
+              background: bg,
+              border: `1px solid ${border}`,
+              borderRadius: '6px',
+              padding: '12px',
+              marginBottom: '16px',
+            }}
+            data-testid="execution-result-banner"
+          >
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc' }}>
+              {title}
             </div>
-          )}
-        </div>
-      )}
+            <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '4px' }}>
+              {executionResult.message}
+            </div>
+            {txId && (
+              <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '4px', fontFamily: 'monospace' }}>
+                Transaction ID: {txId}
+              </div>
+            )}
+            {blockHeight !== undefined && (
+              <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '2px', fontFamily: 'monospace' }}>
+                Block Height: {blockHeight.toString()}
+              </div>
+            )}
+            {confState === 'UNCONFIRMED_PRESERVED' && (
+              <div style={{ fontSize: '11px', color: '#fef08a', marginTop: '4px' }}>
+                Agreement state preserved. Registry will not advance until transaction is confirmed.
+              </div>
+            )}
+            {executionResult.unsupportedReason && (
+              <div style={{ fontSize: '11px', color: '#fca5a5', marginTop: '4px' }}>
+                Reason: {executionResult.unsupportedReason}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Action Buttons */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

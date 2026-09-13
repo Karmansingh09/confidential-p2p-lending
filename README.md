@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 280 passing tests across 8 test suites
+# 306 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,13 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #25)
+### Current Status & Features (Commit #26)
+- **Real-Wallet Transaction Execution Boundary (Commit #26)**:
+  - **Typed Transaction Execution Models**: Comprehensive models (`frontend/src/types/transaction-execution.ts`) defining execution statuses (`IDLE`, `VALIDATING`, `PREPARING`, `SUBMITTING`, `BLOCKED`, `PENDING`, `CONFIRMED`, `REJECTED`, `FAILED`, `UNSUPPORTED`), provider submission states, receipts, and domain errors (`TransactionExecutionError`).
+  - **Production Transaction Execution Service**: Implements `TransactionExecutionService` (`frontend/src/lib/transaction-execution-service.ts`) orchestrating wallet session validation, contract guard checks, 1:1 Compact circuit mapping, provider delegation, and sanitized error mapping.
+  - **Critical LoanRegistry Immutability Invariant**: The authoritative `LoanRegistry` is **strictly preserved and never mutated** on unconfirmed, pending, unsupported, or failed transactions. Only genuine confirmed transactions advance agreement lifecycle states.
+  - **Truthful Prototype & Adapter Execution Handling**: Prototype provider returns typed `UNSUPPORTED` outcomes for on-chain actions (`FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`). Zero synthetic transaction hashes or fabricated block heights are ever generated.
+  - **Interactive Multi-State Execution UI**: `TransactionReviewPanel.tsx` visualizes pre-execution readiness, pending submission status, confirmation receipts, and honest adapter capability disclosures.
 - **Wallet Session Management & Transaction Readiness (Commit #25)**:
   - **Reactive Session Domain Model**: Comprehensive models (`frontend/src/types/wallet-session.ts`) defining session lifecycle (`DISCONNECTED`, `CONNECTING`, `CONNECTED`, `UNSUPPORTED`, `REJECTED`, `FAILED`) with sanitized domain error codes.
   - **Production Wallet Session Service**: Implements `WalletSessionService` (`frontend/src/lib/wallet-session-service.ts`) coordinating browser connector detection, connection lifecycle, and reactive observer subscriptions.
@@ -207,4 +213,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Wallet Session Boundary** (Commit #25). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection and on-chain transaction signing) is structured behind `MidnightWalletAdapter` and managed by `WalletSessionService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Transaction Execution Boundary** (Commit #26). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `TransactionExecutionService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.

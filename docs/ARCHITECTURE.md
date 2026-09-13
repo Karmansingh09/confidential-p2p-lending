@@ -1664,6 +1664,87 @@ The `WalletSessionPanel` (`frontend/src/components/WalletSessionPanel.tsx`) disp
 3. **Zero-Knowledge Privacy Isolation**:
    - Comprehensive static analysis across all 46+ frontend source files verifies that zero private financial terms exist in frontend state, DOM, or storage.
 
+---
+
+## 26. Transaction Execution & Confirmation Boundary (Commit #26)
+
+Commit #26 implements the **Real-Wallet Transaction Execution Boundary** (`frontend/src/lib/transaction-execution-service.ts` and `frontend/src/types/transaction-execution.ts`) on top of the established `WalletProvider`, `MidnightWalletAdapter`, `WalletSessionService`, `TransactionOrchestrator`, and `LoanRegistry`.
+
+```
++───────────────────────────────────────────────────────────────────────────+
+|                  TRANSACTION EXECUTION PIPELINE ARCHITECTURE              |
++───────────────────────────────────────────────────────────────────────────+
+|                                                                           |
+|   1. PREPARE (Read-Only)                                                  |
+|      ├── Contract Guards: canVerifyEligibility / canFund / canRepay / ... |
+|      ├── Session Check: session.status === 'CONNECTED'                    |
+|      └── Capability Matrix: checks required vs available provider caps    |
+|                                                                           |
+|   2. REVIEW (User Transparency)                                           |
+|      ├── Displays mapped Compact circuit name                             |
+|      ├── Exposes caller authorization and public identity                 |
+|      └── Discloses honest prototype & adapter limitations                 |
+|                                                                           |
+|   3. EXECUTE & SUBMIT (Provider Boundary Delegation)                      |
+|      ├── VERIFY_ELIGIBILITY: Local client ZK proof execution              |
+|      └── FUND / REPAY / SETTLE: Delegated to activeProvider.submitTx()    |
+|                                                                           |
+|   4. SUBMISSION OUTCOMES                                                  |
+|      ├── REJECTED: User denied wallet signature (REJECTED_SIGNATURE)      |
+|      ├── UNSUPPORTED: Mode lacks on-chain submission capabilities         |
+|      ├── FAILED: Provider RPC or assertion failure                        |
+|      ├── PENDING: Transaction broadcast, awaiting network confirmation    |
+|      └── CONFIRMED: Verified on-chain receipt from network provider       |
+|                                                                           |
+|   5. REGISTRY MUTATION INVARIANT                                          |
+|      ├── CONFIRMED ONLY: Mutates LoanRegistry into next lifecycle phase   |
+|      └── PENDING / UNSUPPORTED / FAILED: LoanRegistry PRESERVED           |
++───────────────────────────────────────────────────────────────────────────+
+```
+
+### 26.1 Separation of Preparation, Review, Execution, and Confirmation
+A fundamental architectural guarantee is the strict chronological and functional separation of transaction stages:
+
+1. **PREPARE (`prepareLifecycleTransaction`)**:
+   - Strictly read-only and idempotent.
+   - Evaluates caller rights and agreement parameters without modifying ledger or application state.
+2. **REVIEW (`TransactionReviewPanel`)**:
+   - Renders honest technical notices, Compact circuit bindings, and capability matrices.
+   - Discloses whether the action is ready, blocked by contract assertions, or unsupported in the current environment.
+3. **EXECUTE (`TransactionExecutionService.executeTransaction`)**:
+   - Resolves the active session and provider.
+   - Packages a sanitized public request containing only agreement terms and public caller keys.
+   - Delegates network communication and transaction signing to the provider abstraction.
+4. **CONFIRMATION & REGISTRY MUTATION**:
+   - The central `LoanRegistry` is **only mutated upon genuine confirmation**.
+   - If a transaction is `PENDING`, agreement state is preserved as `UNCONFIRMED_PRESERVED` without advancing the protocol lifecycle.
+
+### 26.2 Canonical 1:1 Circuit Mapping
+Every lifecycle action maps deterministically 1:1 to its underlying Midnight Compact smart contract circuit:
+- `VERIFY_ELIGIBILITY` $\longleftrightarrow$ `verifyEligibility`
+- `FUND_LOAN` $\longleftrightarrow$ `fundLoan`
+- `REPAY_LOAN` $\longleftrightarrow$ `repayLoan`
+- `SETTLE_LOAN` $\longleftrightarrow$ `settleLoan`
+
+### 26.3 Prototype Mode vs Real Adapter Boundary
+- **Local Prototype Mode (`LocalPrototypeWalletProvider`)**:
+  - `VERIFY_ELIGIBILITY`: Successfully generates and validates proofs locally off-chain using the client zero-knowledge prover.
+  - `FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`: Returns typed `status: 'UNSUPPORTED'` with domain code `UNSUPPORTED_CAPABILITY`. Clearly informs the user: *"Live transaction submission is unavailable in prototype mode."*
+- **Real Adapter Boundary (`MidnightWalletAdapter`)**:
+  - Browser detection evaluates `window.midnight`.
+  - When browser connector SDK is not yet installed, transaction attempts throw `WalletAdapterError('UNSUPPORTED_OPERATION')`.
+  - Handles user signature denial with `USER_REJECTED` $\to$ `REJECTED_SIGNATURE`.
+  - Displays genuine transaction receipts (`transactionId`, `blockHeight`) only when authentically returned by the provider.
+
+### 26.4 Anti-Fabrication Guarantees
+- **Zero Mock Identifiers**: Never fabricates synthetic transaction hashes (`0x...`), mock block numbers, or artificial network confirmations.
+- **State Preservation on Pending/Unconfirmed**: If confirmation status is unknown or pending, the agreement status remains unchanged on the client.
+
+### 26.5 Zero-Knowledge Privacy Boundary
+- **No Secret Witnesses across Provider Boundary**: Neither borrower financial witnesses nor secret underwriting criteria are passed to `submitTransaction`.
+- **Public Parameters Only**: The provider boundary receives only public identifiers: `loanId`, `action`, `callerPublicKey`.
+- **Static Verification**: Automated tests continuously audit all 48+ frontend files to verify 0 occurrences of prohibited financial terms.
+
 
 
 

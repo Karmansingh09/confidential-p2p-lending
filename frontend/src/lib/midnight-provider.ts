@@ -83,6 +83,13 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
     };
   }
 
+  /**
+   * Returns the network identifier reported by this prototype provider.
+   */
+  getReportedNetworkId(): string | null {
+    return 'midnight-prototype-local';
+  }
+
   getCapabilities(): ProviderCapabilities {
     return {
       READ_PUBLIC_LEDGER: true,

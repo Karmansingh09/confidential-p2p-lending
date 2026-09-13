@@ -139,7 +139,14 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #27)
+### Current Status & Features (Commit #28)
+- **Wallet Connection Handshake & Network-Aware Transaction Preparation (Commit #28)**:
+  - **8-Stage Handshake State Machine**: Implements `WalletHandshakeService` (`frontend/src/lib/wallet-handshake-service.ts`) orchestrating connector detection (`NOT_DETECTED`, `DETECTED`), connection request (`CONNECTING`), connection establishment (`CONNECTED`), public identity resolution (`identityResolved`), network identification (`walletNetwork`), network compatibility evaluation (`networkCompatibility`), dynamic capability verification (`capabilities`), and final handshake status (`READY`, `REJECTED`, `FAILED`, `UNSUPPORTED`).
+  - **Strict Network Compatibility Evaluation**: Implements `evaluateNetworkCompatibility` (`frontend/src/lib/wallet-network-compatibility.ts`) establishing that `UNKNOWN` network reporting is never treated as a `MATCH`, and network mismatches strictly block transaction preparation with typed reason `NETWORK_MISMATCH`.
+  - **9-Stage Transaction Readiness Pipeline**: Extends `evaluateTransactionReadiness` in `TransactionOrchestrator` (`frontend/src/lib/transaction-orchestrator.ts`) to enforce account context, connector support, connection status, identity resolution, network configuration validity, wallet network compatibility, Compact contract guards, signing capability, and submission capability.
+  - **Execution Boundary Network Gate**: Integrates Phase 2.5 network compatibility checks into `TransactionExecutionService` (`frontend/src/lib/transaction-execution-service.ts`) to block execution on `NETWORK_MISMATCH` or `UNKNOWN_WALLET_NETWORK` while preserving `LoanRegistry` state.
+  - **Real-Time Diagnostics UI**: Enhances `WalletSessionPanel.tsx` with status badges for Connector Detection, Connection Status, Expected Network, Wallet Network, Network Compatibility (`MATCH`, `MISMATCH`, `UNKNOWN`), Signing, Submission, and Transaction Readiness.
+  - **358 Passing Automated Tests**: 100% test pass rate across 8 test suites verifying handshake transitions, anti-fabrication invariants, contract guard authorization, and strict privacy isolation.
 - **Midnight Network Configuration & Connector Discovery (Commit #27)**:
   - **Authoritative Network Configuration Service**: Implements `NetworkConfigService` (`frontend/src/lib/network-config-service.ts`) as the single source of truth for active network configuration across `LOCAL`, `DEVNET`, `TESTNET`, and `MAINNET` environments with endpoint validation (`nodeRpcEndpoint`, `indexerEndpoint`) and typed domain errors (`NetworkConfigurationError`).
   - **Safe Browser Connector Discovery**: Implements `discoverWalletConnector` (`frontend/src/lib/wallet-connector-discovery.ts`) with safe SSR/Node.js runtime checks to detect `window.midnight` (Lace Wallet / Midnight connector) and report compatibility, detection status, and installation guidance without crashing outside browser environments.
@@ -224,4 +231,5 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Network Configuration Boundary** (Commit #27). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `TransactionExecutionService` and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Wallet Handshake Boundary** (Commit #28). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `WalletHandshakeService`, `TransactionExecutionService`, and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
+

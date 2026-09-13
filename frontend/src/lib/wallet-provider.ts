@@ -88,4 +88,9 @@ export interface WalletProvider {
    * Optional method to await reliable transaction confirmation from the network.
    */
   waitForConfirmation?(transactionId: string, timeoutMs?: number): Promise<TransactionReceipt>;
+
+  /**
+   * Optional method to query the network identifier reported by the connected wallet.
+   */
+  getReportedNetworkId?(): string | null;
 }

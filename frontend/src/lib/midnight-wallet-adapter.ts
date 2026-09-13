@@ -56,6 +56,7 @@ export class MidnightWalletAdapter implements WalletProvider {
   private status: WalletConnectionStatus = 'DISCONNECTED';
   private activeAccount: NetworkAccount | null = null;
   private mockConnector: unknown = null;
+  private explicitReportedNetworkId: string | null = null;
 
   constructor() {
     // Initial state is cleanly disconnected
@@ -72,10 +73,18 @@ export class MidnightWalletAdapter implements WalletProvider {
   }
 
   /**
+   * For automated testing: Sets the reported network identifier.
+   */
+  setMockReportedNetworkId(networkId: string | null): void {
+    this.explicitReportedNetworkId = networkId;
+  }
+
+  /**
    * For automated testing: Clears any injected mock connector.
    */
   clearMockConnectorForTesting(): void {
     this.mockConnector = null;
+    this.explicitReportedNetworkId = null;
   }
 
   /**
@@ -124,6 +133,31 @@ export class MidnightWalletAdapter implements WalletProvider {
       isPrototype: false,
       isRealNetwork: true,
     };
+  }
+
+  /**
+   * Returns the network identifier reported by the connected wallet, or null if disconnected/unknown.
+   */
+  getReportedNetworkId(): string | null {
+    if (this.status !== 'CONNECTED') {
+      return null;
+    }
+    if (this.explicitReportedNetworkId !== null) {
+      return this.explicitReportedNetworkId;
+    }
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (typeof mockObj.reportedNetworkId === 'string') {
+        return mockObj.reportedNetworkId;
+      }
+      if (typeof mockObj.walletNetwork === 'string') {
+        return mockObj.walletNetwork;
+      }
+      if (typeof mockObj.networkId === 'string') {
+        return mockObj.networkId;
+      }
+    }
+    return null;
   }
 
   /**

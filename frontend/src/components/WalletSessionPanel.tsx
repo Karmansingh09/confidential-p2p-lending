@@ -4,6 +4,7 @@ import {
   subscribeToWalletSession,
 } from '../lib/wallet-session-service.ts';
 import { getNetworkConfigService } from '../lib/network-config-service.ts';
+import { getWalletHandshakeService } from '../lib/wallet-handshake-service.ts';
 import type {
   WalletSession,
   WalletSessionStatus,
@@ -12,6 +13,7 @@ import type {
   WalletDetectionStatus,
   WalletProviderKind,
 } from '../types/wallet-adapter.ts';
+import type { WalletHandshakeState } from '../types/wallet-handshake.ts';
 
 export interface WalletSessionPanelProps {
   onSessionChanged?: (session: WalletSession) => void;
@@ -36,19 +38,30 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
   onProviderSwitched,
 }) => {
   const sessionService = getWalletSessionService();
+  const handshakeService = getWalletHandshakeService();
   const [session, setSession] = useState<WalletSession>(() =>
     sessionService.getSession()
+  );
+  const [handshake, setHandshake] = useState<WalletHandshakeState>(() =>
+    handshakeService.getHandshakeState()
   );
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // Subscribe to session transitions
+  // Subscribe to session and handshake transitions
   useEffect(() => {
-    const unsubscribe = subscribeToWalletSession((updatedSession) => {
+    const unsubscribeSession = subscribeToWalletSession((updatedSession) => {
       setSession(updatedSession);
+      setHandshake(handshakeService.getHandshakeState());
       onSessionChanged?.(updatedSession);
     });
-    return unsubscribe;
+    const unsubscribeHandshake = handshakeService.subscribe((updatedHandshake) => {
+      setHandshake(updatedHandshake);
+    });
+    return () => {
+      unsubscribeSession();
+      unsubscribeHandshake();
+    };
   }, [onSessionChanged]);
 
   const handleConnect = async () => {
@@ -56,6 +69,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
     setLocalError(null);
     try {
       const result = await sessionService.connect();
+      await handshakeService.refresh();
       if (!result.success && result.error) {
         setLocalError(result.error.message);
       }
@@ -71,6 +85,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
     setLocalError(null);
     try {
       await sessionService.disconnect();
+      await handshakeService.refresh();
     } catch (err: unknown) {
       setLocalError(err instanceof Error ? err.message : 'Failed to disconnect session.');
     } finally {
@@ -81,12 +96,14 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
   const handleSwitchToPrototype = () => {
     setLocalError(null);
     sessionService.switchToPrototypeProvider();
+    handshakeService.refresh();
     onProviderSwitched?.();
   };
 
   const handleSwitchToMidnightAdapter = () => {
     setLocalError(null);
     sessionService.switchToMidnightAdapter();
+    handshakeService.refresh();
     onProviderSwitched?.();
   };
 
@@ -156,6 +173,29 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
       ? 'UNSUPPORTED'
       : 'BLOCKED';
 
+  const connectionStatusLabel = isConnected
+    ? 'Connected'
+    : handshake.isDetected
+    ? 'Detected — Not Connected'
+    : 'Disconnected';
+
+  const networkCompatibilityLabel =
+    handshake.networkCompatibility === 'MATCH'
+      ? 'Network Match'
+      : handshake.networkCompatibility === 'MISMATCH'
+      ? 'Network Mismatch'
+      : 'Unknown Network';
+
+  const signingLabel = session.capabilities.SIGN_TRANSACTION ? 'Signing Available' : 'Signing Unavailable';
+  const submissionLabel = session.capabilities.SUBMIT_TRANSACTION ? 'Submission Available' : 'Submission Unavailable';
+
+  const isTxReady =
+    isConnected &&
+    (isPrototype || handshake.networkCompatibility === 'MATCH') &&
+    session.capabilities.SIGN_TRANSACTION &&
+    session.capabilities.SUBMIT_TRANSACTION;
+  const transactionReadinessLabel = isTxReady ? 'Transaction Ready' : 'Transaction Blocked';
+
   return (
     <div
       style={{
@@ -186,7 +226,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
               Wallet Session &amp; Identity Management
             </h3>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Commit #25 • Production-Oriented Wallet Session &amp; Transaction Readiness
+              Commit #28 • Wallet Connection Handshake &amp; Network-Aware Transaction Preparation
             </span>
           </div>
         </div>
@@ -303,72 +343,112 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connector</div>
           <div
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: isConnected ? '#4ade80' : isWalletDetected ? '#93c5fd' : '#f87171',
+              color: handshake.isDetected ? '#4ade80' : '#f87171',
               marginTop: '4px',
             }}
           >
-            {walletStatusText}
+            {handshake.isDetected ? 'Detected' : 'Not Detected'}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Connector</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Connection Status</div>
           <div
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: connectorStatusText === 'SUPPORTED' ? '#4ade80' : '#f87171',
+              color: isConnected ? '#4ade80' : handshake.isDetected ? '#93c5fd' : '#f87171',
               marginTop: '4px',
             }}
           >
-            {connectorStatusText}
+            {connectionStatusLabel}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing</div>
-          <div
-            style={{
-              fontSize: '12px',
-              fontWeight: 600,
-              color: signingStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
-              marginTop: '4px',
-            }}
-          >
-            {signingStatusText}
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Expected Network</div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>
+            {handshake.expectedNetwork || netConfig.networkName}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Network</div>
           <div
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: submissionStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
+              color: handshake.walletNetwork ? '#93c5fd' : '#94a3b8',
               marginTop: '4px',
             }}
           >
-            {submissionStatusText}
+            {handshake.walletNetwork ?? 'None'}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction readiness</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Compatibility</div>
           <div
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: readinessStatusText === 'READY' ? '#4ade80' : '#eab308',
+              color:
+                handshake.networkCompatibility === 'MATCH'
+                  ? '#4ade80'
+                  : handshake.networkCompatibility === 'MISMATCH'
+                  ? '#f87171'
+                  : '#eab308',
               marginTop: '4px',
             }}
           >
-            {readinessStatusText}
+            {networkCompatibilityLabel}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing Capability</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: session.capabilities.SIGN_TRANSACTION ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {signingLabel}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission Capability</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: session.capabilities.SUBMIT_TRANSACTION ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {submissionLabel}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Readiness</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: isTxReady ? '#4ade80' : '#eab308',
+              marginTop: '4px',
+            }}
+          >
+            {transactionReadinessLabel}
           </div>
         </div>
 
@@ -475,20 +555,26 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           <button
             type="button"
             onClick={handleConnect}
-            disabled={isConnecting}
+            disabled={isConnecting || (!isPrototype && !handshake.isDetected)}
             style={{
-              background: '#2563eb',
+              background: (!isPrototype && !handshake.isDetected) ? '#334155' : '#2563eb',
               color: '#ffffff',
               border: 'none',
               padding: '8px 18px',
               borderRadius: '6px',
               fontSize: '12px',
               fontWeight: 600,
-              cursor: isConnecting ? 'not-allowed' : 'pointer',
+              cursor: (isConnecting || (!isPrototype && !handshake.isDetected)) ? 'not-allowed' : 'pointer',
             }}
             data-testid="session-connect-btn"
           >
-            {isConnecting ? 'Connecting...' : 'Connect Session'}
+            {isConnecting
+              ? 'Connecting...'
+              : !isPrototype && !handshake.isDetected
+              ? 'Wallet Not Detected'
+              : !isPrototype
+              ? 'Connect Wallet'
+              : 'Connect Session'}
           </button>
         ) : (
           <button
@@ -513,7 +599,9 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
 
         <span style={{ fontSize: '11px', color: '#94a3b8' }}>
           {isPrototype
-            ? 'Simulation mode active: Personas switchable locally without extension.'
+            ? 'Simulation Only: Local Prototype Wallet (No real wallet transaction is being submitted)'
+            : !handshake.isDetected
+            ? 'Browser wallet connector was not detected. Please install the Lace / Midnight wallet browser extension.'
             : 'Adapter boundary active: Live signing requires future installed dApp connector SDK.'}
         </span>
       </div>

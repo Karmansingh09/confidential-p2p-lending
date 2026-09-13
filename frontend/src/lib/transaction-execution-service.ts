@@ -12,6 +12,7 @@ import {
   type TransactionReadinessEvaluation,
 } from './transaction-orchestrator.ts';
 import { getNetworkConfigService } from './network-config-service.ts';
+import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 import type { NetworkAccount } from '../types/network.ts';
 import type { WalletAccountIdentity } from '../types/wallet-adapter.ts';
@@ -129,6 +130,47 @@ export class TransactionExecutionService {
         confirmationState: 'NOT_CONFIRMED',
       };
       return { result };
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 2.5: Wallet Network Compatibility Evaluation
+    // -------------------------------------------------------------------------
+    if (netConfig.environment !== 'LOCAL') {
+      const walletNetwork =
+        typeof provider.getReportedNetworkId === 'function' ? provider.getReportedNetworkId() : null;
+      const comp = evaluateNetworkCompatibility(netConfig, walletNetwork);
+      if (comp.compatibility === 'MISMATCH') {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: `Transaction blocked by network mismatch: ${comp.reason}`,
+          errorCode: 'NETWORK_ERROR',
+          error: 'NETWORK_MISMATCH',
+          unsupportedReason: comp.reason,
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
+      if (comp.compatibility === 'UNKNOWN') {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: 'Transaction blocked: Wallet network is unknown and cannot be verified against configuration.',
+          errorCode: 'NETWORK_ERROR',
+          error: 'UNKNOWN_WALLET_NETWORK',
+          unsupportedReason: comp.reason,
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
     }
 
     // -------------------------------------------------------------------------

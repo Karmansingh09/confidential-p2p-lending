@@ -151,6 +151,18 @@ import {
   getConnectorReadinessState,
   getConnectorDiscovery,
 } from '../frontend/src/lib/wallet-session-service.ts';
+import {
+  evaluateNetworkCompatibility,
+  normalizeNetworkId,
+} from '../frontend/src/lib/wallet-network-compatibility.ts';
+import {
+  WalletHandshakeService,
+  getWalletHandshakeService,
+  resetWalletHandshakeService,
+  performWalletHandshake,
+  getWalletHandshakeState,
+} from '../frontend/src/lib/wallet-handshake-service.ts';
+import { WalletHandshakeError } from '../frontend/src/types/wallet-handshake.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -5322,7 +5334,642 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       }
     }
   });
+
+  // =========================================================================
+  // COMMIT #28: WALLET CONNECTION HANDSHAKE & NETWORK-AWARE TRANSACTION PREPARATION
+  // =========================================================================
+
+  it('Test 277 (Commit #28): Node.js environment does not crash while detecting wallet', () => {
+    const adapter = new MidnightWalletAdapter();
+    const service = new WalletHandshakeService(undefined, adapter);
+    const state = service.getHandshakeState();
+
+    assert.equal(state.isDetected, false);
+    assert.equal(state.isConnected, false);
+    assert.equal(state.status, 'NOT_DETECTED');
+  });
+
+  it('Test 278 (Commit #28): Missing connector returns NOT_DETECTED', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting(false);
+    const service = new WalletHandshakeService(undefined, adapter);
+    const stateBefore = service.getHandshakeState();
+    assert.equal(stateBefore.status, 'NOT_DETECTED');
+
+    const result = await service.initiateHandshake();
+    assert.equal(result.success, false);
+    assert.equal(result.state.status, 'NOT_DETECTED');
+    assert.ok(result.error instanceof WalletHandshakeError);
+    assert.equal(result.error.code, 'WALLET_NOT_DETECTED');
+  });
+
+  it('Test 279 (Commit #28 & Critical Invariant): Detected connector is not automatically considered CONNECTED', () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1addr_test',
+        publicKey: PROTOTYPE_BORROWER_PK,
+        publicKeyHex: '0x01',
+      },
+    });
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const state = service.getHandshakeState();
+
+    // Invariant: DETECTED != CONNECTED
+    assert.equal(state.isDetected, true);
+    assert.equal(state.isConnected, false);
+    assert.notEqual(state.status, 'CONNECTED');
+    assert.equal(state.status, 'DETECTED');
+    assert.equal(state.identityResolved, false);
+    assert.equal(state.account, null);
+  });
+
+  it('Test 280 (Commit #28): Connection failure returns REJECTED / FAILED', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      shouldReject: true,
+    });
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const result = await service.initiateHandshake();
+
+    assert.equal(result.success, false);
+    assert.equal(result.state.status, 'REJECTED');
+    assert.ok(result.error instanceof WalletHandshakeError);
+    assert.equal(result.error.code, 'USER_REJECTED');
+    assert.equal(result.state.isConnected, false);
+  });
+
+  it('Test 281 (Commit #28): Successful supported connection resolves public identity', async () => {
+    const adapter = new MidnightWalletAdapter();
+    const testAccount = {
+      address: 'midnight1addr_borrower',
+      publicKey: PROTOTYPE_BORROWER_PK,
+      publicKeyHex: '0x01',
+      role: 'BORROWER',
+    };
+    adapter.injectMockConnectorForTesting({
+      mockAccount: testAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const result = await service.initiateHandshake({ role: 'BORROWER' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.state.isConnected, true);
+    assert.equal(result.state.identityResolved, true);
+    assert.ok(result.state.account);
+    assert.equal(result.state.account.publicKeyHex, '0x01');
+    assert.equal(result.state.account.address, 'midnight1addr_borrower');
+    assert.equal(result.state.account.role, 'BORROWER');
+  });
+
+  it('Test 282 (Commit #28): Wallet network is resolved when available', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1addr_lender',
+        publicKey: PROTOTYPE_LENDER_PK,
+        publicKeyHex: '0x10',
+        role: 'LENDER',
+      },
+      walletNetwork: 'midnight-testnet-01',
+    });
+    adapter.setMockReportedNetworkId('midnight-testnet-01');
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const result = await service.initiateHandshake({ role: 'LENDER' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.state.walletNetwork, 'midnight-testnet-01');
+  });
+
+  it('Test 283 (Commit #28): Wallet network mismatch blocks transaction readiness', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.setMockReportedNetworkId('midnight-devnet-02');
+    await adapter.connect('LENDER');
+
+    const configService = getNetworkConfigService();
+    try {
+      configService.setNetworkConfig({
+        environment: 'TESTNET',
+        networkName: 'Midnight Testnet',
+        networkId: 'midnight-testnet-01',
+        nodeRpcEndpoint: {
+          url: 'https://rpc.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        indexerEndpoint: {
+          url: 'https://indexer.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      });
+
+      const compat = evaluateNetworkCompatibility(configService.getNetworkConfig(), adapter.getReportedNetworkId());
+      assert.equal(compat.compatibility, 'MISMATCH');
+      assert.equal(compat.isMatch, false);
+
+      const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+      assert.equal(readiness.isReady, false);
+      assert.equal(readiness.reason, 'NETWORK_MISMATCH');
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 284 (Commit #28): Unknown wallet network is not treated as a match', () => {
+    const testnetConfig = {
+      environment: 'TESTNET',
+      networkName: 'Midnight Testnet',
+      networkId: 'midnight-testnet-01',
+      nodeRpcEndpoint: {
+        url: 'https://rpc.testnet.midnight.network',
+        protocol: 'https',
+        reachable: true,
+        status: 'CONFIGURED',
+      },
+      indexerEndpoint: {
+        url: 'https://indexer.testnet.midnight.network',
+        protocol: 'https',
+        reachable: true,
+        status: 'CONFIGURED',
+      },
+      walletConnectorAvailable: true,
+      isRealNetwork: true,
+      isPrototype: false,
+      status: 'CONFIGURED',
+    };
+
+    const nullCompat = evaluateNetworkCompatibility(testnetConfig, null);
+    assert.equal(nullCompat.compatibility, 'UNKNOWN');
+    assert.equal(nullCompat.isMatch, false);
+    assert.notEqual(nullCompat.compatibility, 'MATCH');
+
+    const emptyCompat = evaluateNetworkCompatibility(testnetConfig, '');
+    assert.equal(emptyCompat.compatibility, 'UNKNOWN');
+    assert.equal(emptyCompat.isMatch, false);
+    assert.notEqual(emptyCompat.compatibility, 'MATCH');
+  });
+
+  it('Test 285 (Commit #28): Matching network permits the network compatibility stage', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.setMockReportedNetworkId('midnight-testnet-01');
+    await adapter.connect('LENDER');
+
+    const configService = getNetworkConfigService();
+    try {
+      configService.setNetworkConfig({
+        environment: 'TESTNET',
+        networkName: 'Midnight Testnet',
+        networkId: 'midnight-testnet-01',
+        nodeRpcEndpoint: {
+          url: 'https://rpc.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        indexerEndpoint: {
+          url: 'https://indexer.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      });
+
+      const compat = evaluateNetworkCompatibility(configService.getNetworkConfig(), adapter.getReportedNetworkId());
+      assert.equal(compat.compatibility, 'MATCH');
+      assert.equal(compat.isMatch, true);
+
+      const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+      assert.equal(readiness.isReady, true);
+      assert.equal(readiness.reason, 'READY');
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 286 (Commit #28): Connected wallet without signing capability is not transaction-ready', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: false,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const handshakeState = service.getHandshakeState();
+    assert.equal(handshakeState.capabilities.canSign, false);
+
+    const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'SIGNING_UNAVAILABLE');
+  });
+
+  it('Test 287 (Commit #28): Connected wallet without submission capability is not transaction-ready', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: false,
+    });
+    await adapter.connect('LENDER');
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const handshakeState = service.getHandshakeState();
+    assert.equal(handshakeState.capabilities.canSubmit, false);
+
+    const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'SUBMISSION_UNAVAILABLE');
+  });
+
+  it('Test 288 (Commit #28 & Architectural Invariant): Detection does not imply connection', () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: { address: 'midnight1addr_test', publicKey: PROTOTYPE_BORROWER_PK, publicKeyHex: '0x01' },
+    });
+    const service = new WalletHandshakeService(undefined, adapter);
+    const state = service.getHandshakeState();
+
+    assert.equal(state.isDetected, true);
+    assert.equal(state.isConnected, false);
+    assert.notEqual(state.isDetected, state.isConnected);
+  });
+
+  it('Test 289 (Commit #28 & Architectural Invariant): Connection does not imply transaction capability', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: { address: 'midnight1addr_test', publicKey: PROTOTYPE_BORROWER_PK, publicKeyHex: '0x01' },
+      signingAvailable: false,
+      submissionAvailable: false,
+    });
+    await adapter.connect('BORROWER');
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const state = service.getHandshakeState();
+
+    assert.equal(state.isConnected, true);
+    assert.equal(state.capabilities.canSign, false);
+    assert.equal(state.capabilities.canSubmit, false);
+    assert.notEqual(state.isConnected, state.capabilities.canSign && state.capabilities.canSubmit);
+  });
+
+  it('Test 290 (Commit #28): Preparation remains read-only', () => {
+    const registry = createDefaultLoanRegistry();
+    const originalLoan = registry.getLoan('loan-001');
+    const originalStatus = originalLoan.status;
+    const originalAmount = originalLoan.amount;
+
+    const borrowerAccount = {
+      publicKey: PROTOTYPE_BORROWER_PK,
+      publicKeyHex: '0x01',
+      role: 'BORROWER',
+    };
+    const protoProvider = new LocalPrototypeWalletProvider('BORROWER');
+
+    const prep = prepareLifecycleTransaction(
+      originalLoan,
+      borrowerAccount,
+      'VERIFY_ELIGIBILITY',
+      protoProvider
+    );
+
+    assert.equal(prep.action, 'VERIFY_ELIGIBILITY');
+    const storedLoan = registry.getLoan('loan-001');
+    assert.equal(storedLoan.status, originalStatus);
+    assert.equal(storedLoan.amount, originalAmount);
+  });
+
+  it('Test 291 (Commit #28): Blocked preparation does not mutate LoanRegistry', () => {
+    const registry = createDefaultLoanRegistry();
+    const loanBefore = registry.getLoan('loan-001');
+    assert.equal(loanBefore.status, LoanStatus.requested);
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+    const provider = new LocalPrototypeWalletProvider('LENDER');
+
+    const readiness = evaluateTransactionReadiness(loanBefore, lenderAccount, 'FUND_LOAN', provider);
+    assert.equal(readiness.isReady, false);
+
+    const loanAfter = registry.getLoan('loan-001');
+    assert.equal(loanAfter.status, LoanStatus.requested);
+  });
+
+  it('Test 292 (Commit #28): Unsupported execution does not mutate LoanRegistry', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loanBefore = registry.getLoan('loan-001');
+    assert.equal(loanBefore.status, LoanStatus.requested);
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: { publicKey: PROTOTYPE_BORROWER_PK, publicKeyHex: '0x01', role: 'BORROWER' },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    adapter.setMockReportedNetworkId('mismatched-network-xyz');
+    await adapter.connect('BORROWER');
+
+    const configService = getNetworkConfigService();
+    try {
+      configService.setNetworkConfig({
+        environment: 'TESTNET',
+        networkName: 'Midnight Testnet',
+        networkId: 'midnight-testnet-01',
+        nodeRpcEndpoint: {
+          url: 'https://rpc.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        indexerEndpoint: {
+          url: 'https://indexer.testnet.midnight.network',
+          protocol: 'https',
+          reachable: true,
+          status: 'CONFIGURED',
+        },
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      });
+
+      const execService = getTransactionExecutionService();
+      const result = await execService.executeTransaction(
+        {
+          loan: loanBefore,
+          account: { publicKey: PROTOTYPE_BORROWER_PK, publicKeyHex: '0x01', role: 'BORROWER' },
+          action: 'VERIFY_ELIGIBILITY',
+          loanId: 'loan-001',
+        },
+        registry,
+        adapter
+      );
+
+      assert.equal(result.result.registryUpdated, false);
+      assert.equal(result.result.status, 'BLOCKED');
+      assert.equal(registry.getLoan('loan-001').status, LoanStatus.requested);
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 293 (Commit #28 & Anti-Fabrication): No synthetic transaction hashes are created', () => {
+    const service = getWalletHandshakeService();
+    const state = service.getHandshakeState();
+
+    assert.equal('txHash' in state, false);
+    assert.equal('transactionHash' in state, false);
+    assert.equal('hash' in state, false);
+
+    const compat = evaluateNetworkCompatibility(getNetworkConfig(), 'midnight-testnet-01');
+    assert.equal('txHash' in compat, false);
+    assert.equal('transactionHash' in compat, false);
+  });
+
+  it('Test 294 (Commit #28 & Anti-Fabrication): No fake block heights are created', () => {
+    const service = getWalletHandshakeService();
+    const state = service.getHandshakeState();
+
+    assert.equal('blockHeight' in state, false);
+    assert.equal('blockNumber' in state, false);
+    assert.equal('height' in state, false);
+  });
+
+  it('Test 295 (Commit #28 & Anti-Fabrication): No fake confirmations are created', () => {
+    const service = getWalletHandshakeService();
+    const state = service.getHandshakeState();
+
+    assert.equal('confirmations' in state, false);
+    assert.equal('confirmationCount' in state, false);
+    assert.equal('confirmed' in state, false);
+  });
+
+  it('Test 296 (Commit #28): Prototype provider remains explicitly non-signing/non-submitting', () => {
+    const protoProvider = new LocalPrototypeWalletProvider('BORROWER');
+    const caps = protoProvider.getCapabilities();
+
+    assert.equal(caps.SIGN_TRANSACTION, false);
+    assert.equal(caps.SUBMIT_TRANSACTION, false);
+    assert.equal(protoProvider.getReportedNetworkId(), 'midnight-prototype-local');
+  });
+
+  it('Test 297 (Commit #28): Local prototype mode remains functional', async () => {
+    const protoProvider = new LocalPrototypeWalletProvider('BORROWER');
+    const service = new WalletHandshakeService(undefined, protoProvider);
+
+    const result = await service.initiateHandshake({ role: 'BORROWER' });
+    assert.equal(result.success, true);
+    assert.equal(result.state.isConnected, true);
+    assert.equal(result.state.networkCompatibility, 'MATCH');
+    assert.equal(result.state.capabilities.canSign, false);
+    assert.equal(result.state.capabilities.canSubmit, false);
+  });
+
+  it('Test 298 (Commit #28): Existing lifecycle contract guards remain authoritative', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001'); // REQUESTED
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    assert.equal(canFundLoan(loan, lenderAccount.publicKey).canExecute, false);
+
+    const readiness = evaluateTransactionReadiness(loan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 299 (Commit #28 & Privacy Invariant): Wallet identity remains public-only', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1addr_public_only',
+        publicKey: PROTOTYPE_BORROWER_PK,
+        publicKeyHex: '0x01',
+        role: 'BORROWER',
+      },
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+
+    const service = new WalletHandshakeService(undefined, adapter);
+    const result = await service.initiateHandshake({ role: 'BORROWER' });
+
+    assert.ok(result.state.account);
+    const identityKeys = Object.keys(result.state.account);
+    const allowedKeys = ['address', 'publicKey', 'publicKeyHex', 'role', 'displayName'];
+    for (const key of identityKeys) {
+      assert.ok(allowedKeys.includes(key), `Identity has unexpected key: ${key}`);
+    }
+  });
+
+  it('Test 300 (Commit #28 & Strict Privacy): No credentials or secret fields in wallet handshake state', () => {
+    const service = getWalletHandshakeService();
+    const state = service.getHandshakeState();
+
+    const stateKeys = Object.keys(state);
+    const forbiddenSubstrings = ['secret', 'seed', 'witness', 'balance', 'income', 'salary', 'credit'];
+    for (const key of stateKeys) {
+      for (const forbidden of forbiddenSubstrings) {
+        assert.equal(
+          key.toLowerCase().includes(forbidden),
+          false,
+          `Handshake state property ${key} violates privacy rule with substring ${forbidden}`
+        );
+      }
+    }
+  });
+
+  it('Test 301 (Commit #28 & Security Invariant): No storage persistence of wallet credentials', () => {
+    const service = getWalletSessionService();
+    service.switchToPrototypeProvider('BORROWER');
+
+    const persistentKeys = ['midnight_selected_role', 'midnight_p2p_loan_registry_v1'];
+    for (const key of persistentKeys) {
+      assert.equal(key.includes('secret') || key.includes('seed'), false);
+    }
+  });
+
+  it('Test 302 (Commit #28): types/index.ts re-exports all wallet handshake domain models and errors', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('WalletHandshakeStatus'));
+    assert.ok(content.includes('NetworkCompatibilityStatus'));
+    assert.ok(content.includes('WalletHandshakeErrorCode'));
+    assert.ok(content.includes('WalletHandshakeError'));
+    assert.ok(content.includes('WalletHandshakeCapabilities'));
+    assert.ok(content.includes('WalletHandshakeState'));
+    assert.ok(content.includes('WalletHandshakeRequest'));
+    assert.ok(content.includes('WalletHandshakeResult'));
+  });
+
+  it('Test 303 (Commit #28 & Strict Privacy Audit): All frontend source files (>= 54 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 54, `Must audit all frontend source files including wallet handshake modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
 });
+
 
 
 

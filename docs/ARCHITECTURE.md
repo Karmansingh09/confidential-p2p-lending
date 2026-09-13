@@ -1822,3 +1822,132 @@ The connector discovery subsystem safely probes the browser runtime without thro
 - **No Synthetic Network Data**: Network status honestly reports whether connected to a real node or local prototype. No fake chain IDs, block hashes, or block heights are generated.
 - **No Secrets in Discovery or Configuration**: Connector discovery and network configuration models contain only public endpoints, network names, and capability flags.
 - **Strict Separation of Witness and Network Data**: Witness generation remains strictly local and off-chain; network configuration only affects public transaction routing.
+
+---
+
+## 28. Real Wallet Connection Handshake & Network-Aware Transaction Readiness (Commit #28)
+
+Commit #28 implements an authoritative wallet connection handshake boundary and a multi-stage network-aware transaction preparation pipeline. It formally distinguishes connector presence, user consent, public identity resolution, network compatibility, dynamic capabilities, and contract-level transaction readiness without fabricating blockchain primitives.
+
+```
++───────────────────────────────────────────────────────────────────────────────────────────+
+|               WALLET CONNECTION HANDSHAKE & TRANSACTION READINESS PIPELINE               |
+|                                                                                           |
+|  [Browser Connector]               [NetworkConfigService]          [Contract Guards]      |
+|    - window.midnight Detection       - Expected Environment          - canVerifyEligibility |
+|    - Mock Test Boundary              - Expected Network ID           - canFundLoan          |
+|    - DORMANT ──► DETECTING           - RPC & Indexer Endpoints       - canRepayLoan         |
+|            │                                 │                       - canSettleLoan        |
+|            ▼                                 │                              │             |
+|  ┌────────────────────────────────────────┐  │                              │             |
+|  │      8-STAGE HANDSHAKE LIFECYCLE       │  │                              │             |
+|  │                                        │  │                              │             |
+|  │  1. NOT_DETECTED / DETECTED            │  │                              │             |
+|  │     - Invariant: DETECTED != CONNECTED │  │                              │             |
+|  │  2. CONNECTING                         │  │                              │             |
+|  │     - Enclave prompt pending           │  │                              │             |
+|  │  3. CONNECTED                          │  │                              │             |
+|  │     - Session established              │  │                              │             |
+|  │  4. IDENTITY RESOLVED                  │  │                              │             |
+|  │     - Public address & public key hex  │  │                              │             |
+|  │  5. WALLET NETWORK IDENTIFIED          │  │                              │             |
+|  │     - Query reportedNetworkId          │  │                              │             |
+|  │  6. NETWORK COMPATIBILITY EVALUATION   │◄─┘                              │             |
+|  │     - MATCH / MISMATCH / UNKNOWN       │                                 │             |
+|  │     - Invariant: UNKNOWN != MATCH      │                                 │             |
+|  │  7. CAPABILITY NEGOTIATION             │                                 │             |
+|  │     - canSign & canSubmit verification │                                 │             |
+|  │     - Invariant: CONNECTED != CAPABLE  │                                 │             |
+|  │  8. HANDSHAKE STATUS RESOLUTION        │                                 │             |
+|  │     - READY / REJECTED / FAILED        │                                 │             |
+|  └────────────────────────────────────────┘                                 │             |
+|            │                                                                │             |
+|            ▼                                                                ▼             |
+|  ┌─────────────────────────────────────────────────────────────────────────────────────┐  |
+|  │                 9-STAGE PRE-TRANSACTION PREPARATION PIPELINE                        │  |
+|  │                                                                                     │  |
+|  │  Stage 1: Account Context Check     ──► Missing?         ──► WALLET_NOT_CONNECTED   │  |
+|  │  Stage 2: Connector Discovery Check  ──► Unsupported?     ──► UNSUPPORTED_CONNECTOR  │  |
+|  │  Stage 3: Provider Connection Check ──► Disconnected?    ──► WALLET_NOT_CONNECTED   │  |
+|  │  Stage 4: Identity Resolution Check ──► Unresolved?      ──► WALLET_NOT_CONNECTED   │  |
+|  │  Stage 5: Network Config Validity   ──► Bad Endpoints?   ──► BLOCKED_NETWORK_CONFIG │  |
+|  │  Stage 6: Wallet Network Match Check──► MISMATCH?        ──► NETWORK_MISMATCH       │  |
+|  │                                     ──► UNKNOWN?         ──► UNKNOWN_WALLET_NETWORK │  |
+|  │  Stage 7: Compact Contract Guards   ──► Guard Rejection? ──► GUARD_VALIDATION_FAILED│  |
+|  │  Stage 8: Provider Signing Check    ──► No Signing?      ──► SIGNING_UNAVAILABLE    │  |
+|  │  Stage 9: Provider Submission Check ──► No Submission?   ──► SUBMISSION_UNAVAILABLE │  |
+|  │                                                                                     │  |
+|  │  Result: Technical Readiness Evaluated (isReady: true/false, reason, message)       │  |
+|  └─────────────────────────────────────────────────────────────────────────────────────┘  |
+|            │                                                                              |
+|            ▼                                                                              |
+|  [TransactionExecutionService] (Phase 2.5)                                                |
+|    - Enforces Network Compatibility gate before execution dispatch                        |
+|    - Rejects MISMATCH and UNKNOWN before transaction submission                           |
+|    - Preserves LoanRegistry state on unexecutable or blocked transactions                 |
++───────────────────────────────────────────────────────────────────────────────────────────+
+```
+
+### 28.1 The Eight-Stage Connection Handshake State Machine
+
+The `WalletHandshakeService` (`frontend/src/lib/wallet-handshake-service.ts`) orchestrates the complete lifecycle:
+
+1. **`NOT_DETECTED`**: No compatible browser wallet connector is installed in the runtime environment.
+2. **`DETECTED`**: A browser wallet connector (e.g. Lace on `window.midnight`) is present, but no permission or connection has been granted.
+3. **`CONNECTING`**: Connection request is actively in progress awaiting user permission or enclave approval.
+4. **`CONNECTED`**: Connection session established through the provider boundary.
+5. **`IDENTITY_RESOLVED`**: Public account key bytes (`publicKey`), hex representation (`publicKeyHex`), and address (`address`) are resolved without exposing any private credentials.
+6. **`WALLET_NETWORK_IDENTIFIED`**: The connected wallet's active network identifier is queried through `provider.getReportedNetworkId()`.
+7. **`NETWORK_COMPATIBILITY_EVALUATION`**: Evaluates whether the reported network matches the application's configured environment.
+8. **`CAPABILITY_VERIFICATION`**: Verifies dynamic atomic capabilities (`READ_PUBLIC_LEDGER`, `CREATE_PROOF`, `READ_ACCOUNT_IDENTITY`, `SIGN_TRANSACTION`, `SUBMIT_TRANSACTION`). If fully compatible and capable, status transitions to `READY`. If user rejects, status becomes `REJECTED`. If unsupported or unexpected failure occurs, status becomes `FAILED`.
+
+### 28.2 Network Compatibility Evaluation Rules
+
+Implemented in `frontend/src/lib/wallet-network-compatibility.ts`:
+
+- **`MATCH`**: Reported network is identical or canonically equivalent to expected configuration (e.g. `midnight-testnet-01` matching `midnight-testnet-01`).
+- **`MISMATCH`**: Reported network does not match expected configuration (e.g. wallet on `midnight-devnet-02` while app expects `midnight-testnet-01`). Blocks transaction preparation with typed reason `NETWORK_MISMATCH`.
+- **`UNKNOWN`**: Wallet does not report a network identifier (or reports empty/null). **Critical Invariant**: `UNKNOWN` is never treated as a `MATCH`. It blocks transaction preparation with typed reason `UNKNOWN_WALLET_NETWORK`.
+- **Local Prototype Compatibility**: In local prototype mode, matching local identifiers evaluates to `MATCH`, and remote network endpoints are not required.
+
+### 28.3 The Nine-Stage Transaction Readiness Pipeline
+
+Implemented in `evaluateTransactionReadiness` (`frontend/src/lib/transaction-orchestrator.ts`):
+
+1. **Stage 1 (Account Context Check)**: Verifies active account exists. (Reason: `WALLET_NOT_CONNECTED`)
+2. **Stage 2 (Connector Detection Check)**: Verifies real adapter is supported. (Reason: `UNSUPPORTED_CONNECTOR`)
+3. **Stage 3 (Provider Connection Check)**: Verifies provider is connected. (Reason: `WALLET_NOT_CONNECTED`)
+4. **Stage 4 (Identity Resolution Check)**: Verifies public keys are non-null. (Reason: `WALLET_NOT_CONNECTED`)
+5. **Stage 5 (Network Configuration Validity Check)**: Verifies valid endpoints for non-local environments. (Reason: `BLOCKED_NETWORK_CONFIGURATION`)
+6. **Stage 6 (Wallet Network Compatibility Check)**: Evaluates `evaluateNetworkCompatibility`. If `MISMATCH`, returns `NETWORK_MISMATCH`. If `UNKNOWN`, returns `UNKNOWN_WALLET_NETWORK`.
+7. **Stage 7 (Canonical Contract Guard Check)**: Evaluates `canVerifyEligibility`, `canFundLoan`, `canRepayLoan`, or `canSettleLoan`. If rejected, returns `GUARD_VALIDATION_FAILED`.
+8. **Stage 8 (Provider Signing Capability Check)**: Verifies `SIGN_TRANSACTION`. If missing, returns `SIGNING_UNAVAILABLE`.
+9. **Stage 9 (Provider Submission Capability Check)**: Verifies `SUBMIT_TRANSACTION`. If missing, returns `SUBMISSION_UNAVAILABLE`.
+
+### 28.4 Transaction Execution Boundary Integration
+
+`TransactionExecutionService` (`frontend/src/lib/transaction-execution-service.ts`) enforces network compatibility in **Phase 2.5**:
+- Pre-execution gate prevents transaction dispatch if network compatibility is `MISMATCH` or `UNKNOWN`.
+- Returns typed result `status: 'BLOCKED'`, `registryUpdated: false`.
+- Central `LoanRegistry` is never mutated on blocked, unexecutable, or unsupported operations.
+
+### 28.5 User Interface: Enhanced WalletSessionPanel
+
+The `WalletSessionPanel` component renders real-time handshake and network diagnostic indicators:
+- **Connector Detection**: `DETECTED` vs `NOT_DETECTED`.
+- **Connection Status**: `CONNECTED`, `CONNECTING`, `DISCONNECTED`.
+- **Expected Network**: Displays application configured network ID.
+- **Wallet Network**: Displays actual reported wallet network or *"Unreported"*.
+- **Network Compatibility**: `MATCH` (green), `MISMATCH` (red), `UNKNOWN` (yellow).
+- **Atomic Capabilities**: Individual badges for Signing and Submission capabilities.
+- **Transaction Readiness**: Real-time readiness status badge (`READY` vs reason).
+- **Honest Disclosures**: In prototype mode, explicitly displays: *"Simulation Only: Local Prototype Wallet operates in-memory without real network submission or signing."*
+
+### 28.6 Anti-Fabrication & Strict Privacy Guarantees
+
+1. **Zero Synthetic Blockchain Data**: Never generates fake transaction hashes, mock block heights, synthetic confirmations, or fabricated signatures.
+2. **Read-Only Preparation**: `prepareLifecycleTransaction` and `evaluateTransactionReadiness` are strictly idempotent and read-only.
+3. **LoanRegistry Immutability**: Unsupported or blocked transactions never alter on-chain agreement state in `LoanRegistry`.
+4. **Contract Immutability**: `contracts/src/index.compact` remains 100% untouched and authoritative.
+5. **Strict Zero-Knowledge Isolation**: All 68+ frontend source files pass automated static analysis verifying zero occurrences of prohibited underwriting credentials or private financial terms.
+

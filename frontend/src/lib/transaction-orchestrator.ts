@@ -13,6 +13,7 @@ import type { WalletProvider } from './wallet-provider.ts';
 import { getWalletProvider } from './account-service.ts';
 import { getNetworkConfigService } from './network-config-service.ts';
 import { evaluateConnectorCapabilities } from './wallet-connector-discovery.ts';
+import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 import {
   type LifecycleTransactionAction,
   type TransactionPreparationStatus,
@@ -325,28 +326,7 @@ export function evaluateTransactionReadiness(
     };
   }
 
-  // 2. Network configuration check
-  if (netConfig.status !== 'CONFIGURED') {
-    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
-    return {
-      isReady: false,
-      reason: 'BLOCKED_NETWORK_CONFIGURATION',
-      message: 'Transaction blocked: Network configuration is invalid or unconfigured.',
-      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
-    };
-  }
-
-  if (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url)) {
-    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
-    return {
-      isReady: false,
-      reason: 'BLOCKED_NETWORK_CONFIGURATION',
-      message: 'Transaction blocked: Real network configuration requires a valid RPC endpoint.',
-      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
-    };
-  }
-
-  // 3. Wallet connector discovery & compatibility
+  // 2. Wallet connector discovery & compatibility
   if (!activeProvider.isPrototype) {
     const detectionStatus = activeProvider.getDetectionStatus ? activeProvider.getDetectionStatus() : 'NOT_DETECTED';
     if (detectionStatus === 'NOT_DETECTED') {
@@ -369,7 +349,76 @@ export function evaluateTransactionReadiness(
     }
   }
 
-  // 4. Contract lifecycle guard check
+  // 3. Wallet Connection check
+  if (!activeProvider.isPrototype && activeProvider.getConnectionStatus() === 'DISCONNECTED') {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'WALLET_NOT_CONNECTED',
+      message: 'Transaction blocked: Wallet session is disconnected. Connect wallet to prepare transaction.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'WALLET_NOT_CONNECTED' },
+    };
+  }
+
+  // 4. Wallet Identity check
+  const callerAccount = activeProvider.getAccount();
+  if (!activeProvider.isPrototype && (!callerAccount || !callerAccount.publicKey)) {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'WALLET_NOT_CONNECTED',
+      message: 'Transaction blocked: Connected wallet identity is unavailable.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'WALLET_NOT_CONNECTED' },
+    };
+  }
+
+  // 5. Network configuration check
+  if (netConfig.status !== 'CONFIGURED') {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'BLOCKED_NETWORK_CONFIGURATION',
+      message: 'Transaction blocked: Network configuration is invalid or unconfigured.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
+    };
+  }
+
+  if (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url)) {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'BLOCKED_NETWORK_CONFIGURATION',
+      message: 'Transaction blocked: Real network configuration requires a valid RPC endpoint.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
+    };
+  }
+
+  // 6. Wallet Network Compatibility check
+  if (netConfig.environment !== 'LOCAL') {
+    const walletNetwork =
+      typeof activeProvider.getReportedNetworkId === 'function' ? activeProvider.getReportedNetworkId() : null;
+    const comp = evaluateNetworkCompatibility(netConfig, walletNetwork);
+    if (comp.compatibility === 'MISMATCH') {
+      const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+      return {
+        isReady: false,
+        reason: 'NETWORK_MISMATCH',
+        message: comp.reason,
+        preparation: { ...prep, status: 'BLOCKED', readinessReason: 'NETWORK_MISMATCH' },
+      };
+    }
+    if (comp.compatibility === 'UNKNOWN') {
+      const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+      return {
+        isReady: false,
+        reason: 'UNKNOWN_WALLET_NETWORK',
+        message: comp.reason,
+        preparation: { ...prep, status: 'BLOCKED', readinessReason: 'UNKNOWN_WALLET_NETWORK' },
+      };
+    }
+  }
+
+  // 7. Contract lifecycle guard check
   const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
   if (prep.status === 'BLOCKED') {
     return {
@@ -380,7 +429,7 @@ export function evaluateTransactionReadiness(
     };
   }
 
-  // 5. Atomic capabilities check
+  // 8. Atomic capabilities check
   const caps = evaluateConnectorCapabilities(activeProvider);
   if (!caps.SIGN_TRANSACTION) {
     return {
@@ -400,6 +449,7 @@ export function evaluateTransactionReadiness(
     };
   }
 
+  // 9. Final Transaction Readiness Gate
   return {
     isReady: true,
     reason: 'READY',

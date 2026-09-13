@@ -177,5 +177,13 @@ export {
   type TransactionReadinessReason,
 } from './network-config.ts';
 
-
-
+export {
+  WalletHandshakeError,
+  type WalletHandshakeStatus,
+  type NetworkCompatibilityStatus,
+  type WalletHandshakeErrorCode,
+  type WalletHandshakeCapabilities,
+  type WalletHandshakeState,
+  type WalletHandshakeRequest,
+  type WalletHandshakeResult,
+} from './wallet-handshake.ts';

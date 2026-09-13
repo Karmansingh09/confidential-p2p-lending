@@ -5,6 +5,7 @@ import { getWalletProvider } from '../lib/account-service.ts';
 import { getSupportedLifecycleActions } from '../lib/transaction-orchestrator.ts';
 import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import { getWalletSessionService } from '../lib/wallet-session-service.ts';
+import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
 
 export interface NetworkStatusPanelProps {
   networkContext?: NetworkContext;
@@ -38,6 +39,8 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
   const netConfig = getNetworkConfigService().getNetworkConfig();
   const sessionService = getWalletSessionService();
   const session = sessionService.getSession();
+  const deploymentService = getContractDeploymentService();
+  const deployment = deploymentService.getDeployment();
   const connectorDiscovery = sessionService.getConnectorDiscovery();
   const readinessState = sessionService.getConnectorReadinessState();
   const isWalletConnected = isConnected || session.status === 'CONNECTED';
@@ -353,6 +356,116 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           >
             {caps.READ_BALANCE ? '✓' : '✕'} Native Asset Balance
           </span>
+        </div>
+      </div>
+
+      {/* Contract Deployment Boundary (Commit #32) */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+          border: '1px solid #1e293b',
+        }}
+        data-testid="contract-deployment-section"
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}
+          >
+            Compact Contract Boundary (Commit #32)
+          </div>
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 600,
+              background:
+                deployment.status === 'READY'
+                  ? '#064e3b'
+                  : deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
+                  ? '#450a0a'
+                  : '#78350f',
+              color:
+                deployment.status === 'READY'
+                  ? '#a7f3d0'
+                  : deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
+                  ? '#fca5a5'
+                  : '#fde68a',
+            }}
+          >
+            {deployment.status}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '8px',
+            fontSize: '11px',
+            marginBottom: '8px',
+          }}
+        >
+          <div>
+            <span style={{ color: '#94a3b8' }}>Contract Name: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>{deployment.contractName}</span>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Network Binding: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>{deployment.networkId || 'UNBOUND'}</span>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Address: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {deployment.contractAddress
+                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                : 'UNCONFIGURED'}
+            </span>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Verification: </span>
+            <span
+              style={{
+                color: deployment.isVerified ? '#34d399' : '#fbbf24',
+                fontWeight: 500,
+              }}
+            >
+              {deployment.isVerified ? 'VERIFIED' : 'NOT VERIFIED'}
+            </span>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <span style={{ color: '#94a3b8' }}>Circuit Manifest: </span>
+            <span style={{ color: '#e2e8f0' }}>
+              {(deployment.circuitManifest?.length ?? deployment.circuitNames?.length ?? 6)} circuits loaded (4 lifecycle, 2 state read)
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: '10px',
+            color: '#94a3b8',
+            fontStyle: 'italic',
+            borderTop: '1px solid #1e293b',
+            paddingTop: '6px',
+          }}
+        >
+          Configured address is a routing reference and does not guarantee on-chain existence without provider validation.
         </div>
       </div>
 

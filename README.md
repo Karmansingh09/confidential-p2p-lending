@@ -139,7 +139,17 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #31)
+### Current Status & Features (Commit #32)
+- **Midnight Contract Deployment Configuration Boundary (Commit #32)**:
+  - **Triadic Deployment Axioms**: Formally enforces $\text{CONFIGURED CONTRACT ADDRESS} \neq \text{PROOF OF ON-CHAIN DEPLOYMENT}$, $\text{WALLET CONNECTION} \neq \text{CONTRACT READINESS}$, and $\text{CIRCUIT MANIFEST} \neq \text{PROOF OF BYTECODE MATCH}$.
+  - **Contract Deployment Models & Lifecycle States**: Defines `ContractDeployment` (`frontend/src/types/contract-deployment.ts`) and `ContractDeploymentStatus` (`NOT_DEPLOYED`, `UNCONFIGURED`, `CONFIGURING`, `CONFIGURED`, `VALIDATING`, `READY`, `INVALID`, `UNSUPPORTED`) defaulting strictly to `NOT_DEPLOYED`.
+  - **Canonical Contract Manifest & Cryptographic Fingerprint**: Authoritative manifest (`frontend/src/lib/contract-manifest.ts`) mapping the 6 canonical circuits (`verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan`, `getLoanStatus`, `getLoanDetails`) and pinning Compact source SHA-256 (`608d88fbbf3380ebf479d6cfb4310dd9dd8eb0db124797de16a0fe77f9785f53`).
+  - **Strict Contract Address Validator**: Validates 32-byte hex addresses (64 characters, optional 0x prefix) matching `@midnight-ntwrk/compact-runtime` specifications with lowercase normalization and typed error codes.
+  - **Contract Deployment Service**: Implements `ContractDeploymentService` (`frontend/src/lib/contract-deployment-service.ts`) managing validation, network binding, circuit verification, public-only storage persistence, and `requireDeployment()` assertion gates.
+  - **Contract Client Boundary**: Implements `ContractClient` (`frontend/src/lib/contract-client.ts`) for typed state read operations (`getLoanStatus`, `getLoanDetails`) and lifecycle operations (`verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan`) with pre-flight constraint validation.
+  - **Execution & Reconciliation Pipeline Gating**: Deeply integrates deployment checks into `TransactionOrchestrator`, `TransactionExecutionService` (strictly blocking execution before wallet signature), and `TransactionReconciliationService` (safely returning UNSUPPORTED).
+  - **Enhanced Dashboard Diagnostics UI**: Renders Compact Contract Boundary section in `NetworkStatusPanel.tsx`, Contract Status tile and execution blocking in `TransactionReviewPanel.tsx`, and 4-way operational readiness ribbon (`Wallet Extension | Connected Session | Network Configured | Contract Configured`) in `WalletSessionPanel.tsx`.
+  - **493 Passing Automated Tests**: 100% test pass rate across 8 test suites verifying address normalization, manifest integrity, validation gates, pre-signature blocking, registry immutability, anti-fabrication invariants, and strict privacy boundaries.
 - **Transaction Reconciliation & Lifecycle Event Tracking (Commit #31)**:
   - **Triadic Architectural Separation**: Formally distinguishes $\text{LOCAL TRANSACTION RECORD} \neq \text{PROVIDER-VERIFIED TRANSACTION STATUS} \neq \text{CANONICAL LOAN REGISTRY STATE}$. Only genuine provider verification authorizes `LoanRegistry` mutation.
   - **Lifecycle Events Domain Model & Append-Only Event Store**: Introduces `TransactionLifecycleEventType` (17 events across creation, preparation, signing, submission, confirmation, failure, recovery, and reconciliation), `TransactionEventSource` (6 components), and `TransactionEventService` (`frontend/src/lib/transaction-event-service.ts`) providing monotonic sequence numbering, deduplication, and immutable snapshot freezing.

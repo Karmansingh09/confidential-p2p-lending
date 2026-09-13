@@ -5,6 +5,7 @@ import {
 } from '../lib/wallet-session-service.ts';
 import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import { getWalletHandshakeService } from '../lib/wallet-handshake-service.ts';
+import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
 import type {
   WalletSession,
   WalletSessionStatus,
@@ -189,6 +190,10 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
   const signingLabel = session.capabilities.SIGN_TRANSACTION ? 'Signing Available' : 'Signing Unavailable';
   const submissionLabel = session.capabilities.SUBMIT_TRANSACTION ? 'Submission Available' : 'Submission Unavailable';
 
+  const deploymentService = getContractDeploymentService();
+  const deployment = deploymentService.getDeployment();
+  const isContractConfigured = deployment.status === 'READY' || deployment.status === 'CONFIGURED';
+
   const isTxReady =
     isConnected &&
     (isPrototype || handshake.networkCompatibility === 'MATCH') &&
@@ -312,6 +317,77 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </button>
       </div>
 
+      {/* 4-way Operational Diagnostics (Commit #32) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '8px',
+          background: '#0f172a',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          border: '1px solid #1e293b',
+        }}
+        data-testid="session-readiness-indicators"
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connected</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              color: isConnected ? '#4ade80' : '#f87171',
+              marginTop: '2px',
+            }}
+          >
+            {isConnected ? 'YES' : 'NO'}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Matched</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              color: isPrototype || handshake.networkCompatibility === 'MATCH' ? '#4ade80' : '#f87171',
+              marginTop: '2px',
+            }}
+          >
+            {isPrototype || handshake.networkCompatibility === 'MATCH' ? 'YES' : 'NO'}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              color: isContractConfigured ? '#4ade80' : '#f87171',
+              marginTop: '2px',
+            }}
+          >
+            {isContractConfigured ? 'YES' : 'NO'}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Capable</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              color: isTxReady && isContractConfigured ? '#4ade80' : '#f87171',
+              marginTop: '2px',
+            }}
+          >
+            {isTxReady && isContractConfigured ? 'YES' : 'NO'}
+          </div>
+        </div>
+      </div>
+
       {/* Session State Metadata Grid */}
       <div
         style={{
@@ -321,6 +397,19 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           marginBottom: '16px',
         }}
       >
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: isContractConfigured ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {isContractConfigured ? 'YES' : 'NO'}
+          </div>
+        </div>
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
           <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>

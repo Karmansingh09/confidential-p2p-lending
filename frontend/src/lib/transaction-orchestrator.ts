@@ -14,6 +14,8 @@ import { getWalletProvider } from './account-service.ts';
 import { getNetworkConfigService } from './network-config-service.ts';
 import { evaluateConnectorCapabilities } from './wallet-connector-discovery.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
+import type { ContractDeploymentService } from './contract-deployment-service.ts';
+import { isKnownCircuit } from './contract-manifest.ts';
 import {
   type LifecycleTransactionAction,
   type TransactionPreparationStatus,
@@ -102,7 +104,8 @@ export function prepareLifecycleTransaction(
   loan: LoanDetailsModel | null | undefined,
   account: AccountIdentity | AccountContext | null | undefined,
   action: LifecycleTransactionAction,
-  provider?: WalletProvider
+  provider?: WalletProvider,
+  deploymentService?: ContractDeploymentService
 ): TransactionPreparation {
   const circuitName = getCircuitNameForAction(action);
   const requiredCapabilities = getRequiredCapabilitiesForAction(action);
@@ -274,6 +277,23 @@ export function prepareLifecycleTransaction(
     readinessReason = 'READY';
   }
 
+  if (deploymentService) {
+    const deployment = deploymentService.getDeployment();
+    if (deployment.status === 'NOT_DEPLOYED') {
+      status = 'BLOCKED';
+      readinessReason = 'CONTRACT_NOT_DEPLOYED';
+      authorizationReason = 'Contract deployment is not deployed.';
+    } else if (deployment.status === 'UNCONFIGURED') {
+      status = 'BLOCKED';
+      readinessReason = 'CONTRACT_NOT_CONFIGURED';
+      authorizationReason = 'Contract deployment is not configured for this network.';
+    } else if (deployment.status === 'INVALID') {
+      status = 'BLOCKED';
+      readinessReason = 'CONTRACT_INVALID';
+      authorizationReason = 'Contract deployment configuration is invalid.';
+    }
+  }
+
   return {
     loanId,
     action,
@@ -310,7 +330,8 @@ export function evaluateTransactionReadiness(
   loan: LoanDetailsModel,
   account: { publicKey?: Uint8Array | null } | null,
   action: LifecycleTransactionAction,
-  provider?: WalletProvider
+  provider?: WalletProvider,
+  deploymentService?: ContractDeploymentService
 ): TransactionReadinessEvaluation {
   const activeProvider = provider ?? getWalletProvider();
   const netConfig = getNetworkConfigService().getNetworkConfig();
@@ -419,17 +440,93 @@ export function evaluateTransactionReadiness(
   }
 
   // 7. Contract lifecycle guard check
-  const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+  const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider, deploymentService);
   if (prep.status === 'BLOCKED') {
     return {
       isReady: false,
-      reason: 'GUARD_VALIDATION_FAILED',
+      reason: prep.readinessReason ?? 'GUARD_VALIDATION_FAILED',
       message: prep.authorizationReason ?? 'Contract lifecycle guard validation failed.',
-      preparation: { ...prep, readinessReason: 'GUARD_VALIDATION_FAILED' },
+      preparation: prep,
     };
   }
 
-  // 8. Atomic capabilities check
+  // 8. Contract Deployment Configuration check
+  if (deploymentService) {
+    const deployment = deploymentService.getDeployment();
+
+    if (deployment.status === 'NOT_DEPLOYED') {
+      return {
+        isReady: false,
+        reason: 'CONTRACT_NOT_DEPLOYED',
+        message: 'Transaction blocked: Contract deployment is not deployed.',
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'CONTRACT_NOT_DEPLOYED',
+          authorizationReason: 'Contract deployment is not deployed.',
+        },
+      };
+    }
+
+    if (deployment.status === 'UNCONFIGURED') {
+      return {
+        isReady: false,
+        reason: 'CONTRACT_NOT_CONFIGURED',
+        message: 'Transaction blocked: Contract deployment is not configured for this network.',
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'CONTRACT_NOT_CONFIGURED',
+          authorizationReason: 'Contract deployment is not configured for this network.',
+        },
+      };
+    }
+
+    if (deployment.status === 'INVALID') {
+      return {
+        isReady: false,
+        reason: 'CONTRACT_INVALID',
+        message: 'Transaction blocked: Contract deployment configuration is invalid.',
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'CONTRACT_INVALID',
+          authorizationReason: 'Contract deployment configuration is invalid.',
+        },
+      };
+    }
+
+    if (deployment.networkId && netConfig.networkId && deployment.networkId !== netConfig.networkId) {
+      return {
+        isReady: false,
+        reason: 'CONTRACT_NETWORK_MISMATCH',
+        message: `Transaction blocked: Contract network "${deployment.networkId}" does not match active network "${netConfig.networkId}".`,
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'CONTRACT_NETWORK_MISMATCH',
+          authorizationReason: `Contract network mismatch: expected ${netConfig.networkId}, got ${deployment.networkId}.`,
+        },
+      };
+    }
+
+    const circuitName = getCircuitNameForAction(action);
+    if (!isKnownCircuit(circuitName) || !deployment.circuitNames || !deployment.circuitNames.includes(circuitName)) {
+      return {
+        isReady: false,
+        reason: 'CONTRACT_CIRCUIT_UNAVAILABLE',
+        message: `Transaction blocked: Circuit "${circuitName}" is not available in the deployed contract manifest.`,
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'CONTRACT_CIRCUIT_UNAVAILABLE',
+          authorizationReason: `Circuit "${circuitName}" is not in deployment manifest.`,
+        },
+      };
+    }
+  }
+
+  // 9. Atomic capabilities check
   const caps = evaluateConnectorCapabilities(activeProvider);
   if (!caps.SIGN_TRANSACTION) {
     return {
@@ -449,7 +546,7 @@ export function evaluateTransactionReadiness(
     };
   }
 
-  // 9. Final Transaction Readiness Gate
+  // 10. Final Transaction Readiness Gate
   return {
     isReady: true,
     reason: 'READY',

@@ -225,3 +225,12 @@ export {
   type ReconciliationReason,
 } from './transaction-reconciliation.ts';
 
+export {
+  ContractDeploymentError,
+  type ContractDeploymentStatus,
+  type ContractDeployment,
+  type ContractCircuitClassification,
+  type ContractCircuitDefinition,
+  type ContractDeploymentErrorCode,
+} from './contract-deployment.ts';
+

@@ -73,7 +73,9 @@ export type TransactionRequestErrorCode =
   | 'UNSUPPORTED_OPERATION'
   | 'TRACKING_FAILED'
   | 'MALFORMED_REQUEST'
-  | 'CONTRACT_ERROR';
+  | 'CONTRACT_ERROR'
+  | 'NOT_CONFIGURED'
+  | 'INVALID_CONFIG';
 
 /**
  * Structured domain error for transaction request failures.

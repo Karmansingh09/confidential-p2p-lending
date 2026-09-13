@@ -2361,5 +2361,148 @@ The `TransactionHistoryPanel` (`frontend/src/components/TransactionHistoryPanel.
 2. **Anti-Fabrication**: In local prototype mode, no synthetic transaction hashes, block numbers, or confirmations are forged. Status queries honestly report `UNSUPPORTED_OPERATION`.
 3. **Automated Test Coverage**: Verified by 453 automated tests across contracts and frontend test suites.
 
+---
+
+## 32. Midnight Contract Deployment Configuration Boundary
+
+### 32.1 Objective & Architecture Overview
+
+The Midnight Contract Deployment Configuration Boundary establishes a production-grade interface between existing application services (`LoanRegistry`, `WalletProvider`, `TransactionOrchestrator`, `TransactionExecutionService`, `TransactionReconciliationService`) and an **actual deployed Midnight Compact contract**.
+
+The boundary enforces three fundamental architectural axioms:
+1. **$\text{CONFIGURED CONTRACT ADDRESS} \neq \text{PROOF OF ON-CHAIN DEPLOYMENT}$**: An address string configured locally or in storage is merely a configuration hypothesis, not proof that the contract exists on the active ledger.
+2. **$\text{WALLET CONNECTION} \neq \text{CONTRACT READINESS}$**: A connected wallet indicates user identity availability, but transactions cannot proceed unless the contract deployment configuration is also validated on the target network.
+3. **$\text{CIRCUIT MANIFEST} \neq \text{PROOF OF BYTECODE MATCH}$**: Circuit declarations represent the known application interface; bytecode verification requires independent on-chain verification.
+
+```
++──────────────────────────────────────────────────────────────────────────────────────────+
+|                     MIDNIGHT CONTRACT DEPLOYMENT CONFIGURATION BOUNDARY                  |
++──────────────────────────────────────────────────────────────────────────────────────────+
+                                            │
+        ┌───────────────────────────────────┼───────────────────────────────────┐
+        ▼                                   ▼                                   ▼
+┌───────────────────────┐       ┌───────────────────────┐       ┌───────────────────────┐
+│ Contract Manifest     │       │ Contract Address      │       │ Contract Deployment   │
+│ (contract-manifest.ts)│       │ Validator             │       │ Service               │
+│ - 6 Canonical Circuits│       │ (validator.ts)        │       │ (deployment-service)  │
+│ - SHA-256 Fingerprint │       │ - 32 Bytes / 64 Hex   │       │ - NOT_DEPLOYED default│
+│ - Circuit Metadata    │       │ - Zero-Fabrication    │       │ - Network Binding     │
+└───────────┬───────────┘       └───────────┬───────────┘       └───────────┬───────────┘
+            │                               │                               │
+            └───────────────────────────────┼───────────────────────────────┘
+                                            ▼
+                                ┌───────────────────────┐
+                                │ Contract Client       │
+                                │ (contract-client.ts)  │
+                                │ - Read Operations     │
+                                │ - Lifecycle Circuits  │
+                                │ - Call Preparation    │
+                                └───────────┬───────────┘
+                                            │
+        ┌───────────────────────────────────┼───────────────────────────────────┐
+        ▼                                   ▼                                   ▼
+┌───────────────────────┐       ┌───────────────────────┐       ┌───────────────────────┐
+│ Transaction           │       │ Transaction           │       │ Transaction           │
+│ Orchestrator          │       │ Execution Service     │       │ Reconciliation Service│
+│ - Readiness Gate      │       │ - Pipeline Blocking   │       │ - Unconfigured Guard  │
+│ - Deployment Invariant│       │ - Pre-Signature Gate  │       │ - Unsupported Result  │
+└───────────────────────┘       └───────────────────────┘       └───────────────────────┘
+```
+
+### 32.2 Contract Deployment Domain Types (`types/contract-deployment.ts`)
+
+- **`ContractDeploymentStatus`**:
+  `'UNCONFIGURED' | 'CONFIGURING' | 'CONFIGURED' | 'VALIDATING' | 'READY' | 'INVALID' | 'NOT_DEPLOYED' | 'UNSUPPORTED'`
+  *Default state is strictly `NOT_DEPLOYED` or `UNCONFIGURED`.*
+- **`ContractDeployment`**:
+  Structured metadata object containing:
+  - `contractId`: Application identifier for the contract instance.
+  - `contractName`: Human-readable label (defaults to `'MicroLendingCompactContract'`).
+  - `networkId`: Authentic network identifier (or `null` when unconfigured).
+  - `environment`: `'LOCAL' | 'DEVNET' | 'TESTNET' | 'MAINNET' | null`.
+  - `contractAddress`: Canonical 32-byte hex string (or `null`).
+  - `deploymentTransactionId`: Blockchain transaction hash (or `null`).
+  - `deploymentBlockHeight`: Verified block height as `bigint` (or `null`).
+  - `deployedAt`: Epoch millisecond timestamp (or `null`).
+  - `status`: Validated `ContractDeploymentStatus`.
+  - `sourceFingerprint`: Deterministic SHA-256 hash of `contracts/src/index.compact`.
+  - `circuitNames`: `readonly string[]` of canonical circuits.
+  - `circuitManifest`: `readonly ContractCircuitDefinition[]` descriptors.
+  - `isVerified`: Boolean indicating whether bytecode has been independently verified.
+  - `isPrototype`: Boolean flag indicating local simulation mode.
+- **`ContractCircuitClassification`**:
+  `'READ' | 'WRITE' | 'STATE_READ' | 'LOCAL_PROOF' | 'TRANSACTION_EXECUTION'`
+- **`ContractCircuitDefinition`**:
+  Descriptor capturing circuit `name`, `purpose`, `callable`, `requiresWallet`, `requiresProof`, `requiresSignature`, `requiresSubmission`, `action`, `classification`, and `isReadOnly`.
+- **`ContractDeploymentErrorCode` & `ContractDeploymentError`**:
+  Strongly typed domain errors (`'NOT_CONFIGURED'`, `'NOT_DEPLOYED'`, `'INVALID_ADDRESS'`, `'NETWORK_MISMATCH'`, `'DEPLOYMENT_NOT_FOUND'`, `'CONTRACT_NOT_VERIFIED'`, `'CIRCUIT_MISMATCH'`, `'SOURCE_MISMATCH'`, `'UNSUPPORTED_NETWORK'`, `'INVALID_CONFIGURATION'`, `'PROVIDER_UNAVAILABLE'`, `'INVALID_PARAMS'`, `'INVALID_STATUS'`).
+
+### 32.3 Contract Address Structural Validator (`lib/contract-address-validator.ts`)
+
+Conforms strictly to `@midnight-ntwrk/compact-runtime` standards:
+- **Length**: Exactly 32 bytes (64 hex characters, or 66 characters with optional `0x` / `0X` prefix).
+- **Charset**: Strictly hexadecimal `[0-9a-fA-F]`. Odd-length hex strings and non-hex characters are rejected with specific error codes (`INVALID_LENGTH`, `INVALID_HEX`, `EMPTY_ADDRESS`).
+- **Normalization**: `normalizeContractAddress` strips `0x` prefix and normalizes to lowercase 64-character hexadecimal format. Throws `ContractDeploymentError('INVALID_ADDRESS')` on invalid inputs.
+- **Zero Fabrication**: Never generates, guesses, or hardcodes synthetic contract addresses.
+
+### 32.4 Canonical Contract Circuit Manifest (`lib/contract-manifest.ts`)
+
+Serves as the single authoritative manifest of circuits exposed by `contracts/src/index.compact`:
+1. `verifyEligibility` (`LOCAL_PROOF`): Requires client-side Zero-Knowledge proof generation; does not require wallet signature or on-chain transaction submission.
+2. `fundLoan` (`TRANSACTION_EXECUTION`): Requires wallet signature and on-chain ledger submission.
+3. `repayLoan` (`TRANSACTION_EXECUTION`): Requires wallet signature and on-chain ledger submission.
+4. `settleLoan` (`TRANSACTION_EXECUTION`): Requires wallet signature and on-chain ledger submission.
+5. `getLoanStatus` (`STATE_READ`): Pure read-only state query without wallet signature or state mutation.
+6. `getLoanDetails` (`STATE_READ`): Pure read-only inspection circuit for agreement terms.
+
+**Cryptographic Fingerprint**: SHA-256 of `contracts/src/index.compact` is permanently pinned as:
+`608d88fbbf3380ebf479d6cfb4310dd9dd8eb0db124797de16a0fe77f9785f53`
+
+### 32.5 Contract Deployment Service (`lib/contract-deployment-service.ts`)
+
+- **Default Unconfigured State**: Initializes with `status: 'NOT_DEPLOYED'`, `contractAddress: null`, `networkId: null`, `deployedAt: null`.
+- **Validation Pipeline (`validateDeployment`)**:
+  - Verifies contract address validity and length.
+  - Verifies network binding (`NETWORK_MISMATCH` if target network differs).
+  - Verifies all 6 canonical circuits are present in deployment manifest.
+  - Verifies Compact source fingerprint matches local contract source.
+- **`requireDeployment()`**: Enforces that contract deployment is ready before operations proceed; throws typed `ContractDeploymentError('NOT_DEPLOYED')` when unconfigured.
+- **Safe Persistence**: Stores public metadata only in `localStorage` under `midnight_contract_deployment_v1`. Zero private witness data or secrets are stored.
+
+### 32.6 Contract Client (`lib/contract-client.ts`)
+
+Provides a typed boundary for invoking contract operations:
+- **Read Operations**: `getLoanStatus` and `getLoanDetails` inspect `LoanRegistry` in prototype mode and return structured results with circuit descriptors. Live queries honestly report `PROVIDER_UNAVAILABLE` when live Midnight RPC is disconnected.
+- **Lifecycle Operations**: `verifyEligibility`, `fundLoan`, `repayLoan`, `settleLoan` evaluate caller rights and parameter constraints before returning mapped circuit invocation preparations.
+- **Constraint Enforcement**: Negative or zero loan amounts and missing caller identities throw `ContractDeploymentError('INVALID_PARAMS')` before any ledger interaction.
+
+### 32.7 Deep Integration Across Core Subsystems
+
+1. **`TransactionOrchestrator`**:
+   - `prepareLifecycleTransaction` checks deployment status. Unconfigured or invalid deployments return `status: 'BLOCKED'` with reasons `'CONTRACT_NOT_DEPLOYED'`, `'CONTRACT_NOT_CONFIGURED'`, or `'CONTRACT_INVALID'`.
+   - `evaluateTransactionReadiness` evaluates Contract Deployment Configuration **before** checking atomic wallet capabilities, ensuring deployment validity gates progression.
+2. **`TransactionExecutionService`**:
+   - `executePipeline` enforces deployment readiness gate: transactions against unconfigured or invalid contracts are blocked **before** wallet signing occurs. `LoanRegistry` is guaranteed never to mutate.
+3. **`TransactionReconciliationService`**:
+   - `reconcileTransaction` safely handles unconfigured deployments without throwing unhandled exceptions, returning honest `'UNSUPPORTED'` status.
+
+### 32.8 UI Enhancements
+
+- **`NetworkStatusPanel` (`frontend/src/components/NetworkStatusPanel.tsx`)**:
+  Adds a technical Compact Contract Boundary section (`data-testid="contract-deployment-section"`) displaying Contract Address (or Unconfigured badge), Deployment Status, Source Fingerprint, and Circuit Manifest summary.
+- **`TransactionReviewPanel` (`frontend/src/components/TransactionReviewPanel.tsx`)**:
+  Adds Contract Status tile. When deployment is unconfigured or invalid, renders an explicit warning banner and blocks the execute button.
+- **`WalletSessionPanel` (`frontend/src/components/WalletSessionPanel.tsx`)**:
+  Adds a 4-way operational readiness ribbon (`data-testid="session-readiness-indicators"`):
+  `Wallet Extension | Connected Session | Network Configured | Contract Configured`
+  Each badge dynamically displays `CONFIGURED` / `READY` or warning states.
+
+### 32.9 Zero-Knowledge Privacy & Anti-Fabrication Verification
+
+1. **Zero Secret Exposure**: All 67+ frontend source files scanned for the 14 forbidden terms (`privateUnderwritingInfo`, `zkWitnessData`, `walletSecret`, `seedPhrase`, etc.) with zero occurrences.
+2. **Anti-Fabrication**: Default deployment state is strictly unconfigured. No fake contract addresses, synthetic transaction IDs, or fictitious block heights are created.
+3. **Compact Source Untouched**: `contracts/src/index.compact` is 100% untouched.
+4. **Automated Test Coverage**: 493 tests passing across contracts and frontend test suites.
+
 
 

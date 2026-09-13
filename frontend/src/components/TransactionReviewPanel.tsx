@@ -12,6 +12,7 @@ import {
   getRequiredCapabilitiesForAction,
 } from '../lib/transaction-orchestrator.ts';
 import { getWalletProvider } from '../lib/account-service.ts';
+import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
 
 export interface TransactionReviewPanelProps {
   loan: LoanDetailsModel | null;
@@ -44,13 +45,16 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
   executionResult,
 }) => {
   const provider = getWalletProvider();
-  const prep = prepareLifecycleTransaction(loan, accountContext, action, provider);
+  const deploymentService = getContractDeploymentService();
+  const deployment = deploymentService.getDeployment();
+  const isContractConfigured = deployment.status === 'READY' || deployment.status === 'CONFIGURED';
+  const prep = prepareLifecycleTransaction(loan, accountContext, action, provider, deploymentService);
   const circuitName = getCircuitNameForAction(action);
   const requiredCaps = getRequiredCapabilitiesForAction(action);
   const providerCaps = provider.getCapabilities();
   const netContext = provider.getNetworkContext();
 
-  const isReady = prep.status === 'READY';
+  const isReady = prep.status === 'READY' && isContractConfigured;
   const callerHex = prep.callerPublicKeyHex || 'None (Disconnected)';
   const shortCallerHex =
     callerHex.length > 16
@@ -60,6 +64,9 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
   const getStatusBadge = () => {
     if (isExecuting) {
       return { text: 'SIGNING / SUBMITTING...', bg: '#1e3a8a', color: '#93c5fd' };
+    }
+    if (!isContractConfigured) {
+      return { text: 'Contract: NOT CONFIGURED', bg: '#7f1d1d', color: '#fca5a5' };
     }
     switch (prep.status) {
       case 'READY':
@@ -206,6 +213,15 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
             {netContext.networkName}
           </div>
         </div>
+
+        <div style={{ background: '#1e293b', padding: '12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
+            Contract Status
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: isContractConfigured ? '#a7f3d0' : '#fca5a5', marginTop: '2px' }}>
+            {isContractConfigured ? `READY (${deployment.contractName})` : 'Contract: NOT CONFIGURED'}
+          </div>
+        </div>
       </div>
 
       {/* 5-Stage Boundary Pipeline Chips */}
@@ -319,6 +335,11 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
             <>
               {prep.authorizationReason ?? 'Invalid agreement parameters.'}
             </>
+          )}
+          {!isContractConfigured && (
+            <span style={{ display: 'block', color: '#fca5a5', marginTop: '6px' }}>
+              Contract deployment is not configured for this network.
+            </span>
           )}
         </p>
       </div>

@@ -18,11 +18,16 @@ import {
 import { getWalletSessionService } from './wallet-session-service.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 import { getNetworkConfigService } from './network-config-service.ts';
+import {
+  ContractDeploymentService,
+  getContractDeploymentService,
+} from './contract-deployment-service.ts';
 
 export interface ReconcileOptions {
   provider?: WalletProvider;
   loanRegistry?: LoanRegistry;
   expectedNetworkId?: string;
+  deploymentService?: ContractDeploymentService;
 }
 
 /**
@@ -39,13 +44,16 @@ export interface ReconcileOptions {
 export class TransactionReconciliationService {
   private persistence: TransactionPersistenceService;
   private eventService: TransactionEventService;
+  private deploymentService?: ContractDeploymentService;
 
   constructor(
     persistence?: TransactionPersistenceService,
-    eventService?: TransactionEventService
+    eventService?: TransactionEventService,
+    deploymentService?: ContractDeploymentService
   ) {
     this.persistence = persistence ?? getTransactionPersistenceService();
     this.eventService = eventService ?? getTransactionEventService();
+    this.deploymentService = deploymentService;
   }
 
   /**
@@ -64,6 +72,8 @@ export class TransactionReconciliationService {
     let effectiveRegistry: LoanRegistry | undefined = loanRegistry;
     let expectedNetworkId: string | undefined;
 
+    let effectiveDeploymentService = this.deploymentService;
+
     if (providerOrRegistry && typeof (providerOrRegistry as any).getLoans === 'function') {
       effectiveRegistry = providerOrRegistry as LoanRegistry;
       effectiveProvider = getWalletSessionService().getProvider();
@@ -71,13 +81,15 @@ export class TransactionReconciliationService {
       providerOrRegistry &&
       typeof (providerOrRegistry as any).getTransactionStatus === 'undefined' &&
       typeof (providerOrRegistry as any).getProviderName === 'undefined' &&
-      typeof (providerOrRegistry as any).isPrototype === 'undefined' &&
-      (providerOrRegistry as ReconcileOptions).provider
+      typeof (providerOrRegistry as any).isPrototype === 'undefined'
     ) {
       const opts = providerOrRegistry as ReconcileOptions;
       effectiveProvider = opts.provider ?? getWalletSessionService().getProvider();
       effectiveRegistry = opts.loanRegistry ?? loanRegistry;
       expectedNetworkId = opts.expectedNetworkId;
+      if (opts.deploymentService) {
+        effectiveDeploymentService = opts.deploymentService;
+      }
     } else {
       effectiveProvider = (providerOrRegistry as WalletProvider) ?? getWalletSessionService().getProvider();
     }
@@ -164,6 +176,44 @@ export class TransactionReconciliationService {
         error: 'Wallet provider not connected.',
         errorCode: 'NOT_CONNECTED',
       };
+    }
+
+    // 2.5. Evaluate contract deployment configuration
+    if (effectiveDeploymentService) {
+      const deployment = effectiveDeploymentService.getDeployment();
+      if (deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED') {
+        this.eventService.appendEvent({
+          transactionId: tx.id,
+          eventType: 'RECONCILIATION_FAILED',
+          action: tx.action,
+          agreementId: tx.loanId,
+          providerKind,
+          networkId,
+          status: tx.status,
+          source: 'RECONCILIATION_SERVICE',
+          message: 'Reconciliation aborted: Contract deployment is not configured or not deployed.',
+        });
+
+        return {
+          transactionId: tx.id,
+          agreementId: tx.loanId,
+          localStatus: previousStatus,
+          reconciliationStatus: 'UNSUPPORTED',
+          reason: 'STATUS_UNAVAILABLE',
+          registryMutationAllowed: false,
+          reconciledAt: now,
+          message: 'Reconciliation cannot proceed: Contract deployment is not configured or not deployed.',
+          success: false,
+          previousStatus,
+          reconciledStatus: tx.status,
+          recoveryStatus: 'UNSUPPORTED',
+          providerTransactionId: tx.providerTransactionId,
+          blockHeight: tx.blockHeight,
+          registryUpdated: false,
+          error: 'Contract deployment not configured.',
+          errorCode: 'NOT_CONFIGURED',
+        };
+      }
     }
 
     // 3. Evaluate network compatibility
@@ -703,10 +753,11 @@ let globalReconciliationService: TransactionReconciliationService | null = null;
  */
 export function getTransactionReconciliationService(
   persistence?: TransactionPersistenceService,
-  eventService?: TransactionEventService
+  eventService?: TransactionEventService,
+  deploymentService?: ContractDeploymentService
 ): TransactionReconciliationService {
-  if (!globalReconciliationService || persistence || eventService) {
-    globalReconciliationService = new TransactionReconciliationService(persistence, eventService);
+  if (!globalReconciliationService || persistence || eventService || deploymentService) {
+    globalReconciliationService = new TransactionReconciliationService(persistence, eventService, deploymentService);
   }
   return globalReconciliationService;
 }
@@ -716,8 +767,9 @@ export function getTransactionReconciliationService(
  */
 export function resetTransactionReconciliationService(
   persistence?: TransactionPersistenceService,
-  eventService?: TransactionEventService
+  eventService?: TransactionEventService,
+  deploymentService?: ContractDeploymentService
 ): TransactionReconciliationService {
-  globalReconciliationService = new TransactionReconciliationService(persistence, eventService);
+  globalReconciliationService = new TransactionReconciliationService(persistence, eventService, deploymentService);
   return globalReconciliationService;
 }

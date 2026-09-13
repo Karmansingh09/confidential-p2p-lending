@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { calculateRepaymentObligation, LoanStatus } from '../contracts/dist/index.js';
 import {
   validateLoanRequestForm,
@@ -195,6 +196,34 @@ import {
   getTransactionReconciliationService,
   resetTransactionReconciliationService,
 } from '../frontend/src/lib/transaction-reconciliation-service.ts';
+import {
+  validateContractAddress,
+  isValidContractAddress,
+  normalizeContractAddress,
+  CONTRACT_ADDRESS_BYTE_LENGTH,
+} from '../frontend/src/lib/contract-address-validator.ts';
+import {
+  CANONICAL_CIRCUIT_NAMES,
+  COMPACT_SOURCE_FINGERPRINT,
+  CONTRACT_CIRCUIT_DEFINITIONS,
+  getCircuitDefinition,
+  getCircuitForAction,
+  isKnownCircuit,
+} from '../frontend/src/lib/contract-manifest.ts';
+import {
+  ContractDeploymentService,
+  getContractDeploymentService,
+  resetContractDeploymentService,
+  DEFAULT_UNCONFIGURED_DEPLOYMENT,
+} from '../frontend/src/lib/contract-deployment-service.ts';
+import {
+  ContractClient,
+  getContractClient,
+  resetContractClient,
+} from '../frontend/src/lib/contract-client.ts';
+import {
+  ContractDeploymentError,
+} from '../frontend/src/types/contract-deployment.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -224,6 +253,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/transaction-orchestration.ts',
       'src/types/wallet-adapter.ts',
       'src/types/wallet-session.ts',
+      'src/types/contract-deployment.ts',
       'src/lib/formatters.ts',
       'src/lib/mock-data.ts',
       'src/lib/validation.ts',
@@ -244,6 +274,10 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/wallet-session-service.ts',
       'src/lib/network-config-service.ts',
       'src/lib/wallet-connector-discovery.ts',
+      'src/lib/contract-address-validator.ts',
+      'src/lib/contract-manifest.ts',
+      'src/lib/contract-deployment-service.ts',
+      'src/lib/contract-client.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -9003,6 +9037,652 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 62, `Must audit all frontend source files including transaction reconciliation modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // =========================================================================
+  // COMMIT #32 TESTS: MIDNIGHT CONTRACT DEPLOYMENT CONFIGURATION BOUNDARY
+  // =========================================================================
+
+  it('Test 399 (Commit #32): Contract deployment model defaults to unconfigured NOT_DEPLOYED state', () => {
+    const service = new ContractDeploymentService();
+    const deployment = service.getDeployment();
+
+    assert.equal(deployment.contractName, 'MicroLendingCompactContract');
+    assert.equal(deployment.status, 'NOT_DEPLOYED');
+    assert.equal(deployment.isVerified, false);
+    assert.equal(deployment.isPrototype, true);
+    assert.equal(deployment.contractAddress, null);
+    assert.equal(deployment.networkId, null);
+    assert.equal(deployment.deployedAt, null);
+    assert.ok(Array.isArray(deployment.circuitManifest));
+    assert.equal(deployment.circuitManifest.length, 6);
+    assert.equal(service.isReady(), false);
+  });
+
+  it('Test 400 (Commit #32): Unconfigured deployment raises typed error on strict check', () => {
+    const service = new ContractDeploymentService();
+    assert.throws(
+      () => {
+        service.requireDeployment();
+      },
+      (err) => {
+        assert.ok(err instanceof ContractDeploymentError);
+        assert.equal(err.code, 'NOT_DEPLOYED');
+        assert.ok(err.message.includes('not deployed') || err.message.includes('not configured'));
+        return true;
+      }
+    );
+  });
+
+  it('Test 401 (Commit #32): configureDeployment updates status to CONFIGURED when valid address and network are provided', () => {
+    const service = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const deployment = service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet-01',
+    });
+
+    assert.equal(deployment.status, 'CONFIGURED');
+    assert.equal(deployment.contractAddress, validAddr);
+    assert.equal(deployment.networkId, 'midnight-testnet-01');
+    assert.equal(deployment.isVerified, false);
+    assert.ok(deployment.updatedAt > 0);
+  });
+
+  it('Test 402 (Commit #32): clearDeployment and reset revert deployment to default unconfigured state', () => {
+    const service = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet-01',
+    });
+    assert.equal(service.getDeploymentStatus(), 'CONFIGURED');
+
+    service.clearDeployment();
+    assert.equal(service.getDeploymentStatus(), 'NOT_DEPLOYED');
+    assert.equal(service.getDeployment().contractAddress, null);
+
+    service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet-01',
+    });
+    service.reset();
+    assert.equal(service.getDeploymentStatus(), 'NOT_DEPLOYED');
+  });
+
+  it('Test 403 (Commit #32): 32-byte hex contract address without 0x prefix validates and normalizes', () => {
+    const raw = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const result = validateContractAddress(raw);
+    assert.equal(result.isValid, true);
+    assert.equal(result.normalizedAddress, raw.toLowerCase());
+    assert.equal(isValidContractAddress(raw), true);
+    assert.equal(normalizeContractAddress(raw), raw.toLowerCase());
+  });
+
+  it('Test 404 (Commit #32): 32-byte hex contract address with 0x prefix validates and normalizes without prefix', () => {
+    const raw = '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const result = validateContractAddress(raw);
+    assert.equal(result.isValid, true);
+    assert.equal(result.normalizedAddress, raw.slice(2).toLowerCase());
+    assert.equal(isValidContractAddress(raw), true);
+    assert.equal(normalizeContractAddress(raw), raw.slice(2).toLowerCase());
+  });
+
+  it('Test 405 (Commit #32): Mixed-case valid hex contract address normalizes to lowercase', () => {
+    const mixed = '0x0123456789ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef';
+    const result = validateContractAddress(mixed);
+    assert.equal(result.isValid, true);
+    assert.equal(result.normalizedAddress, mixed.slice(2).toLowerCase());
+  });
+
+  it('Test 406 (Commit #32): Empty or null/undefined address rejected with typed error', () => {
+    assert.equal(validateContractAddress('').isValid, false);
+    assert.equal(validateContractAddress('   ').isValid, false);
+    assert.equal(validateContractAddress(null).isValid, false);
+    assert.equal(validateContractAddress(undefined).isValid, false);
+    assert.equal(isValidContractAddress(''), false);
+    assert.throws(() => normalizeContractAddress(''), ContractDeploymentError);
+  });
+
+  it('Test 407 (Commit #32): Non-hex characters in contract address are rejected', () => {
+    const nonHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789zzzzzz';
+    const result = validateContractAddress(nonHex);
+    assert.equal(result.isValid, false);
+    assert.equal(result.errorCode, 'INVALID_HEX');
+    assert.equal(isValidContractAddress(nonHex), false);
+  });
+
+  it('Test 408 (Commit #32): Contract address shorter than 32 bytes (64 hex chars) rejected', () => {
+    const shortAddr = '0123456789abcdef';
+    const result = validateContractAddress(shortAddr);
+    assert.equal(result.isValid, false);
+    assert.equal(result.errorCode, 'INVALID_LENGTH');
+    assert.equal(isValidContractAddress(shortAddr), false);
+  });
+
+  it('Test 409 (Commit #32): Contract address longer than 32 bytes (64 hex chars) rejected', () => {
+    const longAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00';
+    const result = validateContractAddress(longAddr);
+    assert.equal(result.isValid, false);
+    assert.equal(result.errorCode, 'INVALID_LENGTH');
+    assert.equal(isValidContractAddress(longAddr), false);
+  });
+
+  it('Test 410 (Commit #32): Odd number of hex characters rejected as invalid length', () => {
+    const oddHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde';
+    const result = validateContractAddress(oddHex);
+    assert.equal(result.isValid, false);
+    assert.equal(result.errorCode, 'INVALID_LENGTH');
+    assert.equal(isValidContractAddress(oddHex), false);
+  });
+
+  it('Test 411 (Commit #32): Network match validation passes when contract deployment matches network config', () => {
+    const service = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const validation = service.validateDeployment('midnight-testnet-01');
+    assert.equal(validation.isValid, true);
+    assert.equal(validation.status, 'CONFIGURED');
+  });
+
+  it('Test 412 (Commit #32): Local prototype contract deployment matches local network config', () => {
+    const service = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+    });
+
+    const validation = service.validateDeployment('midnight-prototype-local');
+    assert.equal(validation.isValid, true);
+  });
+
+  it('Test 413 (Commit #32): Network mismatch rejects validation when contract network differs from expected', () => {
+    const service = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    service.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const validation = service.validateDeployment('midnight-devnet-02');
+    assert.equal(validation.isValid, false);
+    assert.equal(validation.errorCode, 'NETWORK_MISMATCH');
+    assert.ok(validation.error?.includes('midnight-testnet-01'));
+    assert.ok(validation.error?.includes('midnight-devnet-02'));
+  });
+
+  it('Test 414 (Commit #32): setDeployment with INVALID status surfaces validation failure', () => {
+    const service = new ContractDeploymentService();
+    service.setDeployment({
+      status: 'INVALID',
+      contractAddress: 'invalid-address',
+      networkId: 'midnight-testnet-01',
+    });
+
+    const validation = service.validateDeployment();
+    assert.equal(validation.isValid, false);
+  });
+
+  it('Test 415 (Commit #32): Canonical circuit manifest contains all 6 circuits', () => {
+    assert.equal(CANONICAL_CIRCUIT_NAMES.length, 6);
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('verifyEligibility'));
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('fundLoan'));
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('repayLoan'));
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('settleLoan'));
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('getLoanStatus'));
+    assert.ok(CANONICAL_CIRCUIT_NAMES.includes('getLoanDetails'));
+
+    for (const name of CANONICAL_CIRCUIT_NAMES) {
+      assert.ok(isKnownCircuit(name), `Circuit ${name} should be known`);
+      const def = getCircuitDefinition(name);
+      assert.ok(def, `Definition for ${name} should exist`);
+      assert.equal(def.circuitName, name);
+    }
+  });
+
+  it('Test 416 (Commit #32): 4 lifecycle actions map correctly to canonical circuits via getCircuitForAction', () => {
+    assert.equal(getCircuitForAction('VERIFY_ELIGIBILITY')?.circuitName, 'verifyEligibility');
+    assert.equal(getCircuitForAction('FUND_LOAN')?.circuitName, 'fundLoan');
+    assert.equal(getCircuitForAction('REPAY_LOAN')?.circuitName, 'repayLoan');
+    assert.equal(getCircuitForAction('SETTLE_LOAN')?.circuitName, 'settleLoan');
+  });
+
+  it('Test 417 (Commit #32): 2 state inspection circuits exist in manifest as STATE_READ', () => {
+    const statusDef = getCircuitDefinition('getLoanStatus');
+    assert.ok(statusDef);
+    assert.equal(statusDef.classification, 'STATE_READ');
+    assert.equal(statusDef.isReadOnly, true);
+
+    const detailsDef = getCircuitDefinition('getLoanDetails');
+    assert.ok(detailsDef);
+    assert.equal(detailsDef.classification, 'STATE_READ');
+    assert.equal(detailsDef.isReadOnly, true);
+  });
+
+  it('Test 418 (Commit #32): verifyEligibility circuit classification requires local proof and no wallet signature', () => {
+    const def = getCircuitDefinition('verifyEligibility');
+    assert.ok(def);
+    assert.equal(def.classification, 'LOCAL_PROOF');
+    assert.equal(def.requiresProof, true);
+    assert.equal(def.requiresSignature, false);
+    assert.equal(def.requiresSubmission, false);
+  });
+
+  it('Test 419 (Commit #32): fundLoan, repayLoan, and settleLoan require wallet signature and network submission', () => {
+    for (const name of ['fundLoan', 'repayLoan', 'settleLoan']) {
+      const def = getCircuitDefinition(name);
+      assert.ok(def, `Circuit ${name} should exist`);
+      assert.equal(def.classification, 'TRANSACTION_EXECUTION');
+      assert.equal(def.requiresSignature, true);
+      assert.equal(def.requiresSubmission, true);
+      assert.equal(def.isReadOnly, false);
+    }
+  });
+
+  it('Test 420 (Commit #32): getLoanStatus and getLoanDetails are read-only with no signature or submission requirements', () => {
+    for (const name of ['getLoanStatus', 'getLoanDetails']) {
+      const def = getCircuitDefinition(name);
+      assert.ok(def);
+      assert.equal(def.requiresProof, false);
+      assert.equal(def.requiresSignature, false);
+      assert.equal(def.requiresSubmission, false);
+      assert.equal(def.isReadOnly, true);
+    }
+  });
+
+  it('Test 421 (Commit #32): ContractClient prepareContractCall produces valid ContractCallPreparation', () => {
+    const client = new ContractClient();
+    const loan = MOCK_LOANS['loan-002'];
+    const callerPk = new Uint8Array(32).fill(1);
+
+    const prep = client.prepareContractCall('fundLoan', loan, callerPk);
+    assert.equal(prep.circuitName, 'fundLoan');
+    assert.equal(prep.classification, 'TRANSACTION_EXECUTION');
+    assert.equal(prep.requiresSignature, true);
+    assert.equal(prep.requiresSubmission, true);
+    assert.equal(prep.callerPublicKey, callerPk);
+  });
+
+  it('Test 422 (Commit #32): ContractClient prepareContractCall validates caller identity requirement', () => {
+    const client = new ContractClient();
+    const loan = MOCK_LOANS['loan-002'];
+
+    assert.throws(
+      () => client.prepareContractCall('fundLoan', loan, null),
+      (err) => {
+        assert.ok(err instanceof ContractDeploymentError);
+        assert.equal(err.code, 'INVALID_PARAMS');
+        return true;
+      }
+    );
+  });
+
+  it('Test 423 (Commit #32): ContractClient prepareContractCall validates parameters against contract constraints', () => {
+    const client = new ContractClient();
+    const invalidLoan = { ...MOCK_LOANS['loan-002'], amount: -100n };
+    const callerPk = new Uint8Array(32).fill(1);
+
+    assert.throws(
+      () => client.prepareContractCall('fundLoan', invalidLoan, callerPk),
+      (err) => {
+        assert.ok(err instanceof ContractDeploymentError);
+        assert.equal(err.code, 'INVALID_PARAMS');
+        return true;
+      }
+    );
+  });
+
+  it('Test 424 (Commit #32): ContractClient getLoanStatus returns typed results matching LoanRegistry', () => {
+    const client = new ContractClient();
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001');
+    assert.ok(loan);
+
+    const result = client.getLoanStatus('loan-001', registry);
+    assert.equal(result.circuitName, 'getLoanStatus');
+    assert.equal(result.success, true);
+    assert.equal(result.data.status, loan.status);
+    assert.equal(result.data.isEligibilityVerified, loan.isEligibilityVerified);
+  });
+
+  it('Test 425 (Commit #32): ContractClient getLoanDetails returns complete loan agreement terms', () => {
+    const client = new ContractClient();
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-002');
+    assert.ok(loan);
+
+    const result = client.getLoanDetails('loan-002', registry);
+    assert.equal(result.circuitName, 'getLoanDetails');
+    assert.equal(result.success, true);
+    assert.equal(result.data.id, loan.id);
+    assert.equal(result.data.amount, loan.amount);
+    assert.equal(result.data.durationBlocks, loan.durationBlocks);
+    assert.equal(result.data.interestRateBasisPoints, loan.interestRateBasisPoints);
+  });
+
+  it('Test 426 (Commit #32): ContractClient lifecycle operations return mapped circuits and parameters', () => {
+    const client = new ContractClient();
+    const loan = MOCK_LOANS['loan-002'];
+    const callerPk = new Uint8Array(32).fill(2);
+
+    const prep = client.fundLoan(loan, callerPk);
+    assert.equal(prep.circuitName, 'fundLoan');
+    assert.equal(prep.classification, 'TRANSACTION_EXECUTION');
+
+    const repayPrep = client.repayLoan(loan, callerPk);
+    assert.equal(repayPrep.circuitName, 'repayLoan');
+
+    const settlePrep = client.settleLoan(loan, callerPk);
+    assert.equal(settlePrep.circuitName, 'settleLoan');
+
+    const verifyPrep = client.verifyEligibility(loan, callerPk);
+    assert.equal(verifyPrep.circuitName, 'verifyEligibility');
+  });
+
+  it('Test 427 (Commit #32): ContractClient call preparation is strictly read-only and leaves registry untouched', () => {
+    const client = new ContractClient();
+    const registry = createDefaultLoanRegistry();
+    const initialStatus = registry.getLoan('loan-002')?.status;
+    const loan = registry.getLoan('loan-002');
+    const callerPk = new Uint8Array(32).fill(2);
+
+    client.fundLoan(loan, callerPk);
+    assert.equal(registry.getLoan('loan-002')?.status, initialStatus);
+
+    client.repayLoan(loan, callerPk);
+    assert.equal(registry.getLoan('loan-002')?.status, initialStatus);
+
+    client.settleLoan(loan, callerPk);
+    assert.equal(registry.getLoan('loan-002')?.status, initialStatus);
+  });
+
+  it('Test 428 (Commit #32 & CRITICAL MANDATE): Unconfigured contract strictly blocks FUND_LOAN before signature with untouched registry', async () => {
+    const sessionService = new WalletSessionService();
+    const execService = new TransactionExecutionService(sessionService);
+    const unconfiguredDeployment = new ContractDeploymentService();
+    execService.setDeploymentService(unconfiguredDeployment);
+
+    const registry = createDefaultLoanRegistry();
+    const initialLoan = registry.getLoan('loan-002');
+    assert.equal(initialLoan.status, LoanStatus.requested);
+    assert.equal(initialLoan.isEligibilityVerified, true);
+
+    const provider = new LocalPrototypeWalletProvider();
+    await provider.connect('LENDER');
+    sessionService.setProvider(provider);
+    await sessionService.connect();
+
+    const lenderAccount = getMockAccount('LENDER');
+    const req = execService.createTransactionRequest(initialLoan, lenderAccount, 'FUND_LOAN');
+
+    let signatureRequested = false;
+    let submissionAttempted = false;
+    provider.requestSignature = async () => {
+      signatureRequested = true;
+      return { success: true, status: 'SIGNED' };
+    };
+    provider.submitTransaction = async () => {
+      submissionAttempted = true;
+      return { success: true, status: 'CONFIRMED' };
+    };
+
+    const result = await execService.executePipeline(req, initialLoan, lenderAccount, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(signatureRequested, false, 'Signature request MUST NEVER occur when contract is unconfigured');
+    assert.equal(submissionAttempted, false, 'Submission MUST NEVER occur when contract is unconfigured');
+    assert.equal(result.registryUpdated, false, 'Registry MUST NEVER be mutated when contract is unconfigured');
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+    assert.ok(result.message.includes('Contract deployment is not configured') || result.message.includes('not deployed'));
+  });
+
+  it('Test 429 (Commit #32 & CRITICAL MANDATE): Unconfigured contract strictly blocks REPAY_LOAN before signature with untouched registry', async () => {
+    const sessionService = new WalletSessionService();
+    const execService = new TransactionExecutionService(sessionService);
+    const unconfiguredDeployment = new ContractDeploymentService();
+    execService.setDeploymentService(unconfiguredDeployment);
+
+    const registry = createDefaultLoanRegistry();
+    const lenderPk = new Uint8Array(32).fill(2);
+    const fundedRegistry = registry.fundLoan('loan-002', lenderPk, lenderPk);
+    const fundedLoan = fundedRegistry.getLoan('loan-002');
+    assert.equal(fundedLoan.status, LoanStatus.funded);
+
+    const borrowerAccount = getMockAccount('BORROWER');
+    const req = execService.createTransactionRequest(fundedLoan, borrowerAccount, 'REPAY_LOAN');
+
+    const result = await execService.executePipeline(req, fundedLoan, borrowerAccount, fundedRegistry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(result.registryUpdated, false);
+    assert.equal(fundedRegistry.getLoan('loan-002')?.status, LoanStatus.funded);
+  });
+
+  it('Test 430 (Commit #32 & CRITICAL MANDATE): Invalid contract address strictly blocks SETTLE_LOAN before signature', async () => {
+    const sessionService = new WalletSessionService();
+    const execService = new TransactionExecutionService(sessionService);
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      status: 'INVALID',
+      contractAddress: 'invalid-address',
+      networkId: 'midnight-testnet-01',
+    });
+    execService.setDeploymentService(deploymentService);
+
+    const registry = createDefaultLoanRegistry();
+    const lenderPk = new Uint8Array(32).fill(2);
+    const loanToFund = registry.getLoan('loan-002');
+    const borrowerPk = loanToFund.borrowerPk;
+    const repaidRegistry = registry.fundLoan('loan-002', lenderPk, lenderPk).repayLoan('loan-002', borrowerPk);
+    const repaidLoan = repaidRegistry.getLoan('loan-002');
+    assert.equal(repaidLoan.status, LoanStatus.repaid);
+
+    const lenderAccount = getMockAccount('LENDER');
+    const req = execService.createTransactionRequest(repaidLoan, lenderAccount, 'SETTLE_LOAN');
+
+    const result = await execService.executePipeline(req, repaidLoan, lenderAccount, repaidRegistry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(result.registryUpdated, false);
+    assert.equal(repaidRegistry.getLoan('loan-002')?.status, LoanStatus.repaid);
+  });
+
+  it('Test 431 (Commit #32): evaluateTransactionReadiness reports contract deployment gate reasons', () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const account = getMockAccount('LENDER');
+    const provider = new LocalPrototypeWalletProvider();
+
+    const notDeployedService = new ContractDeploymentService();
+    const eval1 = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', provider, notDeployedService);
+    assert.equal(eval1.isReady, false);
+    assert.equal(eval1.reason, 'CONTRACT_NOT_DEPLOYED');
+
+    const unconfiguredService = new ContractDeploymentService();
+    unconfiguredService.setDeployment({ status: 'UNCONFIGURED' });
+    const eval2 = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', provider, unconfiguredService);
+    assert.equal(eval2.isReady, false);
+    assert.equal(eval2.reason, 'CONTRACT_NOT_CONFIGURED');
+
+    const invalidService = new ContractDeploymentService();
+    invalidService.setDeployment({ status: 'INVALID' });
+    const eval3 = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', provider, invalidService);
+    assert.equal(eval3.isReady, false);
+    assert.equal(eval3.reason, 'CONTRACT_INVALID');
+  });
+
+  it('Test 432 (Commit #32): evaluateTransactionReadiness allows progression only when contract is CONFIGURED / READY', async () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const account = getMockAccount('LENDER');
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: account,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+    const readyService = new ContractDeploymentService();
+    readyService.configureDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+    });
+    readyService.setDeployment({ status: 'READY', contractAddress: validAddr, networkId: 'midnight-prototype-local' });
+
+    const evalReady = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', adapter, readyService);
+    assert.equal(evalReady.isReady, true);
+  });
+
+  it('Test 433 (Commit #32): Reconciliation with unconfigured deployment returns UNSUPPORTED without throwing exceptions', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const unconfiguredDeployment = new ContractDeploymentService();
+    const service = new TransactionReconciliationService(persistence, undefined, unconfiguredDeployment);
+
+    persistence.saveTransaction({
+      id: 'tx-unconf-reconcile',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'midnight-testnet-01',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0x123',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isPrototype: false,
+      name: 'MIDNIGHT_WALLET',
+      getConnectionStatus: () => 'CONNECTED',
+      isConnected: () => true,
+      getReportedNetworkId: () => 'midnight-testnet-01',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', success: true }),
+    };
+
+    const registry = createDefaultLoanRegistry();
+    const result = await service.reconcileTransaction('tx-unconf-reconcile', {
+      provider: mockProvider,
+      loanRegistry: registry,
+      deploymentService: unconfiguredDeployment,
+    });
+
+    assert.equal(result.reconciliationStatus, 'UNSUPPORTED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+  });
+
+  it('Test 434 (Commit #32): COMPACT_SOURCE_FINGERPRINT matches SHA-256 hash of contracts/src/index.compact', () => {
+    const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+    assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
+
+    const contractContent = fs.readFileSync(contractPath);
+    const expectedHash = crypto.createHash('sha256').update(contractContent).digest('hex');
+
+    assert.equal(
+      COMPACT_SOURCE_FINGERPRINT,
+      expectedHash,
+      'COMPACT_SOURCE_FINGERPRINT must match exact SHA-256 hash of contracts/src/index.compact'
+    );
+  });
+
+  it('Test 435 (Commit #32 & Anti-Fabrication): Deployment boundary never synthesizes fake addresses or confirmations', () => {
+    const service = new ContractDeploymentService();
+    const deployment = service.getDeployment();
+
+    assert.equal(deployment.contractAddress, null);
+    assert.equal(deployment.status, 'NOT_DEPLOYED');
+    assert.equal(deployment.isVerified, false);
+    assert.equal(deployment.deployedAt, null);
+
+    assert.equal(isValidContractAddress(''), false);
+    assert.equal(isValidContractAddress('0x00'), false);
+  });
+
+  it('Test 436 (Commit #32): types/index.ts re-exports all contract deployment domain models and error types', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('ContractDeploymentStatus'));
+    assert.ok(content.includes('ContractDeployment'));
+    assert.ok(content.includes('ContractCircuitClassification'));
+    assert.ok(content.includes('ContractCircuitDefinition'));
+    assert.ok(content.includes('ContractDeploymentErrorCode'));
+    assert.ok(content.includes('ContractDeploymentError'));
+  });
+
+  it('Test 437 (Commit #32): NetworkStatusPanel, TransactionReviewPanel, and WalletSessionPanel render technical contract deployment sections', () => {
+    const networkPanel = fs.readFileSync(path.join(srcDir, 'components', 'NetworkStatusPanel.tsx'), 'utf8');
+    assert.ok(networkPanel.includes('contract-deployment-section'));
+    assert.ok(networkPanel.includes('Compact Contract Boundary (Commit #32)'));
+    assert.ok(networkPanel.includes('Circuit Manifest:'));
+
+    const reviewPanel = fs.readFileSync(path.join(srcDir, 'components', 'TransactionReviewPanel.tsx'), 'utf8');
+    assert.ok(reviewPanel.includes('Contract Status'));
+    assert.ok(reviewPanel.includes('Contract: NOT CONFIGURED'));
+    assert.ok(reviewPanel.includes('Contract deployment is not configured for this network.'));
+
+    const sessionPanel = fs.readFileSync(path.join(srcDir, 'components', 'WalletSessionPanel.tsx'), 'utf8');
+    assert.ok(sessionPanel.includes('session-readiness-indicators'));
+    assert.ok(sessionPanel.includes('Contract Configured'));
+  });
+
+  it('Test 438 (Commit #32 & Strict Privacy Audit): All frontend source files (>= 67 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 67, `Must audit all frontend source files including contract deployment modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

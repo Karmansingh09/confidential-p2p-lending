@@ -6,6 +6,10 @@ import {
   getWalletSessionService,
 } from './wallet-session-service.ts';
 import {
+  ContractDeploymentService,
+  getContractDeploymentService,
+} from './contract-deployment-service.ts';
+import {
   prepareLifecycleTransaction,
   getCircuitNameForAction,
   evaluateTransactionReadiness,
@@ -78,15 +82,18 @@ export class TransactionExecutionService {
   private sessionService: WalletSessionService;
   private customProvider?: WalletProvider;
   private persistenceService: TransactionPersistenceService;
+  private deploymentService?: ContractDeploymentService;
 
   constructor(
     sessionService?: WalletSessionService,
     customProvider?: WalletProvider,
-    persistenceService?: TransactionPersistenceService
+    persistenceService?: TransactionPersistenceService,
+    deploymentService?: ContractDeploymentService
   ) {
     this.sessionService = sessionService ?? getWalletSessionService();
     this.customProvider = customProvider;
     this.persistenceService = persistenceService ?? getTransactionPersistenceService();
+    this.deploymentService = deploymentService;
   }
 
   getPersistenceService(): TransactionPersistenceService {
@@ -95,6 +102,14 @@ export class TransactionExecutionService {
 
   setPersistenceService(persistence: TransactionPersistenceService): void {
     this.persistenceService = persistence;
+  }
+
+  getDeploymentService(): ContractDeploymentService | undefined {
+    return this.deploymentService;
+  }
+
+  setDeploymentService(deploymentService: ContractDeploymentService): void {
+    this.deploymentService = deploymentService;
   }
 
   /**
@@ -223,9 +238,16 @@ export class TransactionExecutionService {
   evaluateReadiness(
     loan: LoanDetailsModel,
     account: NetworkAccount | WalletAccountIdentity | null,
-    action: LifecycleTransactionAction
+    action: LifecycleTransactionAction,
+    deploymentService?: ContractDeploymentService
   ): TransactionReadinessEvaluation {
-    return evaluateTransactionReadiness(loan, account, action, this.getProvider());
+    return evaluateTransactionReadiness(
+      loan,
+      account,
+      action,
+      this.getProvider(),
+      deploymentService ?? this.deploymentService
+    );
   }
 
   /**
@@ -357,9 +379,65 @@ export class TransactionExecutionService {
     }
 
     // -------------------------------------------------------------------------
+    // Phase 2.8: Contract Deployment Configuration Evaluation
+    // -------------------------------------------------------------------------
+    const activeDeploymentService = (options as any)?.deploymentService ?? this.deploymentService;
+    if (activeDeploymentService) {
+      const deployment = activeDeploymentService.getDeployment();
+      if (deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED') {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: 'Transaction blocked: Contract deployment is not configured or not deployed on this network.',
+          errorCode: 'NOT_CONFIGURED' as any,
+          error: 'Contract deployment not configured.',
+          unsupportedReason: 'Contract deployment is unconfigured or not deployed.',
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
+      if (deployment.status === 'INVALID') {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: 'Transaction blocked: Contract deployment configuration is invalid.',
+          errorCode: 'INVALID_CONFIG' as any,
+          error: 'Contract deployment configuration invalid.',
+          unsupportedReason: 'Contract deployment is invalid.',
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
+      if (deployment.networkId && netConfig.networkId && deployment.networkId !== netConfig.networkId) {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: `Transaction blocked: Contract network mismatch (${deployment.networkId} !== ${netConfig.networkId}).`,
+          errorCode: 'NETWORK_ERROR',
+          error: 'CONTRACT_NETWORK_MISMATCH',
+          unsupportedReason: `Contract network mismatch (${deployment.networkId} !== ${netConfig.networkId}).`,
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
+    }
+
+    // -------------------------------------------------------------------------
     // Phase 3: Contract Lifecycle Guards & Capability Preparation
     // -------------------------------------------------------------------------
-    const prep = prepareLifecycleTransaction(loan, account, action, provider);
+    const prep = prepareLifecycleTransaction(loan, account, action, provider, activeDeploymentService);
 
     if (prep.status === 'INVALID') {
       const result: TransactionExecutionResult = {
@@ -832,7 +910,8 @@ export class TransactionExecutionService {
   prepareAndValidate(
     request: TransactionRequest,
     loan: LoanDetailsModel,
-    account: NetworkAccount | WalletAccountIdentity | null
+    account: NetworkAccount | WalletAccountIdentity | null,
+    options?: { deploymentService?: ContractDeploymentService }
   ): {
     isReady: boolean;
     reason?: string;
@@ -844,6 +923,7 @@ export class TransactionExecutionService {
 
     const provider = this.getProvider();
     const session = this.sessionService.getSession();
+    const activeDeploymentService = options?.deploymentService ?? this.deploymentService;
 
     // 1. Session Connection Check
     if (session.status !== 'CONNECTED' || !session.account) {
@@ -851,7 +931,7 @@ export class TransactionExecutionService {
       request.error = 'Wallet is disconnected.';
       request.errorCode = 'NOT_CONNECTED';
       request.updatedAt = Date.now();
-      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
       this.persistRequest(request);
       return { isReady: false, reason: 'Wallet is disconnected.', errorCode: 'NOT_CONNECTED', prep };
     }
@@ -867,7 +947,7 @@ export class TransactionExecutionService {
       request.error = 'Network configuration required.';
       request.errorCode = 'UNKNOWN_NETWORK';
       request.updatedAt = Date.now();
-      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
       this.persistRequest(request);
       return { isReady: false, reason: 'Network configuration required.', errorCode: 'UNKNOWN_NETWORK', prep };
     }
@@ -882,7 +962,7 @@ export class TransactionExecutionService {
         request.error = comp.reason;
         request.errorCode = 'NETWORK_MISMATCH';
         request.updatedAt = Date.now();
-        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
         this.persistRequest(request);
         return { isReady: false, reason: comp.reason, errorCode: 'NETWORK_MISMATCH', prep };
       }
@@ -891,9 +971,56 @@ export class TransactionExecutionService {
         request.error = comp.reason;
         request.errorCode = 'UNKNOWN_NETWORK';
         request.updatedAt = Date.now();
-        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
         this.persistRequest(request);
         return { isReady: false, reason: comp.reason, errorCode: 'UNKNOWN_NETWORK', prep };
+      }
+    }
+
+    // 3.5. Contract Deployment Configuration Check
+    if (activeDeploymentService) {
+      const deployment = activeDeploymentService.getDeployment();
+      if (deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED') {
+        request.status = 'BLOCKED';
+        request.error = 'Transaction blocked: Contract deployment is not configured or not deployed on this network.';
+        request.errorCode = 'NOT_CONFIGURED';
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
+        this.persistRequest(request);
+        return {
+          isReady: false,
+          reason: 'Transaction blocked: Contract deployment is not configured or not deployed on this network.',
+          errorCode: 'NOT_CONFIGURED',
+          prep,
+        };
+      }
+      if (deployment.status === 'INVALID') {
+        request.status = 'BLOCKED';
+        request.error = 'Transaction blocked: Contract deployment configuration is invalid.';
+        request.errorCode = 'INVALID_CONFIG';
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
+        this.persistRequest(request);
+        return {
+          isReady: false,
+          reason: 'Transaction blocked: Contract deployment configuration is invalid.',
+          errorCode: 'INVALID_CONFIG',
+          prep,
+        };
+      }
+      if (deployment.networkId && netConfig.networkId && deployment.networkId !== netConfig.networkId) {
+        request.status = 'BLOCKED';
+        request.error = `Transaction blocked: Contract network mismatch (${deployment.networkId} !== ${netConfig.networkId}).`;
+        request.errorCode = 'NETWORK_MISMATCH';
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
+        this.persistRequest(request);
+        return {
+          isReady: false,
+          reason: `Transaction blocked: Contract network mismatch (${deployment.networkId} !== ${netConfig.networkId}).`,
+          errorCode: 'NETWORK_MISMATCH',
+          prep,
+        };
       }
     }
 
@@ -909,13 +1036,13 @@ export class TransactionExecutionService {
       request.error = 'Wallet connector not detected.';
       request.errorCode = 'UNSUPPORTED_PROVIDER';
       request.updatedAt = Date.now();
-      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+      const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
       this.persistRequest(request);
       return { isReady: false, reason: 'Wallet connector not detected.', errorCode: 'UNSUPPORTED_PROVIDER', prep };
     }
 
     // 5. Contract Guard and Capability Evaluation
-    const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider);
+    const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
 
     if (prep.status === 'INVALID') {
       request.status = 'FAILED';
@@ -1223,12 +1350,13 @@ export class TransactionExecutionService {
     request: TransactionRequest,
     loan: LoanDetailsModel,
     account: NetworkAccount | WalletAccountIdentity | null,
-    loanRegistry?: LoanRegistry
+    loanRegistry?: LoanRegistry,
+    options?: { deploymentService?: ContractDeploymentService }
   ): Promise<TransactionRequestResult> {
     const { action, circuitName, loanId } = request;
 
     // Stage 1 & 2: Prepare & Validate
-    const prepResult = this.prepareAndValidate(request, loan, account);
+    const prepResult = this.prepareAndValidate(request, loan, account, options);
     if (!prepResult.isReady) {
       request.status = prepResult.prep.status === 'BLOCKED'
         ? 'BLOCKED'
@@ -1384,10 +1512,11 @@ let globalExecutionService: TransactionExecutionService | null = null;
  * Returns singleton instance of TransactionExecutionService.
  */
 export function getTransactionExecutionService(
-  sessionService?: WalletSessionService
+  sessionService?: WalletSessionService,
+  deploymentService?: ContractDeploymentService
 ): TransactionExecutionService {
-  if (!globalExecutionService || sessionService) {
-    globalExecutionService = new TransactionExecutionService(sessionService);
+  if (!globalExecutionService || sessionService || deploymentService) {
+    globalExecutionService = new TransactionExecutionService(sessionService, undefined, undefined, deploymentService);
   }
   return globalExecutionService;
 }
@@ -1398,8 +1527,9 @@ export function getTransactionExecutionService(
 export function resetTransactionExecutionService(
   sessionService?: WalletSessionService,
   provider?: WalletProvider,
-  persistenceService?: TransactionPersistenceService
+  persistenceService?: TransactionPersistenceService,
+  deploymentService?: ContractDeploymentService
 ): TransactionExecutionService {
-  globalExecutionService = new TransactionExecutionService(sessionService, provider, persistenceService);
+  globalExecutionService = new TransactionExecutionService(sessionService, provider, persistenceService, deploymentService);
   return globalExecutionService;
 }

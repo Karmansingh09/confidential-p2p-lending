@@ -8,7 +8,13 @@ import {
 import {
   prepareLifecycleTransaction,
   getCircuitNameForAction,
+  evaluateTransactionReadiness,
+  type TransactionReadinessEvaluation,
 } from './transaction-orchestrator.ts';
+import { getNetworkConfigService } from './network-config-service.ts';
+import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
+import type { NetworkAccount } from '../types/network.ts';
+import type { WalletAccountIdentity } from '../types/wallet-adapter.ts';
 import type {
   TransactionExecutionRequest,
   TransactionExecutionResult,
@@ -53,6 +59,17 @@ export class TransactionExecutionService {
   }
 
   /**
+   * Evaluates complete transaction readiness pipeline across account, network, connector, and contract guards.
+   */
+  evaluateReadiness(
+    loan: LoanDetailsModel,
+    account: NetworkAccount | WalletAccountIdentity | null,
+    action: LifecycleTransactionAction
+  ): TransactionReadinessEvaluation {
+    return evaluateTransactionReadiness(loan, account, action, this.getProvider());
+  }
+
+  /**
    * Executes a contract-guarded lifecycle transaction through the provider boundary.
    *
    * @param request Standardized transaction execution request.
@@ -90,7 +107,32 @@ export class TransactionExecutionService {
     }
 
     // -------------------------------------------------------------------------
-    // Phase 2: Provider Connector Detection Evaluation
+    // Phase 2: Network Configuration Evaluation
+    // -------------------------------------------------------------------------
+    const netConfig = getNetworkConfigService().getNetworkConfig();
+    const isNetworkBlocked =
+      netConfig.status !== 'CONFIGURED' ||
+      (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url));
+
+    if (isNetworkBlocked) {
+      const result: TransactionExecutionResult = {
+        success: false,
+        status: 'BLOCKED',
+        action,
+        circuitName,
+        loanId,
+        message: 'Transaction blocked by network configuration: Real network endpoints are missing or invalid.',
+        errorCode: 'NETWORK_ERROR',
+        error: 'BLOCKED_NETWORK_CONFIGURATION',
+        unsupportedReason: 'Network configuration required.',
+        registryUpdated: false,
+        confirmationState: 'NOT_CONFIRMED',
+      };
+      return { result };
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 3: Provider Connector Detection Evaluation
     // -------------------------------------------------------------------------
     const isConnectorMissing =
       !provider.isPrototype &&

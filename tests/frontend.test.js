@@ -127,6 +127,30 @@ import {
   resetTransactionExecutionService,
 } from '../frontend/src/lib/transaction-execution-service.ts';
 import { TransactionExecutionError } from '../frontend/src/types/transaction-execution.ts';
+import {
+  NetworkConfigurationError,
+  validateNetworkConfig,
+  NetworkConfigService,
+  getNetworkConfigService,
+  resetNetworkConfigService,
+  getNetworkConfig,
+  getNetworkConfigurationStatus,
+  setNetworkConfig,
+  resetNetworkConfig,
+  DEFAULT_LOCAL_NETWORK_CONFIG,
+} from '../frontend/src/lib/network-config-service.ts';
+import {
+  discoverWalletConnector,
+  evaluateConnectorCapabilities,
+  resolveConnectorReadinessState,
+} from '../frontend/src/lib/wallet-connector-discovery.ts';
+import {
+  evaluateTransactionReadiness,
+} from '../frontend/src/lib/transaction-orchestrator.ts';
+import {
+  getConnectorReadinessState,
+  getConnectorDiscovery,
+} from '../frontend/src/lib/wallet-session-service.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -151,6 +175,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/types/account.ts',
       'src/types/application-state.ts',
       'src/types/network.ts',
+      'src/types/network-config.ts',
       'src/types/transaction.ts',
       'src/types/transaction-orchestration.ts',
       'src/types/wallet-adapter.ts',
@@ -173,6 +198,8 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
       'src/lib/transaction-orchestrator.ts',
       'src/lib/midnight-wallet-adapter.ts',
       'src/lib/wallet-session-service.ts',
+      'src/lib/network-config-service.ts',
+      'src/lib/wallet-connector-discovery.ts',
       'src/pages/DashboardPage.tsx',
       'src/pages/CreateLoanPage.tsx',
       'src/components/Header.tsx',
@@ -4800,6 +4827,489 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
 
     const files = walkDir(srcDir);
     assert.ok(files.length >= 48, `Must audit all frontend source files including transaction execution modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  // =========================================================================
+  // COMMIT #27: MIDNIGHT NETWORK CONFIGURATION & CONNECTOR DISCOVERY TESTS
+  // =========================================================================
+
+  it('Test 252 (Commit #27): LOCAL configuration is valid for prototype mode', () => {
+    const config = getNetworkConfig();
+    assert.equal(config.environment, 'LOCAL');
+    assert.equal(config.isPrototype, true);
+    assert.equal(config.isRealNetwork, false);
+    assert.equal(config.status, 'CONFIGURED');
+    assert.equal(config.nodeRpcEndpoint, null);
+    assert.equal(config.indexerEndpoint, null);
+
+    const validation = validateNetworkConfig(config);
+    assert.equal(validation.valid, true);
+    assert.equal(validation.error, undefined);
+  });
+
+  it('Test 253 (Commit #27): Real network configuration without required endpoints is rejected', () => {
+    const incompleteConfig = {
+      environment: 'TESTNET',
+      networkName: 'Midnight Testnet',
+      networkId: 'midnight-testnet-01',
+      nodeRpcEndpoint: null,
+      indexerEndpoint: null,
+      walletConnectorAvailable: true,
+      isRealNetwork: true,
+      isPrototype: false,
+      status: 'NOT_CONFIGURED',
+    };
+
+    const validation = validateNetworkConfig(incompleteConfig);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.error instanceof NetworkConfigurationError);
+    assert.equal(validation.error.code, 'MISSING_REQUIRED_ENDPOINT');
+
+    assert.throws(
+      () => {
+        setNetworkConfig(incompleteConfig);
+      },
+      (err) => {
+        return (
+          err instanceof NetworkConfigurationError &&
+          err.code === 'MISSING_REQUIRED_ENDPOINT'
+        );
+      }
+    );
+  });
+
+  it('Test 254 (Commit #27): Unknown network environment is rejected', () => {
+    const invalidEnvConfig = {
+      environment: 'DEVNET_UNKNOWN',
+      networkName: 'Nonexistent Network',
+      networkId: null,
+      nodeRpcEndpoint: null,
+      indexerEndpoint: null,
+      walletConnectorAvailable: false,
+      isRealNetwork: true,
+      isPrototype: false,
+      status: 'NOT_CONFIGURED',
+    };
+
+    const validation = validateNetworkConfig(invalidEnvConfig);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.error instanceof NetworkConfigurationError);
+    assert.equal(validation.error.code, 'INVALID_ENVIRONMENT');
+  });
+
+  it('Test 255 (Commit #27): Connector is correctly reported as NOT_DETECTED when unavailable', () => {
+    const result = discoverWalletConnector(null);
+    assert.equal(result.detected, false);
+    assert.equal(result.compatible, false);
+    assert.ok(result.description.includes('empty') || result.description.includes('No Midnight'));
+  });
+
+  it('Test 256 (Commit #27): Browser connector detection does not crash under Node.js/SSR', () => {
+    assert.doesNotThrow(() => {
+      const result = discoverWalletConnector();
+      assert.equal(result.isBrowser, false);
+      assert.equal(result.detected, false);
+      assert.ok(result.description.includes('SSR/Node.js'));
+    });
+  });
+
+  it('Test 257 (Commit #27 & Critical Invariant): Detected connector is not automatically considered connected', () => {
+    const mockConnector = {
+      lace: {
+        enable: async () => {},
+        isEnabled: async () => true,
+      },
+    };
+    const discovery = discoverWalletConnector(mockConnector);
+    assert.equal(discovery.detected, true);
+    assert.equal(discovery.compatible, true);
+
+    const readiness = resolveConnectorReadinessState({
+      detected: discovery.detected,
+      compatible: discovery.compatible,
+      networkStatus: 'CONFIGURED',
+      connectionStatus: 'DISCONNECTED',
+      capabilities: {
+        READ_PUBLIC_LEDGER: true,
+        CREATE_PROOF: true,
+        READ_ACCOUNT_IDENTITY: false,
+        SIGN_TRANSACTION: false,
+        SUBMIT_TRANSACTION: false,
+        READ_TRANSACTION_STATUS: false,
+        READ_BALANCE: false,
+      },
+    });
+
+    // Invariant: DETECTED != CONNECTED
+    assert.notEqual(readiness, 'CONNECTED');
+    assert.equal(readiness, 'DETECTED');
+  });
+
+  it('Test 258 (Commit #27 & Critical Invariant): Connected connector is not automatically considered transaction-capable', () => {
+    // Session connected, but provider lacks atomic signing or submission
+    const readiness = resolveConnectorReadinessState({
+      detected: true,
+      compatible: true,
+      networkStatus: 'CONFIGURED',
+      connectionStatus: 'CONNECTED',
+      capabilities: {
+        READ_PUBLIC_LEDGER: true,
+        CREATE_PROOF: true,
+        READ_ACCOUNT_IDENTITY: true,
+        SIGN_TRANSACTION: false,
+        SUBMIT_TRANSACTION: false,
+        READ_TRANSACTION_STATUS: false,
+        READ_BALANCE: false,
+      },
+    });
+
+    // Invariant: CONNECTED != TRANSACTION_CAPABLE
+    assert.notEqual(readiness, 'TRANSACTION_CAPABLE');
+    assert.equal(readiness, 'CONNECTED');
+  });
+
+  it('Test 259 (Commit #27): Provider capabilities reflect actual provider support', async () => {
+    const protoProvider = new LocalPrototypeWalletProvider();
+    const protoCaps = evaluateConnectorCapabilities(protoProvider);
+    assert.equal(protoCaps.READ_PUBLIC_LEDGER, true);
+    assert.equal(protoCaps.CREATE_PROOF, true);
+    assert.equal(protoCaps.READ_ACCOUNT_IDENTITY, true);
+    assert.equal(protoCaps.SIGN_TRANSACTION, false);
+    assert.equal(protoCaps.SUBMIT_TRANSACTION, false);
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: {
+        address: 'midnight1addr_test',
+        publicKey: PROTOTYPE_LENDER_PK,
+        publicKeyHex: '0x10',
+      },
+      signingAvailable: true,
+      submissionAvailable: false,
+    });
+    await adapter.connect('LENDER');
+
+    const adapterCaps = evaluateConnectorCapabilities(adapter);
+    assert.equal(adapterCaps.SIGN_TRANSACTION, true);
+    assert.equal(adapterCaps.SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 260 (Commit #27): Local prototype provider cannot claim signing capability', () => {
+    const protoProvider = new LocalPrototypeWalletProvider('BORROWER');
+    const caps = evaluateConnectorCapabilities(protoProvider);
+    assert.equal(caps.SIGN_TRANSACTION, false);
+    assert.equal(protoProvider.getCapabilities().SIGN_TRANSACTION, false);
+  });
+
+  it('Test 261 (Commit #27): Local prototype provider cannot claim submission capability', () => {
+    const protoProvider = new LocalPrototypeWalletProvider('BORROWER');
+    const caps = evaluateConnectorCapabilities(protoProvider);
+    assert.equal(caps.SUBMIT_TRANSACTION, false);
+    assert.equal(protoProvider.getCapabilities().SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 262 (Commit #27): Transaction readiness blocks when network configuration is invalid', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001');
+    const account = {
+      publicKey: PROTOTYPE_BORROWER_PK,
+      publicKeyHex: '0x01',
+      role: 'BORROWER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: account,
+    });
+    await adapter.connect('BORROWER');
+
+    // Simulate invalid network configuration in config service
+    const configService = getNetworkConfigService();
+    configService.setNetworkConfig(
+      {
+        environment: 'TESTNET',
+        networkName: 'Invalid Testnet',
+        networkId: 'testnet',
+        nodeRpcEndpoint: null,
+        indexerEndpoint: null,
+        walletConnectorAvailable: false,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'INVALID',
+      },
+      true // bypass validation to simulate invalid active configuration state
+    );
+
+    const readiness = evaluateTransactionReadiness(loan, account, 'VERIFY_ELIGIBILITY', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'BLOCKED_NETWORK_CONFIGURATION');
+
+    // Reset back to clean local config
+    resetNetworkConfig();
+  });
+
+  it('Test 263 (Commit #27): Transaction readiness blocks when wallet is disconnected', () => {
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001');
+    const provider = new LocalPrototypeWalletProvider('NONE');
+
+    const readiness = evaluateTransactionReadiness(loan, null, 'FUND_LOAN', provider);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'WALLET_NOT_CONNECTED');
+  });
+
+  it('Test 264 (Commit #27): Transaction readiness blocks when signing is unavailable', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: false,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'SIGNING_UNAVAILABLE');
+  });
+
+  it('Test 265 (Commit #27): Transaction readiness blocks when submission is unavailable', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: false,
+    });
+    await adapter.connect('LENDER');
+
+    const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'SUBMISSION_UNAVAILABLE');
+  });
+
+  it('Test 266 (Commit #27): Valid configuration + connected provider + required capabilities produces READY', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    const readiness = evaluateTransactionReadiness(verifiedLoan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, true);
+    assert.equal(readiness.reason, 'READY');
+    assert.equal(readiness.preparation.status, 'READY');
+  });
+
+  it('Test 267 (Commit #27): Existing contract guards still control lifecycle authorization', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-001'); // requested, not yet verified
+
+    const lenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('LENDER');
+
+    // Lender attempting to fund an unverified loan is rejected by contract guard canFundLoan
+    const readiness = evaluateTransactionReadiness(loan, lenderAccount, 'FUND_LOAN', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 268 (Commit #27): Unauthorized caller remains blocked', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedLoan = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK).getLoan('loan-001');
+
+    const unauthorizedAccount = {
+      publicKey: PROTOTYPE_THIRD_PARTY_PK,
+      publicKeyHex: '0x99',
+      role: 'PARTICIPANT',
+    };
+
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: unauthorizedAccount,
+      signingAvailable: true,
+      submissionAvailable: true,
+    });
+    await adapter.connect('PARTICIPANT');
+
+    // Third party cannot verify borrower eligibility or fund without lender role
+    const readiness = evaluateTransactionReadiness(verifiedLoan, unauthorizedAccount, 'VERIFY_ELIGIBILITY', adapter);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'GUARD_VALIDATION_FAILED');
+  });
+
+  it('Test 269 (Commit #27 & Critical Invariant): Pending/unsupported transactions still do not mutate LoanRegistry', async () => {
+    const registry = createDefaultLoanRegistry();
+    const loanBefore = registry.getLoan('loan-001');
+    assert.equal(loanBefore.status, LoanStatus.requested);
+
+    const execService = getTransactionExecutionService();
+    const result = await execService.executeTransaction(
+      {
+        loan: loanBefore,
+        account: { publicKey: PROTOTYPE_BORROWER_PK, publicKeyHex: '0x01', role: 'BORROWER' },
+        action: 'FUND_LOAN', // Invalid role for funding + prototype unsupported
+        loanId: 'loan-001',
+      },
+      registry
+    );
+
+    assert.equal(result.result.registryUpdated, false);
+    const loanAfter = registry.getLoan('loan-001');
+    assert.equal(loanAfter.status, LoanStatus.requested);
+  });
+
+  it('Test 270 (Commit #27 & Anti-Fabrication): No synthetic transaction data is generated', () => {
+    const config = getNetworkConfig();
+    assert.equal('transactionId' in config, false);
+    assert.equal('hash' in config, false);
+    assert.equal('blockHeight' in config, false);
+
+    const discovery = discoverWalletConnector();
+    assert.equal('transactionHash' in discovery, false);
+    assert.equal('mockSignature' in discovery, false);
+  });
+
+  it('Test 271 (Commit #27 & Anti-Fabrication): No fake network information is generated', () => {
+    const config = getNetworkConfig();
+    assert.equal(config.nodeRpcEndpoint, null);
+    assert.equal(config.indexerEndpoint, null);
+
+    const status = getNetworkConfigurationStatus();
+    assert.equal(status, 'CONFIGURED');
+  });
+
+  it('Test 272 (Commit #27 & Privacy Invariant): Network configuration contains no secrets', () => {
+    const config = getNetworkConfig();
+    const forbiddenProps = ['seed', 'secret', 'private', 'witness', 'balance', 'income', 'salary'];
+    for (const prop of forbiddenProps) {
+      assert.equal(prop in config, false, `Network config must not have property ${prop}`);
+    }
+  });
+
+  it('Test 273 (Commit #27 & Privacy Invariant): Connector discovery contains no private financial information', () => {
+    const discovery = discoverWalletConnector();
+    const forbiddenProps = ['financial', 'witness', 'secret', 'credit', 'balance', 'income'];
+    for (const prop of forbiddenProps) {
+      assert.equal(prop in discovery, false, `Connector discovery must not have property ${prop}`);
+    }
+  });
+
+  it('Test 274 (Commit #27): Existing prototype account/persona switching remains functional', () => {
+    const sessionService = getWalletSessionService();
+    sessionService.switchToPrototypeProvider('BORROWER');
+    assert.equal(sessionService.getAccount()?.role, 'BORROWER');
+
+    sessionService.switchToPrototypeProvider('LENDER');
+    assert.equal(sessionService.getAccount()?.role, 'LENDER');
+    assert.deepEqual(sessionService.getAccount()?.publicKey, PROTOTYPE_LENDER_PK);
+
+    sessionService.switchToPrototypeProvider('THIRD_PARTY');
+    assert.equal(sessionService.getAccount()?.role, 'THIRD_PARTY');
+    assert.deepEqual(sessionService.getAccount()?.publicKey, PROTOTYPE_THIRD_PARTY_PK);
+
+    // Cleanly restore to BORROWER
+    sessionService.switchToPrototypeProvider('BORROWER');
+  });
+
+  it('Test 275 (Commit #27): types/index.ts re-exports all network configuration types and errors', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('NetworkConfigurationError'));
+    assert.ok(content.includes('MidnightNetwork'));
+    assert.ok(content.includes('NetworkConfigurationStatus'));
+    assert.ok(content.includes('NetworkConfigurationErrorCode'));
+    assert.ok(content.includes('NetworkEndpoint'));
+    assert.ok(content.includes('NetworkConfig'));
+    assert.ok(content.includes('ConnectorReadinessState'));
+    assert.ok(content.includes('TransactionReadinessReason'));
+  });
+
+  it('Test 276 (Commit #27 & Strict Privacy Audit): All frontend files (>= 51 files) contain zero private keys, seed phrases, or financial credentials', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 51, `Must audit all frontend source files including network-config modules (found ${files.length})`);
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf8');

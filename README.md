@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 306 passing tests across 8 test suites
+# 331 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,18 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #26)
+### Current Status & Features (Commit #27)
+- **Midnight Network Configuration & Connector Discovery (Commit #27)**:
+  - **Authoritative Network Configuration Service**: Implements `NetworkConfigService` (`frontend/src/lib/network-config-service.ts`) as the single source of truth for active network configuration across `LOCAL`, `DEVNET`, `TESTNET`, and `MAINNET` environments with endpoint validation (`nodeRpcEndpoint`, `indexerEndpoint`) and typed domain errors (`NetworkConfigurationError`).
+  - **Safe Browser Connector Discovery**: Implements `discoverWalletConnector` (`frontend/src/lib/wallet-connector-discovery.ts`) with safe SSR/Node.js runtime checks to detect `window.midnight` (Lace Wallet / Midnight connector) and report compatibility, detection status, and installation guidance without crashing outside browser environments.
+  - **Dynamic Capability Negotiation**: Implements `evaluateConnectorCapabilities` deriving atomic capabilities (`READ_ACCOUNT_IDENTITY`, `SIGN_DATA`, `SUBMIT_TRANSACTION`) directly from the detected provider rather than static assumptions.
+  - **Strict Four-Stage Architectural Invariant**: Formally enforces:
+    1. `DETECTED != CONNECTED`: Connector detection never assumes user permission or auto-connects.
+    2. `CONNECTED != TRANSACTION_CAPABLE`: Active connection never implies transaction signing or submission capability without explicit feature support.
+    3. `LOCAL PROTOTYPE CONSTRAINTS`: Prototype provider explicitly reports `SIGN_DATA: false` and `SUBMIT_TRANSACTION: false`.
+    4. `ZERO FABRICATION`: Zero synthetic transaction hashes, block numbers, or confirmations.
+  - **Comprehensive Transaction Readiness Pipeline**: Integrates network configuration validation with `evaluateTransactionReadiness` in `TransactionOrchestrator` and `TransactionExecutionService`, surfacing typed readiness reasons (`BLOCKED_NETWORK_CONFIGURATION`, `BLOCKED_WALLET_DISCONNECTED`, `BLOCKED_UNSUPPORTED_ACTION`, `READY`).
+  - **Transparent Multi-State UI Panels**: Enhances `NetworkStatusPanel.tsx` and `WalletSessionPanel.tsx` with explicit disclosures for network status, configuration validity, connector detection, session state, signing capability, submission capability, and transaction readiness.
 - **Real-Wallet Transaction Execution Boundary (Commit #26)**:
   - **Typed Transaction Execution Models**: Comprehensive models (`frontend/src/types/transaction-execution.ts`) defining execution statuses (`IDLE`, `VALIDATING`, `PREPARING`, `SUBMITTING`, `BLOCKED`, `PENDING`, `CONFIRMED`, `REJECTED`, `FAILED`, `UNSUPPORTED`), provider submission states, receipts, and domain errors (`TransactionExecutionError`).
   - **Production Transaction Execution Service**: Implements `TransactionExecutionService` (`frontend/src/lib/transaction-execution-service.ts`) orchestrating wallet session validation, contract guard checks, 1:1 Compact circuit mapping, provider delegation, and sanitized error mapping.
@@ -213,4 +224,4 @@ npm run build:frontend
 - **Strict Privacy Separation**: Zero private financial credentials, secret witnesses, or confidential inputs accessible to the frontend or lenders.
 
 > [!WARNING]
-> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Transaction Execution Boundary** (Commit #26). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `TransactionExecutionService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.
+> **Network & Wallet Status**: The frontend operates in **Local Prototype Mode & Network Configuration Boundary** (Commit #27). Live Midnight.js wallet integration (e.g. Lace Wallet extension connection, on-chain transaction signing, and network submission) is structured behind `MidnightWalletAdapter` and coordinated by `TransactionExecutionService` and `NetworkConfigService`, but requires future installed SDK packages (`@midnight-ntwrk/dapp-connector-api`, live Midnight node RPC). No fabricated blockchain transactions, synthetic hashes, or fake wallet connections are executed in this commit.

@@ -166,4 +166,16 @@ export {
   type TransactionExecutionResult,
 } from './transaction-execution.ts';
 
+export {
+  NetworkConfigurationError,
+  type MidnightNetwork,
+  type NetworkConfigurationStatus,
+  type NetworkConfigurationErrorCode,
+  type NetworkEndpoint,
+  type NetworkConfig,
+  type ConnectorReadinessState,
+  type TransactionReadinessReason,
+} from './network-config.ts';
+
+
 

@@ -24,6 +24,17 @@ import {
 } from './midnight-wallet-adapter.ts';
 import type { AccountRole } from '../types/account.ts';
 import type { LoanDetailsModel } from '../types/index.ts';
+import { getNetworkConfigService } from './network-config-service.ts';
+import {
+  discoverWalletConnector,
+  evaluateConnectorCapabilities,
+  resolveConnectorReadinessState,
+  type ConnectorDiscoveryResult,
+} from './wallet-connector-discovery.ts';
+import type {
+  NetworkConfig,
+  ConnectorReadinessState,
+} from '../types/network-config.ts';
 
 /**
  * Listener callback invoked on session transitions.
@@ -74,7 +85,7 @@ export class WalletSessionService {
       isRealNetwork: netContext.isRealNetwork,
     };
 
-    const capabilities: WalletCapabilitySet = provider.getCapabilities();
+    const capabilities: WalletCapabilitySet = evaluateConnectorCapabilities(provider);
 
     // In prototype provider, if account is pre-attached, read it; otherwise disconnected
     const rawAccount = provider.getAccount();
@@ -125,6 +136,41 @@ export class WalletSessionService {
   }
 
   /**
+   * Returns current network configuration from the authoritative config service.
+   */
+  getNetworkConfig(): NetworkConfig {
+    return getNetworkConfigService().getNetworkConfig();
+  }
+
+  /**
+   * Performs fresh connector discovery in the current runtime environment.
+   */
+  getConnectorDiscovery(): ConnectorDiscoveryResult {
+    const mock = (this.activeProvider as unknown as { mockConnector?: unknown }).mockConnector;
+    return discoverWalletConnector(mock);
+  }
+
+  /**
+   * Evaluates the formal connector readiness state machine.
+   * Enforces DETECTED != CONNECTED and CONNECTED != TRANSACTION_CAPABLE.
+   */
+  getConnectorReadinessState(): ConnectorReadinessState {
+    const netConfig = this.getNetworkConfig();
+    const discovery = this.getConnectorDiscovery();
+    const caps = this.getCapabilities();
+
+    return resolveConnectorReadinessState({
+      detected: this.activeProvider.isPrototype ? true : discovery.detected,
+      compatible: this.activeProvider.isPrototype ? true : discovery.compatible,
+      networkStatus: netConfig.status,
+      connectionStatus: this.activeProvider.getConnectionStatus(),
+      capabilities: caps,
+      hasError: this.currentSession.status === 'FAILED',
+      isReadyToConnect: discovery.detected && discovery.compatible && netConfig.status === 'CONFIGURED',
+    });
+  }
+
+  /**
    * Safely inspects detection status of the active provider / browser connector.
    */
   getDetectionStatus(): WalletDetectionStatus {
@@ -165,7 +211,7 @@ export class WalletSessionService {
    * Returns atomic capability matrix.
    */
   getCapabilities(): WalletCapabilitySet {
-    return { ...this.currentSession.capabilities };
+    return evaluateConnectorCapabilities(this.activeProvider);
   }
 
   /**
@@ -263,6 +309,24 @@ export class WalletSessionService {
 
     const provider = this.activeProvider;
 
+    // Validate network configuration before connecting real network providers
+    const netConfig = this.getNetworkConfig();
+    if (!provider.isPrototype && netConfig.status !== 'CONFIGURED') {
+      const error = new WalletSessionError(
+        'UNSUPPORTED_PROVIDER',
+        `Network configuration is ${netConfig.status}: real network endpoints are required.`
+      );
+      this.currentSession = {
+        ...this.currentSession,
+        status: 'FAILED',
+        account: null,
+        error,
+        connectedAt: null,
+      };
+      this.notifyListeners();
+      return { success: false, session: this.getSession(), error };
+    }
+
     // Transition to CONNECTING
     this.currentSession = {
       ...this.currentSession,
@@ -276,7 +340,7 @@ export class WalletSessionService {
       const netAccount = await provider.connect(role, request?.customLoan);
 
       const netContext = provider.getNetworkContext();
-      const capabilities = provider.getCapabilities();
+      const capabilities = evaluateConnectorCapabilities(provider);
 
       const account: WalletAccountIdentity = {
         address: netAccount.address ?? netAccount.publicKeyHex ?? '',
@@ -389,7 +453,7 @@ export class WalletSessionService {
         isPrototype: netContext.isPrototype,
         isRealNetwork: netContext.isRealNetwork,
       },
-      capabilities: this.activeProvider.getCapabilities(),
+      capabilities: evaluateConnectorCapabilities(this.activeProvider),
       error: null,
       connectedAt: null,
     };
@@ -427,6 +491,20 @@ export function getCurrentWalletSession(): WalletSession {
 }
 
 /**
+ * Helper to retrieve connector readiness state.
+ */
+export function getConnectorReadinessState(): ConnectorReadinessState {
+  return getWalletSessionService().getConnectorReadinessState();
+}
+
+/**
+ * Helper to retrieve connector discovery result.
+ */
+export function getConnectorDiscovery(): ConnectorDiscoveryResult {
+  return getWalletSessionService().getConnectorDiscovery();
+}
+
+/**
  * Helper to initiate wallet connection.
  */
 export async function connectWalletSession(
@@ -450,3 +528,4 @@ export function subscribeToWalletSession(
 ): () => void {
   return getWalletSessionService().subscribe(listener);
 }
+

@@ -8,8 +8,11 @@ import {
 } from 'contracts';
 import type { AccountContext, AccountIdentity } from '../types/account.ts';
 import type { ProviderCapability } from '../types/network.ts';
+import type { TransactionReadinessReason } from '../types/network-config.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 import { getWalletProvider } from './account-service.ts';
+import { getNetworkConfigService } from './network-config-service.ts';
+import { evaluateConnectorCapabilities } from './wallet-connector-discovery.ts';
 import {
   type LifecycleTransactionAction,
   type TransactionPreparationStatus,
@@ -243,17 +246,31 @@ export function prepareLifecycleTransaction(
     }
   }
 
-  // 5. Derive overall preparation status
+  // 5. Derive overall preparation status and typed readiness reason
   let status: TransactionPreparationStatus;
-  if (!isAuthorized) {
+  let readinessReason: TransactionReadinessReason;
+
+  if (!callerPk) {
     status = 'BLOCKED';
+    readinessReason = 'WALLET_NOT_CONNECTED';
+  } else if (!isAuthorized) {
+    status = 'BLOCKED';
+    readinessReason = 'GUARD_VALIDATION_FAILED';
   } else if (!isExecutionSupported) {
     status = 'UNSUPPORTED';
+    if (missingCapabilities.includes('SIGN_TRANSACTION')) {
+      readinessReason = 'SIGNING_UNAVAILABLE';
+    } else if (missingCapabilities.includes('SUBMIT_TRANSACTION')) {
+      readinessReason = 'SUBMISSION_UNAVAILABLE';
+    } else {
+      readinessReason = 'UNSUPPORTED_CONNECTOR';
+    }
     if (!authorizationReason) {
       authorizationReason = `Missing required provider capabilities: ${missingCapabilities.join(', ')}`;
     }
   } else {
     status = 'READY';
+    readinessReason = 'READY';
   }
 
   return {
@@ -261,6 +278,7 @@ export function prepareLifecycleTransaction(
     action,
     circuitName,
     status,
+    readinessReason,
     callerPublicKey: callerPk,
     callerPublicKeyHex: callerPkHex,
     isAuthorized,
@@ -269,6 +287,124 @@ export function prepareLifecycleTransaction(
     missingCapabilities,
     isExecutionSupported,
     estimatedFee: null, // Transparently null in prototype mode
+  };
+}
+
+export interface TransactionReadinessEvaluation {
+  isReady: boolean;
+  reason: TransactionReadinessReason;
+  message: string;
+  preparation: TransactionPreparation;
+}
+
+/**
+ * Complete transaction readiness pipeline evaluating:
+ * 1. Account context & connection
+ * 2. Network configuration validity
+ * 3. Wallet connector discovery & compatibility
+ * 4. Contract lifecycle guard authorization
+ * 5. Provider atomic capabilities (signing & submission)
+ */
+export function evaluateTransactionReadiness(
+  loan: LoanDetailsModel,
+  account: { publicKey?: Uint8Array | null } | null,
+  action: LifecycleTransactionAction,
+  provider?: WalletProvider
+): TransactionReadinessEvaluation {
+  const activeProvider = provider ?? getWalletProvider();
+  const netConfig = getNetworkConfigService().getNetworkConfig();
+
+  // 1. Account / Connection check
+  if (!account || !account.publicKey) {
+    const prep = prepareLifecycleTransaction(loan, null, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'WALLET_NOT_CONNECTED',
+      message: 'Cannot execute transaction: Wallet is disconnected.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'WALLET_NOT_CONNECTED' },
+    };
+  }
+
+  // 2. Network configuration check
+  if (netConfig.status !== 'CONFIGURED') {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'BLOCKED_NETWORK_CONFIGURATION',
+      message: 'Transaction blocked: Network configuration is invalid or unconfigured.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
+    };
+  }
+
+  if (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url)) {
+    const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+    return {
+      isReady: false,
+      reason: 'BLOCKED_NETWORK_CONFIGURATION',
+      message: 'Transaction blocked: Real network configuration requires a valid RPC endpoint.',
+      preparation: { ...prep, status: 'BLOCKED', readinessReason: 'BLOCKED_NETWORK_CONFIGURATION' },
+    };
+  }
+
+  // 3. Wallet connector discovery & compatibility
+  if (!activeProvider.isPrototype) {
+    const detectionStatus = activeProvider.getDetectionStatus ? activeProvider.getDetectionStatus() : 'NOT_DETECTED';
+    if (detectionStatus === 'NOT_DETECTED') {
+      const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+      return {
+        isReady: false,
+        reason: 'WALLET_NOT_DETECTED',
+        message: 'Transaction blocked: Lace / Midnight wallet extension not detected.',
+        preparation: { ...prep, status: 'UNSUPPORTED', readinessReason: 'WALLET_NOT_DETECTED' },
+      };
+    }
+    if (detectionStatus === 'UNSUPPORTED') {
+      const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+      return {
+        isReady: false,
+        reason: 'UNSUPPORTED_CONNECTOR',
+        message: 'Transaction blocked: Wallet connector is incompatible or unsupported.',
+        preparation: { ...prep, status: 'UNSUPPORTED', readinessReason: 'UNSUPPORTED_CONNECTOR' },
+      };
+    }
+  }
+
+  // 4. Contract lifecycle guard check
+  const prep = prepareLifecycleTransaction(loan, account as any, action, activeProvider);
+  if (prep.status === 'BLOCKED') {
+    return {
+      isReady: false,
+      reason: 'GUARD_VALIDATION_FAILED',
+      message: prep.authorizationReason ?? 'Contract lifecycle guard validation failed.',
+      preparation: { ...prep, readinessReason: 'GUARD_VALIDATION_FAILED' },
+    };
+  }
+
+  // 5. Atomic capabilities check
+  const caps = evaluateConnectorCapabilities(activeProvider);
+  if (!caps.SIGN_TRANSACTION) {
+    return {
+      isReady: false,
+      reason: 'SIGNING_UNAVAILABLE',
+      message: 'Active provider does not support transaction signing.',
+      preparation: { ...prep, status: 'UNSUPPORTED', readinessReason: 'SIGNING_UNAVAILABLE' },
+    };
+  }
+
+  if (!caps.SUBMIT_TRANSACTION) {
+    return {
+      isReady: false,
+      reason: 'SUBMISSION_UNAVAILABLE',
+      message: 'Active provider does not support on-chain transaction submission.',
+      preparation: { ...prep, status: 'UNSUPPORTED', readinessReason: 'SUBMISSION_UNAVAILABLE' },
+    };
+  }
+
+  return {
+    isReady: true,
+    reason: 'READY',
+    message: 'Transaction is ready for execution.',
+    preparation: { ...prep, status: 'READY', readinessReason: 'READY' },
   };
 }
 

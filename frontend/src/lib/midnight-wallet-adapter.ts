@@ -131,11 +131,34 @@ export class MidnightWalletAdapter implements WalletProvider {
    */
   getCapabilities(): ProviderCapabilities {
     const isConnected = this.status === 'CONNECTED';
+    let canSign = isConnected;
+    let canSubmit = isConnected;
+
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (mockObj.capabilities && typeof mockObj.capabilities === 'object') {
+        const customCaps = mockObj.capabilities as Partial<ProviderCapabilities>;
+        if (customCaps.SIGN_TRANSACTION !== undefined) {
+          canSign = isConnected && !!customCaps.SIGN_TRANSACTION;
+        }
+        if (customCaps.SUBMIT_TRANSACTION !== undefined) {
+          canSubmit = isConnected && !!customCaps.SUBMIT_TRANSACTION;
+        }
+      }
+      if (mockObj.signingAvailable !== undefined) {
+        canSign = isConnected && !!mockObj.signingAvailable;
+      }
+      if (mockObj.submissionAvailable !== undefined) {
+        canSubmit = isConnected && !!mockObj.submissionAvailable;
+      }
+    }
+
     return {
       READ_PUBLIC_LEDGER: true, // Available via client contract query APIs
       CREATE_PROOF: true, // Available via local client zero-knowledge prover
-      SIGN_TRANSACTION: isConnected, // Available only when real wallet is connected
-      SUBMIT_TRANSACTION: isConnected, // Available only when real wallet is connected
+      READ_ACCOUNT_IDENTITY: isConnected,
+      SIGN_TRANSACTION: canSign, // Available only when real wallet is connected and capable
+      SUBMIT_TRANSACTION: canSubmit, // Available only when real wallet is connected and capable
       READ_TRANSACTION_STATUS: false, // Pending live indexer integration
       READ_BALANCE: false, // Pending live native token queries
     };

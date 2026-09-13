@@ -1,4 +1,5 @@
 import type { ProviderCapability } from './network.ts';
+import type { TransactionReadinessReason } from './network-config.ts';
 
 /**
  * Standard protocol lifecycle actions that can be orchestrated.
@@ -32,6 +33,7 @@ export interface TransactionPreparation {
   action: LifecycleTransactionAction;
   circuitName: string;
   status: TransactionPreparationStatus;
+  readinessReason?: TransactionReadinessReason;
   callerPublicKey: Uint8Array | null;
   callerPublicKeyHex: string | null;
   isAuthorized: boolean;

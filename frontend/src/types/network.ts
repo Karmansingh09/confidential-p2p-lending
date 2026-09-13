@@ -29,6 +29,7 @@ export type WalletConnectionStatus =
 export type ProviderCapability =
   | 'READ_PUBLIC_LEDGER'
   | 'CREATE_PROOF'
+  | 'READ_ACCOUNT_IDENTITY'
   | 'SIGN_TRANSACTION'
   | 'SUBMIT_TRANSACTION'
   | 'READ_TRANSACTION_STATUS'

@@ -87,6 +87,7 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
     return {
       READ_PUBLIC_LEDGER: true,
       CREATE_PROOF: true, // Supported via local client prover workflow
+      READ_ACCOUNT_IDENTITY: true,
       SIGN_TRANSACTION: false, // Unsupported in prototype mode
       SUBMIT_TRANSACTION: false, // Unsupported in prototype mode
       READ_TRANSACTION_STATUS: false, // Unsupported in prototype mode

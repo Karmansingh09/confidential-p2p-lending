@@ -3,6 +3,7 @@ import {
   getWalletSessionService,
   subscribeToWalletSession,
 } from '../lib/wallet-session-service.ts';
+import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import type {
   WalletSession,
   WalletSessionStatus,
@@ -137,6 +138,24 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
       ? `${accountDisplay.slice(0, 8)}...${accountDisplay.slice(-6)}`
       : accountDisplay;
 
+  const netConfig = getNetworkConfigService().getNetworkConfig();
+  const connectorDiscovery = sessionService.getConnectorDiscovery();
+  const readinessState = sessionService.getConnectorReadinessState();
+  const isWalletDetected = session.detectionStatus === 'DETECTED' || connectorDiscovery.detected || isPrototype;
+  const isConnectorSupported = session.detectionStatus !== 'UNSUPPORTED' && connectorDiscovery.compatible;
+  const configStatusText =
+    netConfig.status === 'CONFIGURED' ? 'VALID' : netConfig.status === 'INVALID' ? 'INVALID' : 'NOT CONFIGURED';
+  const walletStatusText = isConnected ? 'CONNECTED' : isWalletDetected ? 'DETECTED' : 'NOT DETECTED';
+  const connectorStatusText = isConnectorSupported ? 'SUPPORTED' : 'UNSUPPORTED';
+  const signingStatusText = session.capabilities.SIGN_TRANSACTION ? 'AVAILABLE' : 'UNAVAILABLE';
+  const submissionStatusText = session.capabilities.SUBMIT_TRANSACTION ? 'AVAILABLE' : 'UNAVAILABLE';
+  const readinessStatusText =
+    readinessState === 'TRANSACTION_CAPABLE'
+      ? 'READY'
+      : isPrototype || readinessState === 'NOT_DETECTED' || readinessState === 'INCOMPATIBLE'
+      ? 'UNSUPPORTED'
+      : 'BLOCKED';
+
   return (
     <div
       style={{
@@ -257,11 +276,102 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: '12px',
           marginBottom: '16px',
         }}
       >
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>
+            {netConfig.environment}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Configuration</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: configStatusText === 'VALID' ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {configStatusText}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: isConnected ? '#4ade80' : isWalletDetected ? '#93c5fd' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {walletStatusText}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Connector</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: connectorStatusText === 'SUPPORTED' ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {connectorStatusText}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: signingStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {signingStatusText}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: submissionStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            {submissionStatusText}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction readiness</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: readinessStatusText === 'READY' ? '#4ade80' : '#eab308',
+              marginTop: '4px',
+            }}
+          >
+            {readinessStatusText}
+          </div>
+        </div>
+
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>CONNECTED PUBLIC IDENTITY</div>
           <div

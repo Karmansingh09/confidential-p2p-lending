@@ -1743,11 +1743,82 @@ Every lifecycle action maps deterministically 1:1 to its underlying Midnight Com
 ### 26.5 Zero-Knowledge Privacy Boundary
 - **No Secret Witnesses across Provider Boundary**: Neither borrower financial witnesses nor secret underwriting criteria are passed to `submitTransaction`.
 - **Public Parameters Only**: The provider boundary receives only public identifiers: `loanId`, `action`, `callerPublicKey`.
-- **Static Verification**: Automated tests continuously audit all 48+ frontend files to verify 0 occurrences of prohibited financial terms.
+- **Static Verification**: Automated tests continuously audit all 51+ frontend files to verify 0 occurrences of prohibited financial terms.
 
+---
 
+## 27. Midnight Network Configuration & Connector Discovery (Commit #27)
 
+Commit #27 implements an authoritative configuration and wallet connector discovery layer for the Midnight Network environment, establishing strict boundaries between local prototype operation and real Midnight wallet integration.
 
+```
++───────────────────────────────────────────────────────────────────────────────────+
+|               MIDNIGHT NETWORK CONFIGURATION & CONNECTOR DISCOVERY                |
+|                                                                                   |
+|  [NetworkConfigService]               [WalletConnectorDiscovery]                  |
+|    - Active Network Config              - Browser Runtime Check                   |
+|    - Environment Validation             - window.midnight Detection               |
+|    - Node RPC & Indexer Endpoints       - Capability Negotiation                  |
+|    - Local / Devnet / Testnet / Mainnet - Connector Readiness State Machine       |
+|            │                                      │                               |
+|            ▼                                      ▼                               |
+|  ┌─────────────────────────────────────────────────────────────────────────────┐  |
+|  │                        FOUR CRITICAL INVARIANT STAGES                       │  |
+|  │                                                                             │  |
+|  │  1. CONNECTOR DETECTED != CONNECTED                                         │  |
+|  │     - Presence of window.midnight does NOT imply user has granted access   │  |
+|  │                                                                             │  |
+|  │  2. CONNECTOR CONNECTED != TRANSACTION CAPABLE                              │  |
+|  │     - Active connection does NOT guarantee signing/submission capabilities  │  |
+|  │                                                                             │  |
+|  │  3. LOCAL PROTOTYPE PROVIDER:                                               │  |
+|  │     - Signing Capability: FALSE                                             │  |
+|  │     - Submission Capability: FALSE                                          │  |
+|  │     - Zero synthetic confirmations or fake block heights                   │  |
+|  │                                                                             │  |
+|  │  4. TRANSACTION READINESS GATE:                                             │  |
+|  │     - Evaluates: Network Config Valid + Wallet Connected + Capabilities     │  |
+|  │     - Readiness Reasons: BLOCKED_NETWORK_CONFIGURATION,                     │  |
+|  │       BLOCKED_WALLET_DISCONNECTED, BLOCKED_UNSUPPORTED_ACTION, READY        │  |
+|  └─────────────────────────────────────────────────────────────────────────────┘  |
+|            │                                                                      |
+|            ▼                                                                      |
+|  [TransactionExecutionService] & [TransactionOrchestrator]                        |
+|    - Pre-execution validation verifies network configuration and capabilities     |
+|    - Disallows live submission on local prototype with explicit technical reasons |
+|    - Preserves LoanRegistry state when transaction is unsupported or pending     |
++───────────────────────────────────────────────────────────────────────────────────+
+```
 
+### 27.1 Network Configuration Model & Environments
+Network configuration is governed by `NetworkConfigService` as the single authoritative source of truth:
+- **`LOCAL`**: Development and prototype environment. Local mock network does not require external RPC/indexer endpoints.
+- **`DEVNET` / `TESTNET` / `MAINNET`**: Real Midnight distributed network environments. Requires valid HTTPS/WSS URLs for `nodeRpcEndpoint` and `indexerEndpoint`.
+- **Validation**: Attempting to set an invalid environment or missing required endpoints raises a typed `NetworkConfigurationError` with domain code `INVALID_ENDPOINTS` or `UNKNOWN_NETWORK`.
 
+### 27.2 Wallet Connector Discovery & Capabilities
+The connector discovery subsystem safely probes the browser runtime without throwing errors during Node.js/SSR execution:
+- **`discoverWalletConnector()`**: Safely checks `window.midnight` for Lace / Midnight wallet compatibility.
+- **`evaluateConnectorCapabilities()`**: Dynamically inspects the connector and provider for:
+  - `READ_ACCOUNT_IDENTITY`: Ability to read public addresses.
+  - `SIGN_DATA`: Cryptographic payload signing.
+  - `SUBMIT_TRANSACTION`: Network transaction broadcasting.
+- **Connector Readiness State**: Transitions across `NOT_DETECTED`, `DETECTED`, `INCOMPATIBLE`, `CONNECTING`, `CONNECTED`, `TRANSACTION_CAPABLE`, and `FAILED`.
 
+### 27.3 The Three Core Architectural Invariants
+1. **`DETECTED != CONNECTED`**: A detected browser extension connector does not grant permission or assume user consent until explicit wallet connection is established.
+2. **`CONNECTED != TRANSACTION_CAPABLE`**: A connected wallet without signing or submission capabilities cannot broadcast transactions.
+3. **`LOCAL PROTOTYPE CAPABILITY CONSTRAINTS`**: The `LocalPrototypeWalletProvider` explicitly reports `SIGN_DATA: false` and `SUBMIT_TRANSACTION: false`. It never fabricates transaction signatures, blockchain transactions, or network heights.
+
+### 27.4 Transaction Readiness Evaluation
+`evaluateTransactionReadiness` in `TransactionOrchestrator` computes fine-grained readiness for any lifecycle action:
+- Returns `ready: true, readinessReason: 'READY'` only when:
+  1. Active network configuration is valid for the environment.
+  2. Wallet session is active and connected.
+  3. Provider supports all capabilities required by the action (`SIGN_DATA`, `SUBMIT_TRANSACTION`).
+- If any prerequisite is missing, readiness is `false` with a descriptive reason (`BLOCKED_NETWORK_CONFIGURATION`, `BLOCKED_WALLET_DISCONNECTED`, `BLOCKED_UNSUPPORTED_ACTION`).
+
+### 27.5 Anti-Fabrication & Privacy Guarantees
+- **No Synthetic Network Data**: Network status honestly reports whether connected to a real node or local prototype. No fake chain IDs, block hashes, or block heights are generated.
+- **No Secrets in Discovery or Configuration**: Connector discovery and network configuration models contain only public endpoints, network names, and capability flags.
+- **Strict Separation of Witness and Network Data**: Witness generation remains strictly local and off-chain; network configuration only affects public transaction routing.

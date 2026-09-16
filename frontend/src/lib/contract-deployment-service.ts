@@ -3,6 +3,7 @@ import type {
   ContractDeploymentStatus,
   ContractDeploymentErrorCode,
 } from '../types/contract-deployment.ts';
+import type { ContractVerificationResult } from '../types/contract-verification.ts';
 import { ContractDeploymentError } from '../types/contract-deployment.ts';
 import { validateContractAddress } from './contract-address-validator.ts';
 import {
@@ -258,6 +259,16 @@ export class ContractDeploymentService {
       }
     }
 
+    if (candidate.networkId) {
+      if (candidate.networkId === 'midnight-prototype-local') {
+        candidate.isPrototype = updates.isPrototype ?? true;
+        candidate.environment = updates.environment ?? 'LOCAL';
+      } else {
+        candidate.isPrototype = updates.isPrototype ?? false;
+        candidate.environment = updates.environment ?? 'TESTNET';
+      }
+    }
+
     // Evaluate candidate state
     const validation = this.validateDeployment(candidate);
 
@@ -278,7 +289,98 @@ export class ContractDeploymentService {
    * Replaces full deployment state directly.
    */
   setDeployment(deployment: Partial<ContractDeployment>): void {
-    this.deployment = { ...DEFAULT_UNCONFIGURED_DEPLOYMENT, ...this.deployment, ...deployment } as ContractDeployment;
+    const isExplicitlyReady = deployment.status === 'READY' || deployment.status === 'VERIFIED';
+    const mergedNetworkId = deployment.networkId ?? this.deployment.networkId;
+    const isPrototype =
+      deployment.isPrototype !== undefined
+        ? deployment.isPrototype
+        : mergedNetworkId === 'midnight-prototype-local'
+        ? true
+        : mergedNetworkId
+        ? false
+        : this.deployment.isPrototype;
+    this.deployment = {
+      ...DEFAULT_UNCONFIGURED_DEPLOYMENT,
+      ...this.deployment,
+      ...deployment,
+      isPrototype,
+      isVerified:
+        deployment.isVerified !== undefined
+          ? deployment.isVerified
+          : isExplicitlyReady
+          ? true
+          : deployment.status === 'CONFIGURED'
+          ? false
+          : this.deployment.isVerified,
+    } as ContractDeployment;
+    this.saveToStorage(this.deployment);
+  }
+
+  /**
+   * Transitions deployment status to VALIDATING during active verification.
+   */
+  markVerifying(): void {
+    if (
+      this.deployment.status === 'CONFIGURED' ||
+      this.deployment.status === 'READY' ||
+      this.deployment.status === 'VERIFIED'
+    ) {
+      this.deployment = {
+        ...this.deployment,
+        status: 'VALIDATING',
+      };
+      this.saveToStorage(this.deployment);
+    }
+  }
+
+  /**
+   * Applies an authoritative ContractVerificationResult to deployment state.
+   * Only genuine verification populates deploymentTransactionId, deploymentBlockHeight, and deployedAt.
+   */
+  applyVerificationResult(result: ContractVerificationResult): void {
+    if (result.status === 'VERIFIED') {
+      this.deployment = {
+        ...this.deployment,
+        status: 'VERIFIED',
+        isVerified: true,
+        deploymentTransactionId: result.deploymentTransactionId ?? null,
+        deploymentBlockHeight: result.deploymentBlockHeight ?? null,
+        deployedAt: result.deployedAt ?? null,
+        networkId: result.observedNetworkId ?? this.deployment.networkId,
+      };
+    } else if (result.status === 'NOT_DEPLOYED') {
+      this.deployment = {
+        ...this.deployment,
+        status: 'NOT_DEPLOYED',
+        isVerified: false,
+        deploymentTransactionId: null,
+        deploymentBlockHeight: null,
+        deployedAt: null,
+      };
+    } else if (result.status === 'INVALID' || result.status === 'NETWORK_MISMATCH') {
+      this.deployment = {
+        ...this.deployment,
+        status: 'INVALID',
+        isVerified: false,
+        deploymentTransactionId: null,
+        deploymentBlockHeight: null,
+        deployedAt: null,
+      };
+    } else if (result.status === 'UNSUPPORTED') {
+      this.deployment = {
+        ...this.deployment,
+        status: 'UNSUPPORTED',
+        isVerified: false,
+        deploymentTransactionId: null,
+        deploymentBlockHeight: null,
+        deployedAt: null,
+      };
+    } else if (result.status === 'UNAVAILABLE' || result.status === 'FAILED') {
+      this.deployment = {
+        ...this.deployment,
+        isVerified: false,
+      };
+    }
     this.saveToStorage(this.deployment);
   }
 
@@ -311,10 +413,12 @@ export class ContractDeploymentService {
 
   /**
    * Quick predicate to test if contract deployment is ready for transaction execution.
+   * Invariant: A merely configured address is NOT ready until verified on-chain.
    */
   isReady(): boolean {
     return (
-      (this.deployment.status === 'READY' || this.deployment.status === 'CONFIGURED') &&
+      (this.deployment.status === 'READY' || this.deployment.status === 'VERIFIED') &&
+      this.deployment.isVerified &&
       this.validateDeployment().valid
     );
   }

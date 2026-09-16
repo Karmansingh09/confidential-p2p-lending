@@ -245,4 +245,11 @@ export {
   type ContractVerificationErrorCode,
 } from './contract-verification.ts';
 
-
+export {
+  ContractInvocationError,
+  type ContractInvocationStatus,
+  type ContractInvocationErrorCode,
+  type ContractInvocationRequest,
+  type ContractInvocationPreparation,
+  type ContractInvocationResult,
+} from './contract-invocation.ts';

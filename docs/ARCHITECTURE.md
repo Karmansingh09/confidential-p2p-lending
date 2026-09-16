@@ -2647,6 +2647,98 @@ The transaction pipeline enforces strict separation between read-only/local oper
 3. **Compact Source Integrity**: `contracts/src/index.compact` is 100% untouched; SHA-256 fingerprint strictly matches `608d88fbbf3380ebf479d6cfb4310dd9dd8eb0db124797de16a0fe77f9785f53`.
 4. **Automated Test Coverage**: 516 passing tests across contracts and frontend test suites (462 frontend tests + 54 contract tests).
 
+---
+
+## 34. Real Contract Circuit Invocation Boundary
+
+### 34.1 Overview & Architectural Objectives
+
+Commit #34 introduces the canonical **Contract Circuit Invocation Boundary** (`frontend/src/lib/contract-invocation-service.ts` and `frontend/src/types/contract-invocation.ts`), establishing an authoritative, type-safe execution coordinator for all six canonical circuits defined in `contracts/src/index.compact`.
+
+This boundary links high-level UI workflows and low-level provider adapters while enforcing three critical architectural invariants:
+1. **Canonical Manifest Authority**: Every circuit invocation targets exactly one of the six manifest-defined circuits. Arbitrary or unmapped circuit names are rejected deterministically before any cryptographic or provider operations.
+2. **Strict Multi-Stage Gating**: Evaluates agreement parameter validity, deployment configuration, network identity matching, on-chain verification, wallet connectivity, public identity availability, and provider capabilities (signing, submission) prior to execution.
+3. **Tri-Partite Dispatch Separation**: Decouples read-only inspection circuits (`STATE_READ`), off-chain Zero-Knowledge proof evaluation (`LOCAL_PROOF`), and on-chain transaction execution (`TRANSACTION_EXECUTION`), preventing synthetic finality, preventing faux blockchain primitives, and preserving `LoanRegistry` immutability until genuine provider confirmation.
+
+### 34.2 Canonical Circuit Classification & Gating Matrix
+
+| Circuit Name | Classification | Requires Wallet | Requires Proof | Requires Signature | Requires Submission | Is Read-Only | Prototype Mode Dispatch | Real Provider Dispatch |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `verifyEligibility` | `LOCAL_PROOF` | Yes | **Yes (ZK)** | No | No | No | Evaluated locally; registry eligibility verified | Evaluated locally; registry eligibility verified |
+| `getLoanStatus` | `STATE_READ` | No | No | No | No | **Yes** | Read from LoanRegistry query | Read from on-chain RPC / LoanRegistry |
+| `getLoanDetails` | `STATE_READ` | No | No | No | No | **Yes** | Read from LoanRegistry query | Read from on-chain RPC / LoanRegistry |
+| `fundLoan` | `TRANSACTION_EXECUTION` | Yes | No | **Yes** | **Yes** | No | Rejected (`UNSUPPORTED_OPERATION`) | Dispatched via `TransactionExecutionService` (`DISPATCHED`) |
+| `repayLoan` | `TRANSACTION_EXECUTION` | Yes | No | **Yes** | **Yes** | No | Rejected (`UNSUPPORTED_OPERATION`) | Dispatched via `TransactionExecutionService` (`DISPATCHED`) |
+| `settleLoan` | `TRANSACTION_EXECUTION` | Yes | No | **Yes** | **Yes** | No | Rejected (`UNSUPPORTED_OPERATION`) | Dispatched via `TransactionExecutionService` (`DISPATCHED`) |
+
+### 34.3 ContractInvocationService Architecture
+
+The `ContractInvocationService` provides two primary execution phases:
+- **`prepareInvocation(request: ContractInvocationRequest): ContractInvocationPreparation`**:
+  Synchronous readiness evaluation checking all ten gating barriers. Returns structured preparation metadata with readiness status (`READY`, `BLOCKED`, `UNSUPPORTED`, `FAILED`), missing capabilities, and standardized error codes.
+- **`dispatchInvocation<T>(request: ContractInvocationRequest, options?): Promise<ContractInvocationResult<T>>`**:
+  Asynchronous execution boundary routing requests by classification:
+  1. *Read-Only Queries*: Evaluated against active ledger query or provided registry snapshot without prompting wallet or proof generation.
+  2. *Local Proof Generation*: Triggers off-chain client prover workflow for `verifyEligibility`, asserting borrower qualification and updating client verification status without transaction broadcast.
+  3. *Transaction Execution*: Enforces prototype mode rejections (`UNSUPPORTED_OPERATION`), synchronizes active network configuration, delegates to `TransactionExecutionService`, and yields `DISPATCHED` with authentic provider receipts.
+
+### 34.4 Multi-Stage Invocation Gating Sequence
+
+1. **Manifest Circuit Resolution**: Ensures circuit exists in canonical manifest; otherwise returns `CIRCUIT_UNAVAILABLE`.
+2. **Agreement Parameter Validation**: Ensures non-zero positive amounts and valid block durations; otherwise returns `INVALID_PARAMS`.
+3. **Contract Deployment Verification**: Ensures contract address is present and status is not `UNCONFIGURED` or `NOT_DEPLOYED`; otherwise returns `CONTRACT_NOT_CONFIGURED` or `CONTRACT_NOT_DEPLOYED`.
+4. **Contract Network Matching**: Ensures deployment network ID matches active application network ID; otherwise returns `NETWORK_MISMATCH`.
+5. **On-Chain Verification Gating**: For transaction-executing circuits, verifies on-chain deployment status (`VERIFIED` or `READY`); otherwise returns `CONTRACT_NOT_VERIFIED`.
+6. **Wallet Connection Requirement**: Validates that active wallet session is `CONNECTED` with an attached public account; otherwise returns `WALLET_DISCONNECTED`.
+7. **Public Identity Availability**: Validates that the caller's 32-byte public key is present; otherwise returns `WALLET_IDENTITY_UNAVAILABLE`.
+8. **Wallet Network Compatibility**: Compares reported wallet network against active network for non-local environments; otherwise returns `NETWORK_MISMATCH`.
+9. **Prototype Limitation Barrier**: Rejects transaction submission circuits attempting execution on prototype provider with `UNSUPPORTED_OPERATION`.
+10. **Provider Capability Validation**: Asserts `SIGN_TRANSACTION` and `SUBMIT_TRANSACTION` flags; otherwise returns `SIGNING_UNAVAILABLE` or `SUBMISSION_UNAVAILABLE`.
+
+### 34.5 Three-Pronged Execution & Dispatch Pipeline
+
+```mermaid
+flowchart TD
+    Req[ContractInvocationRequest] --> Prep[prepareInvocation]
+    Prep --> Gate{Readiness Gated?}
+    Gate -- No --> Blocked[Return BLOCKED / UNSUPPORTED with Error Code]
+    Gate -- Yes --> Classify{Classification}
+
+    Classify -- STATE_READ --> ReadQuery[Read Inspection Query]
+    ReadQuery --> ReadRes[Return READY with Ledger State Data]
+
+    Classify -- LOCAL_PROOF --> ZKProof[Local ZK Prover Workflow]
+    ZKProof --> ZKVerify[Mark Eligibility Verified in Client State]
+    ZKVerify --> ProofRes[Return READY with Verified Flag]
+
+    Classify -- TRANSACTION_EXECUTION --> CheckProto{Provider Prototype?}
+    CheckProto -- Yes --> ProtoReject[Return UNSUPPORTED_OPERATION]
+    CheckProto -- No --> ExecDispatch[TransactionExecutionService.executeTransaction]
+    ExecDispatch --> Submit[Submit to Midnight Network Provider]
+    Submit --> Dispatched[Return DISPATCHED with Authentic Provider Receipt]
+```
+
+### 34.6 Anti-Fabrication & Ledger Safety Invariants
+
+- **`LOCAL STATE != PROVIDER-VERIFIED STATE != CANONICAL LOAN REGISTRY STATE`**: The invocation boundary maintains strict boundary separation between local UI projections, pending wallet submissions, and confirmed ledger state.
+- **No Synthetic Finality**: `dispatchInvocation` returns `status: 'DISPATCHED'` upon transaction submission. It NEVER fabricates immediate `CONFIRMED` state.
+- **No Synthetic Primitives**: Transaction IDs, block heights, and timestamps are extracted exclusively from genuine provider receipts (`mockTxResult` or real Lace connector responses).
+- **LoanRegistry Immutability**: `LoanRegistry` is NEVER updated during transaction execution dispatch until provider confirmation is verified through `TransactionReconciliationService` or `TransactionStatusService`.
+
+### 34.7 Strict Zero-Knowledge Privacy Boundary
+
+All invocation types, service classes, UI panels, and helper methods operate exclusively on:
+- Public agreement metadata (`loanId`, `amount`, `interestRateBps`, `durationBlocks`)
+- Public cryptographic identifiers (`Uint8Array` 32-byte public keys and hex strings)
+- Canonical circuit identifiers and status enums
+
+Zero private financial parameters, secret underwriting values, or witness state are exposed or retained in the invocation subsystem. Automated test `Test 484` continuously enforces zero occurrences of the 14 forbidden privacy terms across all 72+ frontend source files.
+
+### 34.8 Verification & Test Coverage
+
+Commit #34 is verified by 24 dedicated unit and integration tests (Tests 462–485 in `tests/frontend.test.js`), bringing total test suite coverage to **540 tests** (486 frontend tests + 54 contract tests), all passing cleanly with zero failures.
+
+
 
 
 

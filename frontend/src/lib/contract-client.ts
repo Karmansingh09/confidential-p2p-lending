@@ -7,6 +7,15 @@ import {
   ContractDeploymentService,
 } from './contract-deployment-service.ts';
 import {
+  ContractInvocationService,
+  getContractInvocationService,
+  type ContractInvocationDispatchOptions,
+} from './contract-invocation-service.ts';
+import type {
+  ContractInvocationRequest,
+  ContractInvocationResult,
+} from '../types/contract-invocation.ts';
+import {
   getCircuitDefinition,
   getCircuitForAction,
   resolveCircuitNameForAction,
@@ -53,9 +62,32 @@ export interface ContractCallResult<T = void> {
  */
 export class ContractClient {
   private deploymentService: ContractDeploymentService;
+  private invocationService: ContractInvocationService;
 
-  constructor(deploymentService?: ContractDeploymentService) {
+  constructor(
+    deploymentService?: ContractDeploymentService,
+    invocationService?: ContractInvocationService
+  ) {
     this.deploymentService = deploymentService ?? getContractDeploymentService();
+    this.invocationService = invocationService ?? getContractInvocationService(this.deploymentService);
+  }
+
+  getDeploymentService(): ContractDeploymentService {
+    return this.deploymentService;
+  }
+
+  getInvocationService(): ContractInvocationService {
+    return this.invocationService;
+  }
+
+  /**
+   * Directly invokes a contract circuit via the ContractInvocationService boundary.
+   */
+  async invokeCircuit<T = unknown>(
+    request: ContractInvocationRequest,
+    options?: ContractInvocationDispatchOptions
+  ): Promise<ContractInvocationResult<T>> {
+    return this.invocationService.dispatchInvocation<T>(request, options);
   }
 
   /**
@@ -366,7 +398,10 @@ export function getContractClient(): ContractClient {
   return clientInstance;
 }
 
-export function resetContractClient(deploymentService?: ContractDeploymentService): ContractClient {
-  clientInstance = new ContractClient(deploymentService);
+export function resetContractClient(
+  deploymentService?: ContractDeploymentService,
+  invocationService?: ContractInvocationService
+): ContractClient {
+  clientInstance = new ContractClient(deploymentService, invocationService);
   return clientInstance;
 }

@@ -290,7 +290,9 @@ export class TransactionExecutionService {
     // -------------------------------------------------------------------------
     // Phase 2: Network Configuration Evaluation
     // -------------------------------------------------------------------------
-    const netConfig = getNetworkConfigService().getNetworkConfig();
+    const netConfig = (options as any)?.networkConfigService
+      ? (options as any).networkConfigService.getNetworkConfig()
+      : getNetworkConfigService().getNetworkConfig();
     const isNetworkBlocked =
       netConfig.status !== 'CONFIGURED' ||
       (netConfig.environment !== 'LOCAL' && (!netConfig.nodeRpcEndpoint || !netConfig.nodeRpcEndpoint.url));
@@ -688,6 +690,7 @@ export class TransactionExecutionService {
         const receipt: TransactionReceipt = {
           transactionId: txResult.transactionId,
           status: 'PENDING',
+          blockHeight: txResult.blockHeight,
         };
         const result: TransactionExecutionResult = {
           success: true,
@@ -697,6 +700,8 @@ export class TransactionExecutionService {
           loanId,
           message: 'Transaction submitted to Midnight Network. Awaiting on-chain confirmation.',
           receipt,
+          transactionId: txResult.transactionId,
+          blockHeight: txResult.blockHeight,
           registryUpdated: false,
           confirmationState: 'UNCONFIRMED_PRESERVED',
         };

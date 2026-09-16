@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 516 passing tests across 8 test suites
+# 540 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,18 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #33)
+### Current Status & Features (Commit #34)
+- **Real Contract Circuit Invocation Boundary (Commit #34)**:
+  - **Tri-Partite Circuit Dispatch Pipeline**: Formally separates `STATE_READ` (`getLoanStatus`, `getLoanDetails`), `LOCAL_PROOF` (`verifyEligibility`), and `TRANSACTION_EXECUTION` (`fundLoan`, `repayLoan`, `settleLoan`) across canonical Compact circuit boundaries.
+  - **Contract Invocation Domain Models & Lifecycle**: Introduces `ContractInvocationStatus` (`DRAFT`, `VALIDATING`, `PREPARED`, `READY`, `BLOCKED`, `UNSUPPORTED`, `FAILED`, `DISPATCHED`), `ContractInvocationErrorCode` (12 standardized domain error codes), `ContractInvocationError`, `ContractInvocationRequest`, `ContractInvocationPreparation`, and `ContractInvocationResult` in `frontend/src/types/contract-invocation.ts`, re-exported via `frontend/src/types/index.ts`.
+  - **Canonical Manifest Enhancement**: Extends `frontend/src/lib/contract-manifest.ts` with `getInvocationClassification()` and updated `getReadInspectionCircuits()` to classify circuits cleanly.
+  - **Contract Invocation Service**: Implements `ContractInvocationService` (`frontend/src/lib/contract-invocation-service.ts`) orchestrating 10-stage readiness evaluation (`prepareInvocation`) and classification-aware execution routing (`dispatchInvocation`).
+  - **Safe Read-Only Ledger Inspection**: Queries ledger state or registry snapshots without prompting wallet connection or proof generation.
+  - **Off-Chain Client Zero-Knowledge Prover**: Evaluates borrower qualifications locally via `verifyEligibility`, asserting qualification and updating registry state without broadcasting transactions or generating fake transaction hashes.
+  - **Real-Wallet Provider Dispatch Delegation**: Enforces prototype mode rejection (`UNSUPPORTED_OPERATION`), synchronizes active network configuration, delegates to `TransactionExecutionService`, and yields `DISPATCHED` with authentic provider receipts.
+  - **Anti-Fabrication & Ledger Immutability Invariant**: Enforces `LOCAL STATE != PROVIDER-VERIFIED STATE != CANONICAL LOAN REGISTRY STATE`. Transaction circuits return `DISPATCHED` upon submission and never fabricate immediate `CONFIRMED` status. Central `LoanRegistry` is never mutated until genuine provider confirmation.
+  - **Technical Diagnostics UI**: Adds technical invocation diagnostics grid (`data-testid="technical-diagnostics-grid"`) in `TransactionReviewPanel.tsx` displaying canonical circuit, classification, readiness, and provider capabilities.
+  - **540 Passing Automated Tests**: 100% test pass rate across 8 test suites (486 frontend tests + 54 contract tests) verifying all 10 gating checks, read-only queries, local proof generation, prototype rejection, real provider dispatch, registry immutability, existing service preservation, and full privacy audit across 72+ files.
 - **Real On-Chain Contract Deployment Verification & Discovery Boundary (Commit #33)**:
   - **Core Architectural Invariant**: Formally enforces $\text{CONFIGURED CONTRACT ADDRESS} \neq \text{PROOF OF ON-CHAIN DEPLOYMENT}$. Storing a contract address in application configuration or connecting a wallet does not prove that bytecode exists on the target ledger.
   - **Contract Verification Domain Models & Lifecycle**: Introduces `ContractVerificationStatus` (`NOT_CHECKED`, `CHECKING`, `VERIFIED`, `NOT_DEPLOYED`, `NETWORK_MISMATCH`, `INVALID`, `UNAVAILABLE`, `UNSUPPORTED`, `FAILED`), `ContractVerificationReason` (12 granular technical reasons), `ContractVerificationResult`, and `ContractVerificationError` in `frontend/src/types/contract-verification.ts`, re-exported via `frontend/src/types/index.ts`.

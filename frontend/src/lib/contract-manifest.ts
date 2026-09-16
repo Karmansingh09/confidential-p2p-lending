@@ -1,4 +1,7 @@
-import type { ContractCircuitDefinition } from '../types/contract-deployment.ts';
+import type {
+  ContractCircuitDefinition,
+  ContractCircuitClassification,
+} from '../types/contract-deployment.ts';
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 
 /**
@@ -164,5 +167,16 @@ export function getOnChainCircuits(): ContractCircuitDefinition[] {
  * Returns all read-only inspection circuits.
  */
 export function getReadInspectionCircuits(): ContractCircuitDefinition[] {
-  return CONTRACT_CIRCUIT_MANIFEST.filter((c) => c.classification === 'READ');
+  return CONTRACT_CIRCUIT_MANIFEST.filter(
+    (c) => c.classification === 'READ' || c.classification === 'STATE_READ' || c.isReadOnly === true
+  );
+}
+
+/**
+ * Resolves the operational classification of a circuit.
+ */
+export function getInvocationClassification(
+  name: string
+): ContractCircuitClassification | undefined {
+  return CIRCUIT_LOOKUP.get(name)?.classification;
 }

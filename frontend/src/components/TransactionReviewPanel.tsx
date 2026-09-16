@@ -11,8 +11,14 @@ import {
   getCircuitNameForAction,
   getRequiredCapabilitiesForAction,
 } from '../lib/transaction-orchestrator.ts';
+import {
+  getCircuitDefinition,
+  getInvocationClassification,
+} from '../lib/contract-manifest.ts';
 import { getWalletProvider } from '../lib/account-service.ts';
 import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
+import { getNetworkConfigService } from '../lib/network-config-service.ts';
+import { evaluateNetworkCompatibility } from '../lib/wallet-network-compatibility.ts';
 
 export interface TransactionReviewPanelProps {
   loan: LoanDetailsModel | null;
@@ -71,6 +77,41 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
     callerHex.length > 16
       ? `${callerHex.slice(0, 8)}...${callerHex.slice(-6)}`
       : callerHex;
+
+  const netConfig = getNetworkConfigService().getNetworkConfig();
+  const walletNetworkId = typeof provider.getReportedNetworkId === 'function' ? provider.getReportedNetworkId() : null;
+  let networkStatusText: 'MATCH' | 'MISMATCH' | 'UNKNOWN' = 'UNKNOWN';
+  if (netConfig.environment === 'LOCAL') {
+    networkStatusText = 'MATCH';
+  } else if (walletNetworkId && netConfig.networkId) {
+    const comp = evaluateNetworkCompatibility(netConfig, walletNetworkId);
+    networkStatusText = comp.compatibility === 'MATCH' ? 'MATCH' : comp.compatibility === 'MISMATCH' ? 'MISMATCH' : 'UNKNOWN';
+  } else if (netConfig.networkId) {
+    networkStatusText = 'MATCH';
+  }
+
+  const contractStatusText: 'VERIFIED' | 'NOT VERIFIED' | 'NOT CONFIGURED' = isContractVerified
+    ? 'VERIFIED'
+    : isContractConfigured
+    ? 'NOT VERIFIED'
+    : 'NOT CONFIGURED';
+
+  const isWalletConnected = Boolean(accountContext?.identity?.publicKey) || Boolean(prep.callerPublicKeyHex);
+  const walletStatusText: 'CONNECTED' | 'DISCONNECTED' = isWalletConnected ? 'CONNECTED' : 'DISCONNECTED';
+  const signingStatusText: 'AVAILABLE' | 'UNAVAILABLE' = providerCaps.SIGN_TRANSACTION ? 'AVAILABLE' : 'UNAVAILABLE';
+  const submissionStatusText: 'AVAILABLE' | 'UNAVAILABLE' = providerCaps.SUBMIT_TRANSACTION ? 'AVAILABLE' : 'UNAVAILABLE';
+
+  let invocationStatusText: 'READY' | 'BLOCKED' | 'UNSUPPORTED' = 'BLOCKED';
+  if (isReady) {
+    invocationStatusText = 'READY';
+  } else if (prep.status === 'UNSUPPORTED' || (isExecutingAction && provider.isPrototype)) {
+    invocationStatusText = 'UNSUPPORTED';
+  } else {
+    invocationStatusText = 'BLOCKED';
+  }
+
+  const circuitDef = getCircuitDefinition(circuitName);
+  const classification = circuitDef?.classification ?? getInvocationClassification(circuitName) ?? (action === 'VERIFY_ELIGIBILITY' ? 'LOCAL_PROOF' : 'TRANSACTION_EXECUTION');
 
   const getStatusBadge = () => {
     if (isExecuting) {
@@ -245,6 +286,136 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               : isContractConfigured
               ? 'CONFIGURED (NOT VERIFIED ON NETWORK)'
               : 'Contract: NOT CONFIGURED'}
+          </div>
+        </div>
+      </div>
+
+      {/* Technical Invocation Diagnostics Grid */}
+      <div
+        style={{
+          background: '#1e293b',
+          padding: '14px',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          border: '1px solid #334155',
+        }}
+        data-testid="technical-diagnostics-grid"
+      >
+        <div
+          style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            marginBottom: '10px',
+            color: '#cbd5e1',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <span>⚙️</span>
+          <span>Technical Invocation Diagnostics</span>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: '8px',
+          }}
+        >
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Circuit</div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#a78bfa', fontFamily: 'monospace', marginTop: '2px' }}>
+              {circuitName}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Classification</div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', marginTop: '2px' }}>
+              {classification}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: contractStatusText === 'VERIFIED' ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {contractStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: networkStatusText === 'MATCH' ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {networkStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: walletStatusText === 'CONNECTED' ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {walletStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: signingStatusText === 'AVAILABLE' ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {signingStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: submissionStatusText === 'AVAILABLE' ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {submissionStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Invocation</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color:
+                  invocationStatusText === 'READY'
+                    ? '#86efac'
+                    : invocationStatusText === 'UNSUPPORTED'
+                    ? '#fde68a'
+                    : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {invocationStatusText}
+            </div>
           </div>
         </div>
       </div>

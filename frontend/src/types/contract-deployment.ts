@@ -13,6 +13,7 @@ export type ContractDeploymentStatus =
   | 'CONFIGURING'
   | 'CONFIGURED'
   | 'VALIDATING'
+  | 'VERIFIED'
   | 'READY'
   | 'INVALID'
   | 'NOT_DEPLOYED'

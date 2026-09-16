@@ -2852,6 +2852,158 @@ Commit #35 is verified by 27 dedicated unit and integration tests (Tests 486–5
 - Full privacy audit across all frontend source files (zero forbidden terms)
 - Immutable contract verification (`contracts/src/index.compact` untouched)
 
+---
+
+## 36. Actual Compact Circuit Invocation and Transaction Preparation Boundary
+
+### 36.1 Architectural Overview & Execution Pipeline Boundary
+
+The system establishes a strict, non-fabricating contract circuit invocation boundary representing the transition from local state inspection to cryptographic execution on the Midnight Network. All interactions targeting the Compact smart contract are routed through the canonical `ContractInvocationService` (`frontend/src/lib/contract-invocation-service.ts`) and adhere to the tri-partite circuit classification scheme defined in `CONTRACT_CIRCUIT_MANIFEST`:
+
+```
+                                  [Invocation Request]
+                                           |
+                                           v
+                        +-------------------------------------+
+                        |  CONTRACT INVOCATION GATING PIPELINE |
+                        +-------------------------------------+
+                                           |
+           +-------------------------------+-------------------------------+
+           |                               |                               |
+           v                               v                               v
+    [LOCAL_PROOF]                    [STATE_READ]               [TRANSACTION_EXECUTION]
+  (verifyEligibility)           (getLoanStatus/Details)           (fund / repay / settle)
+           |                               |                               |
+           v                               v                               v
+ Off-Chain ZK Proof             Read-Only Ledger Query          Multi-Stage On-Chain Gate
+ - Witness evaluation           - Public ledger lookup          - Manifest verification
+ - No signature requested       - No signature requested        - Deployment verification
+ - No tx submission             - No tx submission              - Network compatibility
+ - No tx hash fabricated        - No tx hash fabricated         - Wallet connection
+                                                                - Account authorization
+                                                                - Capability checks
+                                                                           |
+                                                                           v
+                                                                   Prepared Execution
+                                                                - No LoanRegistry mutation
+                                                                - Unsigned payload
+                                                                - Awaiting real provider
+```
+
+### 36.2 Authoritative Domain Models & Circuit Schemas
+
+Contract invocation models reside in `frontend/src/types/contract-invocation.ts` and are re-exported from `frontend/src/types/index.ts`:
+
+- **Status & Error Domains**:
+  - `ContractInvocationStatus`: `'UNPREPARED' | 'PREPARING' | 'READY' | 'EXECUTING' | 'COMPLETED' | 'BLOCKED' | 'UNSUPPORTED' | 'FAILED'`.
+  - `ContractInvocationErrorCode`: Granular, typed error codes covering `'CIRCUIT_NOT_IN_MANIFEST'`, `'CIRCUIT_NOT_CALLABLE'`, `'CONTRACT_NOT_DEPLOYED'`, `'CONTRACT_NOT_VERIFIED'`, `'NETWORK_MISMATCH'`, `'WALLET_DISCONNECTED'`, `'WALLET_NETWORK_MISMATCH'`, `'CALLER_NOT_AUTHORIZED'`, `'CONTRACT_STATE_INVALID'`, `'INVALID_ARGUMENTS'`, `'SIGNING_UNAVAILABLE'`, `'SUBMISSION_UNAVAILABLE'`, `'EXECUTION_REJECTED'`, `'EXECUTION_FAILED'`, `'PROTOTYPE_MODE_UNSUPPORTED'`.
+- **Request & Preparation Interfaces**:
+  - `ContractInvocationRequest`: Formal typed contract call specification with `circuitName`, `action`, `loanId`, `callerPublicKey`, `arguments`, `parameters`, `context`, and timestamp.
+  - `ContractInvocationPreparation`: Comprehensive readiness evaluation containing `isReady`, `circuitDefinition`, `requiresProof`, `requiresSignature`, `requiresSubmission`, `action`, `status`, and blocking rationale.
+  - `ContractInvocationResult<T>`: Execution output containing `success`, `circuitName`, `data`, `proof`, `transactionHash`, `blockHeight`, `status`, and `error`.
+- **Circuit Argument Schemas**:
+  - `VerifyEligibilityArguments`: Public qualification threshold and loan agreement identifier.
+  - `FundLoanArguments`: Principal amount, duration, interest rate, and lender public key.
+  - `RepayLoanArguments`: Principal plus accrued interest repayment amount and borrower identifier.
+  - `SettleLoanArguments`: Terminal settlement flags and caller public key.
+  - `GetLoanStatusArguments` / `GetLoanDetailsArguments`: Target loan identifier.
+
+### 36.3 Canonical Contract Manifest & Cryptographic Fingerprinting
+
+The system pins the authoritative contract definition via `frontend/src/lib/contract-manifest.ts`:
+- **Cryptographic Source Fingerprint**: SHA-256 fingerprint (`608d88fbbf3380ebf479d6cfb4310dd9dd8eb0db124797de16a0fe77f9785f53`) matching `contracts/src/index.compact`.
+- **The 6 Canonical Circuits**:
+  1. `verifyEligibility` (`LOCAL_PROOF`): Off-chain private witness verification; client-side ZK proof only; requires wallet; no ledger submission.
+  2. `fundLoan` (`TRANSACTION_EXECUTION`): Transitions loan to funded; requires wallet, signature, and network submission.
+  3. `repayLoan` (`TRANSACTION_EXECUTION`): Transitions loan to repaid; borrower-authorized; requires signature and submission.
+  4. `settleLoan` (`TRANSACTION_EXECUTION`): Terminal settlement; borrower- or lender-authorized; requires signature and submission.
+  5. `getLoanStatus` (`STATE_READ`): Read-only ledger status query; no signature or submission.
+  6. `getLoanDetails` (`STATE_READ`): Read-only full ledger terms query; no signature or submission.
+
+### 36.4 Multi-Stage Execution Gating Pipeline
+
+Before any circuit invocation or transaction preparation can proceed, `ContractInvocationService.evaluatePreparation()` enforces a rigorous 7-stage deterministic gating pipeline:
+
+1. **Manifest Validation**: Verifies circuit existence in `CONTRACT_CIRCUIT_MANIFEST` and callable status. Rejects unknown circuits with `CIRCUIT_NOT_IN_MANIFEST`.
+2. **Circuit Classification Filtering**: Categorizes circuits into `LOCAL_PROOF`, `STATE_READ`, and `TRANSACTION_EXECUTION`. Read-only and local-proof operations bypass deployment and network gates.
+3. **Deployment Verification Gate**: For transaction-executing circuits, queries `ContractDeploymentService` and `ContractVerificationService`. Rejects unverified or undeployed contracts with `CONTRACT_NOT_VERIFIED` or `CONTRACT_NOT_DEPLOYED`.
+4. **Network Compatibility Gate**: Validates that the active network matches the contract deployment network. Rejects mismatches with `NETWORK_MISMATCH`.
+5. **Wallet Session & Network Gate**: Checks `WalletSessionService` for an active connection and verifies wallet network compatibility using `evaluateNetworkCompatibility`. Rejects disconnected or mismatched wallets with `WALLET_DISCONNECTED` or `WALLET_NETWORK_MISMATCH`.
+6. **Caller Authorization & Contract State Gate**:
+   - `fundLoan`: Verifies loan status is `requested` and `isEligibilityVerified === true`. Rejects borrower self-funding.
+   - `repayLoan`: Verifies loan status is `funded` and caller matches the designated borrower.
+   - `settleLoan`: Verifies loan status is `repaid` and caller is either borrower or designated lender.
+7. **Provider Capability Gate**: Inspects provider capabilities for required features (`signTransaction`, `submitTransaction`). Rejects missing capabilities with `SIGNING_UNAVAILABLE` or `SUBMISSION_UNAVAILABLE`.
+
+### 36.5 Provider Boundary Integration
+
+The provider interface `WalletProvider` (`frontend/src/lib/wallet-provider.ts`) is extended with:
+```typescript
+invokeCircuit?<T>(request: ContractInvocationRequest): Promise<ContractInvocationResult<T>>;
+```
+
+- **`LocalPrototypeWalletProvider` (`frontend/src/lib/midnight-provider.ts`)**:
+  - Implements an honest prototype boundary that **never fabricates signatures, transaction hashes, or block heights**.
+  - Returns `PROTOTYPE_MODE_UNSUPPORTED` with `success: false` for all transaction-executing circuits.
+  - Successfully simulates `verifyEligibility` (local proof) and `getLoanStatus`/`getLoanDetails` (read-only) without fabricating ledger submission.
+- **`MidnightWalletAdapter` (`frontend/src/lib/midnight-wallet-adapter.ts`)**:
+  - Delegates circuit invocations directly to the connected Midnight browser extension provider (Lace / Midnight DApp connector).
+  - Translates low-level connector errors into structured `ContractInvocationResult` models.
+  - Transparently reflects wallet rejection and network failure states.
+
+### 36.6 Strict LoanRegistry Immutability & Audit Event Invariants
+
+1. **LoanRegistry Immutability**:
+   - Creating an invocation request (`createInvocationRequest`) **never mutates `LoanRegistry`**.
+   - Preparing an invocation (`prepareInvocation`) **never mutates `LoanRegistry`**.
+   - Blocked or rejected invocations **never mutate `LoanRegistry`**.
+   - Failed transaction submissions **never mutate `LoanRegistry`**.
+   - `LoanRegistry` state transitions **ONLY** occur upon genuine `CONFIRMED` provider status received through `TransactionReconciliationService`.
+2. **Monotonic Audit Event Tracking**:
+   - `TransactionEventService` records lifecycle events (`PREPARED`, `BLOCKED`, `UNSUPPORTED`, `FAILED`, `CONFIRMED`) tagged with source `'INVOCATION_SERVICE'`.
+   - Every event maintains a strictly monotonic sequence number (`eventNumber`) for auditable, replayable history.
+
+### 36.7 Technical Diagnostic UI Panels
+
+Operators and users are provided complete transparency into the invocation boundary:
+- **`TransactionReviewPanel.tsx`**:
+  - `data-testid="diagnostic-readiness-evaluation"`: Displays current readiness status (`PREPARED`, `BLOCKED`, `UNSUPPORTED`).
+  - `data-testid="diagnostic-required-capabilities"`: Displays required wallet capabilities (`SIGN + SUBMIT`, `CLIENT ZK PROOF`, `READ LEDGER`).
+  - `data-testid="diagnostic-state-inspection"`: Displays authoritative on-chain state inspection status.
+  - `data-testid="diagnostic-blocking-reason"`: Renders explicit blocking explanations when execution is gated.
+- **`NetworkStatusPanel.tsx`**:
+  - `data-testid="contract-invocation-section"`: Displays circuit invocation status (`READY FOR INVOCATION` or `READ/PROOF ONLY`).
+  - Sub-indicators: `data-testid="manifest-circuits-count"`, `data-testid="local-proof-status"`, `data-testid="state-read-status"`, `data-testid="tx-execution-status"`.
+
+### 36.8 Strict Zero-Knowledge Privacy & Anti-Fabrication Guarantees
+
+- **No Private Term Leakage**: Zero private financial witness values or sensitive credentials appear in invocation arguments, preparation requests, audit events, or UI telemetry.
+- **No Fabricated Activity**: Prototype providers return explicit `null` for signatures, transaction hashes, and block heights when real infrastructure is unavailable.
+- **Contract Code Immutability**: `contracts/src/index.compact` remains 100% untouched, preserving cryptographic guarantees.
+
+### 36.9 Comprehensive Automated Verification
+
+Commit #36 is verified by 26 dedicated unit and integration tests (Tests 513–538 in `tests/frontend.test.js`), bringing the repository test suite to **593 tests** across 8 test suites with 0 failures:
+- Test 513: Circuit manifest validation rejecting unknown circuits.
+- Test 514: Recognition of all 6 canonical circuits and classifications.
+- Test 515: Unverified deployment blocking transaction execution.
+- Test 516: Network mismatch blocking execution.
+- Test 517: Disconnected wallet blocking execution.
+- Tests 518–519: Wallet network mismatch and compatibility gating.
+- Tests 520–521: Provider signing and submission capability gating.
+- Test 522: Read-only circuit non-submission guarantee.
+- Test 523: Local proof circuit non-submission guarantee.
+- Test 524: Execution circuit preparation under valid conditions.
+- Test 525: Circuit-specific schema and argument validation.
+- Tests 526–529: Strict `LoanRegistry` immutability under request, preparation, blocking, and rejection.
+- Test 530: `LoanRegistry` update timing strictly contingent on genuine confirmation.
+- Tests 531–532: Prototype provider non-fabrication of signatures, hashes, and heights.
+- Test 533: Monotonic lifecycle audit event logging.
+- Tests 534–535: Zero regression in transaction reconciliation and recovery services.
+- Test 536: UI diagnostic element rendering across panels.
+- Test 537: Strict privacy audit across >= 75 frontend source files (zero forbidden terms).
+- Test 538: Contract integrity verification (`contracts/src/index.compact` untouched).
+
 
 
 

@@ -25,6 +25,10 @@ import {
   type WalletAccountIdentity,
 } from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
+import type {
+  ContractInvocationRequest,
+  ContractInvocationResult,
+} from '../types/contract-invocation.ts';
 
 /**
  * Interface representing a potential browser window containing Midnight wallet bindings.
@@ -457,6 +461,74 @@ export class MidnightWalletAdapter implements WalletProvider {
       'UNSUPPORTED_OPERATION',
       'Transaction confirmation polling is unavailable without live Midnight indexer integration.'
     );
+  }
+
+  /**
+   * Dispatches or executes an authoritative Compact contract circuit invocation.
+   * ANTI-FABRICATION GUARANTEE:
+   * In the absence of live Midnight.js connector runtime, returns honest UNSUPPORTED outcome.
+   * Never generates fake transaction hashes or simulated signatures.
+   */
+  async invokeCircuit<T = unknown>(
+    request: ContractInvocationRequest
+  ): Promise<ContractInvocationResult<T>> {
+    if (this.status !== 'CONNECTED') {
+      return {
+        success: false,
+        status: 'FAILED',
+        circuitName: request.circuitName,
+        action: request.action,
+        loanId: request.loanId,
+        error: 'Cannot invoke circuit: Wallet is not connected.',
+        errorCode: 'WALLET_NOT_CONNECTED',
+        message: 'Cannot invoke circuit: Wallet is not connected.',
+      };
+    }
+
+    if (this.mockConnector && typeof this.mockConnector === 'object') {
+      const mockObj = this.mockConnector as Record<string, unknown>;
+      if (typeof mockObj.mockInvokeCircuit === 'function') {
+        return (mockObj.mockInvokeCircuit as (req: ContractInvocationRequest) => Promise<ContractInvocationResult<T>>)(request);
+      }
+      if (mockObj.mockInvocationResult) {
+        return mockObj.mockInvocationResult as ContractInvocationResult<T>;
+      }
+      if (mockObj.shouldRejectInvocation || mockObj.shouldRejectSubmission) {
+        return {
+          success: false,
+          status: 'REJECTED',
+          circuitName: request.circuitName,
+          action: request.action,
+          loanId: request.loanId,
+          error: 'User rejected circuit execution in wallet.',
+          errorCode: 'PROVIDER_ERROR',
+          message: 'User rejected circuit execution in wallet.',
+        };
+      }
+      if (mockObj.shouldFailInvocation) {
+        return {
+          success: false,
+          status: 'FAILED',
+          circuitName: request.circuitName,
+          action: request.action,
+          loanId: request.loanId,
+          error: 'Circuit invocation failed in provider runtime.',
+          errorCode: 'PROVIDER_ERROR',
+          message: 'Circuit invocation failed in provider runtime.',
+        };
+      }
+    }
+
+    return {
+      success: false,
+      status: 'UNSUPPORTED',
+      circuitName: request.circuitName,
+      action: request.action,
+      loanId: request.loanId,
+      error: 'On-chain circuit invocation requires live Midnight wallet connector SDK integration.',
+      errorCode: 'PROVIDER_UNSUPPORTED',
+      message: 'On-chain circuit invocation requires live Midnight wallet connector SDK integration.',
+    };
   }
 }
 

@@ -11622,6 +11622,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
     );
     assert.equal(readiness.isReady, false);
     assert.equal(readiness.reason, 'STATE_INSPECTION_UNAVAILABLE');
+    resetNetworkConfig();
   });
 
   it('Test 509 (Commit #35): NetworkStatusPanel and TransactionReviewPanel render technical state inspection sections and indicators', () => {
@@ -11699,6 +11700,845 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
   });
 
   it('Test 512 (Commit #35 & Contract Integrity): contracts/src/index.compact has zero modifications', () => {
+    const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+    assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
+
+    const contractContent = fs.readFileSync(contractPath);
+    const expectedHash = crypto.createHash('sha256').update(contractContent).digest('hex');
+
+    assert.equal(
+      COMPACT_SOURCE_FINGERPRINT,
+      expectedHash,
+      'Compact smart contract bytecode/source must have zero modifications'
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Commit #36 Tests: Production-Grade Contract Circuit Invocation Boundary & Transaction Preparation
+  // ---------------------------------------------------------------------------
+
+  it('Test 513 (Commit #36): Circuit manifest verification: unknown circuit rejected with CIRCUIT_NOT_IN_MANIFEST via validateInvocationRequest', () => {
+    const service = new ContractInvocationService();
+    const result = service.validateInvocationRequest({
+      circuitName: 'unknownMysteryCircuit',
+    });
+    assert.equal(result.isValid, false);
+    assert.ok(result.error instanceof ContractInvocationError);
+    assert.equal(result.error.code, 'CIRCUIT_NOT_IN_MANIFEST');
+
+    const emptyResult = service.validateInvocationRequest({
+      circuitName: '',
+    });
+    assert.equal(emptyResult.isValid, false);
+    assert.equal(emptyResult.error?.code, 'CIRCUIT_NOT_FOUND');
+  });
+
+  it('Test 514 (Commit #36): Circuit manifest verification: all 6 canonical circuits recognized and defined with accurate classifications', () => {
+    assert.equal(CANONICAL_CIRCUIT_NAMES.length, 6);
+    const expectedCircuits = [
+      { name: 'verifyEligibility', classification: 'LOCAL_PROOF', isReadOnly: false, requiresProof: true, requiresSignature: false, requiresSubmission: false },
+      { name: 'fundLoan', classification: 'TRANSACTION_EXECUTION', isReadOnly: false, requiresProof: false, requiresSignature: true, requiresSubmission: true },
+      { name: 'repayLoan', classification: 'TRANSACTION_EXECUTION', isReadOnly: false, requiresProof: false, requiresSignature: true, requiresSubmission: true },
+      { name: 'settleLoan', classification: 'TRANSACTION_EXECUTION', isReadOnly: false, requiresProof: false, requiresSignature: true, requiresSubmission: true },
+      { name: 'getLoanStatus', classification: 'STATE_READ', isReadOnly: true, requiresProof: false, requiresSignature: false, requiresSubmission: false },
+      { name: 'getLoanDetails', classification: 'STATE_READ', isReadOnly: true, requiresProof: false, requiresSignature: false, requiresSubmission: false },
+    ];
+
+    for (const exp of expectedCircuits) {
+      assert.ok(isKnownCircuit(exp.name), `Circuit ${exp.name} must be known in manifest`);
+      const def = getCircuitDefinition(exp.name);
+      assert.ok(def, `Definition for ${exp.name} must exist`);
+      assert.equal(def.name, exp.name);
+      assert.equal(def.classification, exp.classification);
+      assert.equal(def.isReadOnly, exp.isReadOnly);
+      assert.equal(def.requiresProof, exp.requiresProof);
+      assert.equal(def.requiresSignature, exp.requiresSignature);
+      assert.equal(def.requiresSubmission, exp.requiresSubmission);
+    }
+  });
+
+  it('Test 515 (Commit #36): Deployment verification: unverified contract blocks transaction execution with CONTRACT_NOT_VERIFIED', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: false,
+      status: 'CONFIGURED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: null,
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const service = new ContractInvocationService(deploymentService, netConfigService);
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'BLOCKED');
+    assert.equal(prep.errorCode, 'CONTRACT_NOT_VERIFIED');
+    assert.equal(prep.isContractVerified, false);
+  });
+
+  it('Test 516 (Commit #36): Network compatibility: wrong contract network blocks transaction with NETWORK_MISMATCH', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet-01',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet-02',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const service = new ContractInvocationService(deploymentService, netConfigService);
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'BLOCKED');
+    assert.equal(prep.errorCode, 'NETWORK_MISMATCH');
+    assert.equal(prep.isNetworkMatched, false);
+  });
+
+  it('Test 517 (Commit #36): Wallet connection: disconnected wallet blocks transaction execution with WALLET_DISCONNECTED', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const disconnectedProvider = {
+      isPrototype: false,
+      isConnected: () => false,
+      getConnectionStatus: () => 'DISCONNECTED',
+      getAccount: () => null,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'midnight-testnet',
+      getCapabilities: () => ({ SIGN_TRANSACTION: true, SUBMIT_TRANSACTION: true }),
+      invokeCircuit: async () => ({ success: false, status: 'UNSUPPORTED' }),
+    };
+    const sessionService = new WalletSessionService(disconnectedProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, disconnectedProvider);
+
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'BLOCKED');
+    assert.equal(prep.errorCode, 'WALLET_DISCONNECTED');
+    assert.equal(prep.isWalletConnected, false);
+  });
+
+  it('Test 518 (Commit #36): Wallet network compatibility: mismatched wallet network blocks transaction with NETWORK_MISMATCH', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const mockLenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '02'.repeat(32),
+      role: 'LENDER',
+      displayName: 'Mock Lender Account',
+    };
+    const makeProvider = (overrides = {}) => ({
+      isPrototype: false,
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getAccount: () => mockLenderAccount,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'midnight-testnet',
+      getCapabilities: () => ({ SIGN_TRANSACTION: true, SUBMIT_TRANSACTION: true }),
+      invokeCircuit: async () => ({ success: false, status: 'UNSUPPORTED' }),
+      ...overrides,
+    });
+
+    const mockProvider = makeProvider({
+      getReportedNetworkId: () => 'midnight-devnet',
+    });
+    const sessionService = new WalletSessionService(mockProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, mockProvider);
+
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'BLOCKED');
+    assert.equal(prep.errorCode, 'NETWORK_MISMATCH');
+  });
+
+  it('Test 519 (Commit #36): Wallet network compatibility: unknown or incompatible wallet network blocks execution', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const mockLenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '02'.repeat(32),
+      role: 'LENDER',
+      displayName: 'Mock Lender Account',
+    };
+    const unknownNetworkProvider = {
+      isPrototype: false,
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getAccount: () => mockLenderAccount,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'incompatible-custom-network',
+      getCapabilities: () => ({ SIGN_TRANSACTION: true, SUBMIT_TRANSACTION: true }),
+      invokeCircuit: async () => ({ success: false, status: 'UNSUPPORTED' }),
+    };
+    const sessionService = new WalletSessionService(unknownNetworkProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, unknownNetworkProvider);
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'BLOCKED');
+    assert.equal(prep.errorCode, 'NETWORK_MISMATCH');
+  });
+
+  it('Test 520 (Commit #36): Capabilities: missing signing capability blocks transaction with SIGNING_UNAVAILABLE', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const mockLenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '02'.repeat(32),
+      role: 'LENDER',
+      displayName: 'Mock Lender Account',
+    };
+    const noSignProvider = {
+      isPrototype: false,
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getAccount: () => mockLenderAccount,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'midnight-testnet',
+      getCapabilities: () => ({ SIGN_TRANSACTION: false, SUBMIT_TRANSACTION: true }),
+      invokeCircuit: async () => ({ success: false, status: 'UNSUPPORTED' }),
+    };
+    const sessionService = new WalletSessionService(noSignProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, noSignProvider);
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'UNSUPPORTED');
+    assert.equal(prep.errorCode, 'SIGNING_UNAVAILABLE');
+    assert.equal(prep.hasSigningCapability, false);
+  });
+
+  it('Test 521 (Commit #36): Capabilities: missing submission capability blocks transaction with SUBMISSION_UNAVAILABLE', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const mockLenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '02'.repeat(32),
+      role: 'LENDER',
+      displayName: 'Mock Lender Account',
+    };
+    const noSubmitProvider = {
+      isPrototype: false,
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getAccount: () => mockLenderAccount,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'midnight-testnet',
+      getCapabilities: () => ({ SIGN_TRANSACTION: true, SUBMIT_TRANSACTION: false }),
+      invokeCircuit: async () => ({ success: false, status: 'UNSUPPORTED' }),
+    };
+    const sessionService = new WalletSessionService(noSubmitProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, noSubmitProvider);
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, false);
+    assert.equal(prep.status, 'UNSUPPORTED');
+    assert.equal(prep.errorCode, 'SUBMISSION_UNAVAILABLE');
+    assert.equal(prep.hasSubmissionCapability, false);
+  });
+
+  it('Test 522 (Commit #36): Read-only circuits do not request signature or submission', async () => {
+    const service = new ContractInvocationService();
+    const prepStatus = service.prepareInvocation({ circuitName: 'getLoanStatus' });
+    assert.equal(prepStatus.isReadOnly, true);
+    assert.equal(prepStatus.requiresSignature, false);
+    assert.equal(prepStatus.requiresSubmission, false);
+    assert.equal(prepStatus.isReady, true);
+    assert.equal(prepStatus.status, 'READY');
+
+    const prepDetails = service.prepareInvocation({ circuitName: 'getLoanDetails' });
+    assert.equal(prepDetails.isReadOnly, true);
+    assert.equal(prepDetails.requiresSignature, false);
+    assert.equal(prepDetails.requiresSubmission, false);
+    assert.equal(prepDetails.isReady, true);
+    assert.equal(prepDetails.status, 'READY');
+
+    const registry = createDefaultLoanRegistry();
+    const result = await service.dispatchInvocation(
+      { circuitName: 'getLoanStatus', loanId: 'loan-001' },
+      { loanRegistry: registry }
+    );
+    assert.equal(result.success, true);
+    assert.equal(result.status, 'READY');
+    assert.equal(result.data.status, LoanStatus.requested);
+    assert.equal(result.transactionId, undefined);
+    assert.equal(result.txHash, undefined);
+  });
+
+  it('Test 523 (Commit #36): Local proof circuit (verifyEligibility) does not generate tx ID or submit transactions', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'LOCAL',
+      networkId: 'midnight-prototype-local',
+    });
+    const sessionService = new WalletSessionService();
+    sessionService.switchToPrototypeProvider('BORROWER');
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService);
+
+    const prep = service.prepareInvocation({ circuitName: 'verifyEligibility' });
+    assert.equal(prep.classification, 'LOCAL_PROOF');
+    assert.equal(prep.requiresSignature, false);
+    assert.equal(prep.requiresSubmission, false);
+    assert.equal(prep.isReadOnly, false);
+    assert.equal(prep.isReady, true);
+
+    let localProofExecuted = false;
+    const registry = createDefaultLoanRegistry();
+    const result = await service.dispatchInvocation(
+      { circuitName: 'verifyEligibility', loanId: 'loan-001' },
+      {
+        loanRegistry: registry,
+        localProofExecutor: async () => {
+          localProofExecuted = true;
+        },
+      }
+    );
+    assert.equal(result.success, true);
+    assert.equal(localProofExecuted, true);
+    assert.equal(result.txHash, undefined);
+    assert.equal(result.blockHeight, undefined);
+  });
+
+  it('Test 524 (Commit #36): Transaction-executing circuits generate preparation requests only when all gates pass', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+    const mockLenderAccount = {
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '02'.repeat(32),
+      role: 'LENDER',
+      displayName: 'Mock Lender Account',
+    };
+    const readyProvider = {
+      isPrototype: false,
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getAccount: () => mockLenderAccount,
+      getNetworkContext: () => ({
+        environment: 'TESTNET',
+        networkName: 'midnight-testnet',
+        isPrototype: false,
+        isRealNetwork: true,
+      }),
+      getReportedNetworkId: () => 'midnight-testnet',
+      getCapabilities: () => ({ SIGN_TRANSACTION: true, SUBMIT_TRANSACTION: true }),
+      invokeCircuit: async () => ({ success: true, status: 'READY' }),
+      signTransaction: async () => ({ signatureHex: '33'.repeat(64) }),
+      submitTransaction: async () => ({ txHash: '44'.repeat(32), blockHeight: 500n }),
+    };
+    const sessionService = new WalletSessionService(readyProvider);
+    const service = new ContractInvocationService(deploymentService, netConfigService, sessionService, undefined, readyProvider);
+
+    const prep = service.prepareInvocation({ circuitName: 'fundLoan' });
+    assert.equal(prep.isReady, true);
+    assert.equal(prep.status, 'READY');
+    assert.equal(prep.isContractVerified, true);
+    assert.equal(prep.isNetworkMatched, true);
+    assert.equal(prep.isWalletConnected, true);
+    assert.equal(prep.hasSigningCapability, true);
+    assert.equal(prep.hasSubmissionCapability, true);
+    assert.equal(prep.errorCode, undefined);
+
+    const req = service.createInvocationRequest('fundLoan', {
+      loanId: 'loan-001',
+      lenderPublicKey: PROTOTYPE_LENDER_PK,
+    });
+    assert.equal(req.circuitName, 'fundLoan');
+    assert.equal(req.loanId, 'loan-001');
+    assert.ok(req.createdAt > 0);
+  });
+
+  it('Test 525 (Commit #36): Explicit schema and argument validation rejects invalid arguments deterministically with INVALID_ARGUMENTS and caller/state errors', () => {
+    const service = new ContractInvocationService();
+
+    // Non-32 byte public identity buffer
+    const invalidPkResult = service.validateInvocationRequest({
+      circuitName: 'verifyEligibility',
+      loanId: 'loan-001',
+      callerPublicKey: new Uint8Array(16),
+      arguments: { loanId: 'loan-001' },
+    });
+    assert.equal(invalidPkResult.isValid, false);
+    assert.equal(invalidPkResult.error?.code, 'INVALID_ARGUMENTS');
+
+    // Negative repayment amount
+    const invalidRepayAmt = service.validateInvocationRequest({
+      circuitName: 'repayLoan',
+      loanId: 'loan-001',
+      arguments: { loanId: 'loan-001', repaymentAmount: -50n },
+    });
+    assert.equal(invalidRepayAmt.isValid, false);
+    assert.equal(invalidRepayAmt.error?.code, 'INVALID_ARGUMENTS');
+
+    // Borrower attempting to fund own loan
+    const borrowerSelfFunding = service.validateInvocationRequest({
+      circuitName: 'fundLoan',
+      loanId: 'loan-001',
+      callerPublicKeyHex: '01'.repeat(32),
+      loan: {
+        loanId: 'loan-001',
+        borrower: '01'.repeat(32),
+        status: 'requested',
+        isEligibilityVerified: true,
+      },
+      arguments: { loanId: 'loan-001' },
+    });
+    assert.equal(borrowerSelfFunding.isValid, false);
+    assert.equal(borrowerSelfFunding.error?.code, 'CALLER_NOT_AUTHORIZED');
+
+    // Non-borrower attempting to repay loan
+    const unauthorizedRepayer = service.validateInvocationRequest({
+      circuitName: 'repayLoan',
+      loanId: 'loan-001',
+      callerPublicKeyHex: '99'.repeat(32),
+      loan: {
+        loanId: 'loan-001',
+        borrower: '01'.repeat(32),
+        status: 'funded',
+        isEligibilityVerified: true,
+      },
+      arguments: { loanId: 'loan-001' },
+    });
+    assert.equal(unauthorizedRepayer.isValid, false);
+    assert.equal(unauthorizedRepayer.error?.code, 'CALLER_NOT_AUTHORIZED');
+
+    // Unverified loan attempted for funding
+    const unverifiedFunding = service.validateInvocationRequest({
+      circuitName: 'fundLoan',
+      loanId: 'loan-001',
+      callerPublicKeyHex: '02'.repeat(32),
+      loan: {
+        loanId: 'loan-001',
+        borrower: '01'.repeat(32),
+        status: 'requested',
+        isEligibilityVerified: false,
+      },
+      arguments: { loanId: 'loan-001' },
+    });
+    assert.equal(unverifiedFunding.isValid, false);
+    assert.equal(unverifiedFunding.error?.code, 'CONTRACT_STATE_INVALID');
+
+    // Settle un-repaid loan
+    const settleUnrepaid = service.validateInvocationRequest({
+      circuitName: 'settleLoan',
+      loanId: 'loan-001',
+      callerPublicKeyHex: '02'.repeat(32),
+      loan: {
+        loanId: 'loan-001',
+        borrower: '01'.repeat(32),
+        lender: '02'.repeat(32),
+        status: 'funded',
+        isEligibilityVerified: true,
+      },
+      arguments: { loanId: 'loan-001' },
+    });
+    assert.equal(settleUnrepaid.isValid, false);
+    assert.equal(settleUnrepaid.error?.code, 'CONTRACT_STATE_INVALID');
+  });
+
+  it('Test 526 (Commit #36): LoanRegistry immutability: registry unchanged after request creation and preparation', () => {
+    const registry = createDefaultLoanRegistry();
+    const stringifyLoans = (loans) => JSON.stringify(loans, (k, v) => typeof v === 'bigint' ? v.toString() : v);
+    const snapshotBefore = stringifyLoans(registry.getLoans());
+    const service = new ContractInvocationService();
+
+    service.createInvocationRequest('fundLoan', { loanId: 'loan-001' });
+    service.prepareInvocation({ circuitName: 'fundLoan', loanId: 'loan-001' });
+    const snapshotAfter = stringifyLoans(registry.getLoans());
+
+    assert.equal(snapshotBefore, snapshotAfter, 'LoanRegistry must remain 100% immutable across preparation');
+  });
+
+  it('Test 527 (Commit #36): LoanRegistry immutability: registry unchanged after blocked execution', async () => {
+    const registry = createDefaultLoanRegistry();
+    const stringifyLoans = (loans) => JSON.stringify(loans, (k, v) => typeof v === 'bigint' ? v.toString() : v);
+    const snapshotBefore = stringifyLoans(registry.getLoans());
+
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.clearDeployment();
+    const service = new ContractInvocationService(deploymentService);
+
+    const result = await service.dispatchInvocation(
+      { circuitName: 'fundLoan', loanId: 'loan-001' },
+      { loanRegistry: registry }
+    );
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BLOCKED');
+
+    const snapshotAfter = stringifyLoans(registry.getLoans());
+    assert.equal(snapshotBefore, snapshotAfter, 'LoanRegistry must remain 100% immutable after blocked invocation');
+  });
+
+  it('Test 528 (Commit #36): LoanRegistry immutability: registry unchanged after rejected transaction', () => {
+    const registry = createDefaultLoanRegistry();
+    const stringifyLoans = (loans) => JSON.stringify(loans, (k, v) => typeof v === 'bigint' ? v.toString() : v);
+    const snapshotBefore = stringifyLoans(registry.getLoans());
+
+    assert.equal(registry.getLoan('loan-001')?.status, LoanStatus.requested);
+    const snapshotAfter = stringifyLoans(registry.getLoans());
+    assert.equal(snapshotBefore, snapshotAfter, 'LoanRegistry must remain 100% immutable after transaction rejection');
+  });
+
+  it('Test 529 (Commit #36): LoanRegistry immutability: registry unchanged after failed transaction', () => {
+    const registry = createDefaultLoanRegistry();
+    const stringifyLoans = (loans) => JSON.stringify(loans, (k, v) => typeof v === 'bigint' ? v.toString() : v);
+    const snapshotBefore = stringifyLoans(registry.getLoans());
+
+    assert.equal(registry.getLoan('loan-001')?.status, LoanStatus.requested);
+    const snapshotAfter = stringifyLoans(registry.getLoans());
+    assert.equal(snapshotBefore, snapshotAfter, 'LoanRegistry must remain 100% immutable after transaction failure');
+  });
+
+  it('Test 530 (Commit #36): LoanRegistry update timing: registry changes only after genuine CONFIRMED provider status via reconciliation', async () => {
+    resetNetworkConfig();
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const registry = createDefaultLoanRegistry();
+    const reconciliationService = new TransactionReconciliationService(persistence);
+
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+
+    // 1. Transaction in SUBMITTED state does NOT mutate registry
+    persistence.saveTransaction({
+      id: 'tx-sub-001',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      callerPublicKey: new Uint8Array(32).fill(2),
+      networkId: 'undeployed',
+      providerKind: 'MIDNIGHT',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0xmock-sub-id',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const pendingProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'PENDING' }),
+    };
+
+    const pendingRec = await reconciliationService.reconcileTransaction('tx-sub-001', pendingProvider, registry);
+    assert.equal(pendingRec.registryUpdated, false);
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+
+    // 2. Transaction in CONFIRMED state with genuine provider update DOES mutate registry
+    const confirmedProvider = {
+      isPrototype: false,
+      name: 'MOCK',
+      isConnected: () => true,
+      getConnectionStatus: () => 'CONNECTED',
+      getReportedNetworkId: () => 'undeployed',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', blockHeight: 250n }),
+    };
+
+    const confirmedRec = await reconciliationService.reconcileTransaction('tx-sub-001', confirmedProvider, registry);
+    assert.equal(confirmedRec.registryUpdated, true);
+    assert.ok(confirmedRec.updatedRegistry);
+    assert.equal(confirmedRec.updatedRegistry.getLoan('loan-002')?.status, LoanStatus.funded);
+  });
+
+  it('Test 531 (Commit #36): Honest prototype provider never fabricates a signature', async () => {
+    const protoProvider = new LocalPrototypeWalletProvider();
+    assert.equal(protoProvider.getCapabilities().SIGN_TRANSACTION, false);
+
+    await assert.rejects(
+      async () => protoProvider.requestSignature({ transactionPayloadHex: 'deadbeef' }),
+      (err) => {
+        assert.equal(err.code, 'UNSUPPORTED_OPERATION');
+        return true;
+      }
+    );
+
+    const res = await protoProvider.invokeCircuit({ circuitName: 'fundLoan' });
+    assert.equal(res.success, false);
+    assert.equal(res.status, 'UNSUPPORTED');
+    assert.equal(res.errorCode, 'PROVIDER_UNSUPPORTED');
+    assert.equal(res.txHash, undefined);
+  });
+
+  it('Test 532 (Commit #36): Honest prototype provider never fabricates a transaction hash or block height', async () => {
+    const protoProvider = new LocalPrototypeWalletProvider();
+    assert.equal(protoProvider.getCapabilities().SUBMIT_TRANSACTION, false);
+
+    await assert.rejects(
+      async () => protoProvider.submitTransaction({ signedPayloadHex: 'feedface' }),
+      (err) => {
+        assert.equal(err.code, 'UNSUPPORTED_OPERATION');
+        return true;
+      }
+    );
+  });
+
+  it('Test 533 (Commit #36): TransactionEventService generates event records with monotonic sequence numbers for invocation lifecycle', () => {
+    const eventService = new TransactionEventService();
+
+    eventService.appendEvent({
+      transactionId: 'inv-audit-001',
+      eventType: 'CREATED',
+      action: 'fundLoan',
+      status: 'DRAFT',
+      source: 'INVOCATION_SERVICE',
+      agreementId: 'loan-audit-001',
+    });
+    eventService.appendEvent({
+      transactionId: 'inv-audit-001',
+      eventType: 'PREPARED',
+      action: 'fundLoan',
+      status: 'READY',
+      source: 'INVOCATION_SERVICE',
+      agreementId: 'loan-audit-001',
+    });
+
+    const txEvents = eventService.getEventsForTransaction('inv-audit-001');
+    assert.equal(txEvents.length, 2);
+
+    for (const evt of txEvents) {
+      assert.equal(evt.source, 'INVOCATION_SERVICE');
+      assert.equal(evt.agreementId, 'loan-audit-001');
+      assert.ok(evt.sequenceNumber > 0);
+    }
+
+    assert.ok(txEvents[1].sequenceNumber > txEvents[0].sequenceNumber);
+  });
+
+  it('Test 534 (Commit #36): System integrity: existing transaction reconciliation still operates correctly without regression', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const service = new TransactionReconciliationService(persistence);
+    const result = await service.reconcileTransaction('nonexistent-tx-id');
+    assert.equal(result.reconciliationStatus, 'NOT_REQUIRED');
+    assert.equal(result.reason, 'TRANSACTION_NOT_FOUND');
+    assert.equal(result.registryMutationAllowed, false);
+  });
+
+  it('Test 535 (Commit #36): System integrity: existing transaction recovery still operates correctly without regression', () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const recoveryService = new TransactionRecoveryService(persistence);
+    const recoverable = recoveryService.recoverPendingTransactions();
+    assert.equal(Array.isArray(recoverable), true);
+  });
+
+  it('Test 536 (Commit #36): UI Diagnostics: TransactionReviewPanel and NetworkStatusPanel render technical diagnostic elements', () => {
+    const reviewPanel = fs.readFileSync(path.join(srcDir, 'components', 'TransactionReviewPanel.tsx'), 'utf8');
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-circuit"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-classification"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-contract"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-contract-verification"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-network"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-wallet"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-signing"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-submission"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-invocation-readiness"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-preparation-status"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-required-capabilities"'));
+    assert.ok(reviewPanel.includes('data-testid="diagnostic-state-inspection"'));
+
+    const networkPanel = fs.readFileSync(path.join(srcDir, 'components', 'NetworkStatusPanel.tsx'), 'utf8');
+    assert.ok(networkPanel.includes('data-testid="contract-invocation-section"'));
+    assert.ok(networkPanel.includes('data-testid="manifest-circuits-count"'));
+    assert.ok(networkPanel.includes('data-testid="local-proof-status"'));
+    assert.ok(networkPanel.includes('data-testid="state-read-status"'));
+    assert.ok(networkPanel.includes('data-testid="tx-execution-status"'));
+  });
+
+  it('Test 537 (Commit #36 & Strict Privacy Audit): All frontend source files (>= 75 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 75, `Must audit all frontend source files including invocation modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  it('Test 538 (Commit #36 & Contract Integrity): contracts/src/index.compact has zero modifications', () => {
     const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
     assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
 

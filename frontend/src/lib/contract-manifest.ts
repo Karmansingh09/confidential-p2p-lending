@@ -2,6 +2,7 @@ import type {
   ContractCircuitDefinition,
   ContractCircuitClassification,
 } from '../types/contract-deployment.ts';
+export type { ContractCircuitDefinition, ContractCircuitClassification };
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 
 /**

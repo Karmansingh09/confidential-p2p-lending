@@ -11,10 +11,18 @@ import {
   getContractInvocationService,
   type ContractInvocationDispatchOptions,
 } from './contract-invocation-service.ts';
+import {
+  ContractStateInspectionService,
+  getContractStateInspectionService,
+} from './contract-state-inspection-service.ts';
 import type {
   ContractInvocationRequest,
   ContractInvocationResult,
 } from '../types/contract-invocation.ts';
+import type {
+  ContractStateInspectionRequest,
+  ContractStateInspectionResult,
+} from '../types/contract-state-inspection.ts';
 import {
   getCircuitDefinition,
   getCircuitForAction,
@@ -63,13 +71,17 @@ export interface ContractCallResult<T = void> {
 export class ContractClient {
   private deploymentService: ContractDeploymentService;
   private invocationService: ContractInvocationService;
+  private stateInspectionService: ContractStateInspectionService;
 
   constructor(
     deploymentService?: ContractDeploymentService,
-    invocationService?: ContractInvocationService
+    invocationService?: ContractInvocationService,
+    stateInspectionService?: ContractStateInspectionService
   ) {
     this.deploymentService = deploymentService ?? getContractDeploymentService();
     this.invocationService = invocationService ?? getContractInvocationService(this.deploymentService);
+    this.stateInspectionService =
+      stateInspectionService ?? getContractStateInspectionService(this.deploymentService);
   }
 
   getDeploymentService(): ContractDeploymentService {
@@ -78,6 +90,10 @@ export class ContractClient {
 
   getInvocationService(): ContractInvocationService {
     return this.invocationService;
+  }
+
+  getStateInspectionService(): ContractStateInspectionService {
+    return this.stateInspectionService;
   }
 
   /**
@@ -274,6 +290,48 @@ export class ContractClient {
       errorCode: 'PROVIDER_UNAVAILABLE',
       message: 'On-chain ledger details queries require live Midnight RPC connection.',
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Authoritative State Inspection (Commit #35)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Inspects contract state via the authoritative state inspection boundary.
+   */
+  async inspectContractState(
+    request?: Partial<ContractStateInspectionRequest>,
+    loanRegistry?: LoanRegistry
+  ): Promise<ContractStateInspectionResult> {
+    return this.stateInspectionService.inspectContractState(request, loanRegistry);
+  }
+
+  /**
+   * Authoritatively reads loan status, clearly distinguishing LOCAL_PROTOTYPE from PROVIDER_VERIFIED.
+   */
+  async getAuthoritativeLoanStatus(
+    loanId: string,
+    loanRegistry?: LoanRegistry
+  ): Promise<ContractStateInspectionResult<{ status: LoanStatus; isEligibilityVerified: boolean }>> {
+    return this.stateInspectionService.queryCircuitState<{ status: LoanStatus; isEligibilityVerified: boolean }>(
+      'getLoanStatus',
+      { loanId },
+      loanRegistry
+    );
+  }
+
+  /**
+   * Authoritatively reads loan details, clearly distinguishing LOCAL_PROTOTYPE from PROVIDER_VERIFIED.
+   */
+  async getAuthoritativeLoanDetails(
+    loanId: string,
+    loanRegistry?: LoanRegistry
+  ): Promise<ContractStateInspectionResult<LoanDetailsModel>> {
+    return this.stateInspectionService.queryCircuitState<LoanDetailsModel>(
+      'getLoanDetails',
+      { loanId },
+      loanRegistry
+    );
   }
 
   // ---------------------------------------------------------------------------

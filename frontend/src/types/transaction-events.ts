@@ -31,6 +31,7 @@ export type TransactionEventSource =
   | 'STATUS_SERVICE'
   | 'RECOVERY_SERVICE'
   | 'RECONCILIATION_SERVICE'
+  | 'INVOCATION_SERVICE'
   | 'WALLET_PROVIDER'
   | 'SYSTEM';
 

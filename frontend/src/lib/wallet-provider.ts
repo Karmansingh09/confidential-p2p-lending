@@ -22,6 +22,10 @@ import type {
   TransactionSubmissionResult,
   TransactionStatusResult,
 } from '../types/transaction-request.ts';
+import type {
+  ContractInvocationRequest,
+  ContractInvocationResult,
+} from '../types/contract-invocation.ts';
 
 /**
  * Clean architectural interface representing the minimum wallet and network
@@ -113,4 +117,12 @@ export interface WalletProvider {
    * Optional method to query the network identifier reported by the connected wallet.
    */
   getReportedNetworkId?(): string | null;
+
+  /**
+   * Optional provider-compatible contract circuit invocation method.
+   * Dispatches or delegates circuit execution to the underlying provider runtime.
+   */
+  invokeCircuit?<T = unknown>(
+    request: ContractInvocationRequest
+  ): Promise<ContractInvocationResult<T>>;
 }

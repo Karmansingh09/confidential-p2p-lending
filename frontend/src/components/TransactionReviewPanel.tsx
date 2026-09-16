@@ -327,19 +327,19 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
             gap: '8px',
           }}
         >
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-circuit">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Circuit</div>
             <div style={{ fontSize: '12px', fontWeight: 600, color: '#a78bfa', fontFamily: 'monospace', marginTop: '2px' }}>
               {circuitName}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-classification">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Classification</div>
             <div style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', marginTop: '2px' }}>
               {classification}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-contract">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract</div>
             <div
               style={{
@@ -352,7 +352,20 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               {contractStatusText}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-contract-verification">
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Verification</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: isContractVerified ? '#86efac' : '#fca5a5',
+                marginTop: '2px',
+              }}
+            >
+              {isContractVerified ? 'VERIFIED' : 'UNVERIFIED'}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-network">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
             <div
               style={{
@@ -365,7 +378,7 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               {networkStatusText}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-wallet">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet</div>
             <div
               style={{
@@ -378,7 +391,7 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               {walletStatusText}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-signing">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing</div>
             <div
               style={{
@@ -391,7 +404,7 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               {signingStatusText}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-submission">
             <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission</div>
             <div
               style={{
@@ -404,8 +417,8 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               {submissionStatusText}
             </div>
           </div>
-          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }}>
-            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Invocation</div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-invocation-readiness">
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Readiness</div>
             <div
               style={{
                 fontSize: '12px',
@@ -420,6 +433,25 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               }}
             >
               {invocationStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-preparation-status">
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Preparation</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: isReady ? '#86efac' : '#fde68a',
+                marginTop: '2px',
+              }}
+            >
+              {isReady ? 'PREPARED' : prep.status}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-required-capabilities">
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Required Caps</div>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0', marginTop: '2px' }}>
+              {(prep as any)?.requiresSubmission ? 'SIGN + SUBMIT' : (prep as any)?.requiresProof ? 'CLIENT ZK PROOF' : 'READ LEDGER'}
             </div>
           </div>
           <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-state-inspection">
@@ -443,6 +475,26 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
             </div>
           </div>
         </div>
+        {(!isReady || invocationStatusText === 'BLOCKED') && (
+          <div
+            style={{
+              marginTop: '10px',
+              padding: '8px 12px',
+              background: '#450a0a',
+              borderRadius: '4px',
+              border: '1px solid #7f1d1d',
+              fontSize: '11px',
+              color: '#fca5a5',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            data-testid="diagnostic-blocking-reason"
+          >
+            <span style={{ fontWeight: 700 }}>⛔ Blocking Reason:</span>
+            <span>{(prep as any)?.reason ?? (prep as any)?.message ?? (!isContractVerified ? 'Contract deployment is not verified on-chain.' : 'Transaction readiness evaluation failed.')}</span>
+          </div>
+        )}
       </div>
 
       {/* 5-Stage Boundary Pipeline Chips */}

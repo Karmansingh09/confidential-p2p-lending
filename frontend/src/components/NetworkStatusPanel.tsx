@@ -886,6 +886,96 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
         </div>
       </div>
 
+      {/* Contract Circuit Invocation Boundary (Commit #36) */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+          border: '1px solid #1e293b',
+        }}
+        data-testid="contract-invocation-section"
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}
+          >
+            Contract Circuit Invocation Boundary
+          </div>
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 600,
+              background: deployment.isVerified ? '#064e3b' : '#78350f',
+              color: deployment.isVerified ? '#a7f3d0' : '#fde68a',
+            }}
+          >
+            {deployment.isVerified ? 'READY FOR INVOCATION' : 'READ/PROOF ONLY'}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '8px',
+            fontSize: '11px',
+            marginBottom: '8px',
+          }}
+        >
+          <div data-testid="manifest-circuits-count">
+            <span style={{ color: '#94a3b8' }}>Manifest Circuits: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>6 Canonical Circuits</span>
+          </div>
+          <div data-testid="local-proof-status">
+            <span style={{ color: '#94a3b8' }}>Local Proof (verifyEligibility): </span>
+            <span style={{ color: '#34d399', fontWeight: 500 }}>Available (Off-Chain)</span>
+          </div>
+          <div data-testid="state-read-status">
+            <span style={{ color: '#94a3b8' }}>State Read (getLoanStatus/Details): </span>
+            <span style={{ color: '#34d399', fontWeight: 500 }}>Available (Read-Only)</span>
+          </div>
+          <div data-testid="tx-execution-status">
+            <span style={{ color: '#94a3b8' }}>Tx Execution (fund/repay/settle): </span>
+            <span
+              style={{
+                color: deployment.isVerified && !netContext.isPrototype ? '#34d399' : '#fbbf24',
+                fontWeight: 500,
+              }}
+            >
+              {deployment.isVerified && !netContext.isPrototype ? 'Available' : 'Gated (Verification Required)'}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: '10px',
+            color: '#94a3b8',
+            fontStyle: 'italic',
+            borderTop: '1px solid #1e293b',
+            paddingTop: '6px',
+          }}
+        >
+          Strict tri-partite execution gating: LOCAL_PROOF != STATE_READ != TRANSACTION_EXECUTION.
+        </div>
+      </div>
+
       {/* Transaction Orchestration & Dispatch Readiness (Commit #23) */}
       <div
         style={{

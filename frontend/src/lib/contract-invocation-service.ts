@@ -7,17 +7,30 @@ import {
   type ContractInvocationResult,
   type ContractInvocationStatus,
   type ContractInvocationErrorCode,
+  type ContractInvocationArguments,
+  type ContractInvocationContext,
 } from '../types/contract-invocation.ts';
+const LoanStatus = {
+  requested: 0,
+  funded: 1,
+  repaid: 2,
+  settled: 3,
+} as const;
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 import {
   getCircuitDefinition,
   resolveCircuitNameForAction,
   isKnownCircuit,
+  type ContractCircuitDefinition,
 } from './contract-manifest.ts';
 import {
   ContractDeploymentService,
   getContractDeploymentService,
 } from './contract-deployment-service.ts';
+import {
+  ContractVerificationService,
+  getContractVerificationService,
+} from './contract-verification-service.ts';
 import {
   NetworkConfigService,
   getNetworkConfigService,
@@ -31,6 +44,11 @@ import {
   TransactionExecutionService,
   getTransactionExecutionService,
 } from './transaction-execution-service.ts';
+import {
+  TransactionEventService,
+  getTransactionEventService,
+} from './transaction-event-service.ts';
+import type { TransactionLifecycleEventType } from '../types/transaction-events.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 
 export interface ContractInvocationDispatchOptions {
@@ -57,9 +75,11 @@ export interface ContractInvocationDispatchOptions {
  */
 export class ContractInvocationService {
   private deploymentService: ContractDeploymentService;
+  private verificationService: ContractVerificationService;
   private networkConfigService: NetworkConfigService;
   private sessionService: WalletSessionService;
   private executionService: TransactionExecutionService;
+  private eventService: TransactionEventService;
   private customProvider?: WalletProvider;
 
   constructor(
@@ -67,12 +87,16 @@ export class ContractInvocationService {
     networkConfigService?: NetworkConfigService,
     sessionService?: WalletSessionService,
     executionService?: TransactionExecutionService,
-    customProvider?: WalletProvider
+    customProvider?: WalletProvider,
+    verificationService?: ContractVerificationService,
+    eventService?: TransactionEventService
   ) {
     this.deploymentService = deploymentService ?? getContractDeploymentService();
+    this.verificationService = verificationService ?? getContractVerificationService();
     this.networkConfigService = networkConfigService ?? getNetworkConfigService();
     this.sessionService = sessionService ?? getWalletSessionService();
     this.executionService = executionService ?? getTransactionExecutionService();
+    this.eventService = eventService ?? getTransactionEventService();
     this.customProvider = customProvider;
   }
 
@@ -82,6 +106,14 @@ export class ContractInvocationService {
 
   setDeploymentService(service: ContractDeploymentService): void {
     this.deploymentService = service;
+  }
+
+  getVerificationService(): ContractVerificationService {
+    return this.verificationService;
+  }
+
+  setVerificationService(service: ContractVerificationService): void {
+    this.verificationService = service;
   }
 
   getNetworkConfigService(): NetworkConfigService {
@@ -108,6 +140,14 @@ export class ContractInvocationService {
     this.executionService = service;
   }
 
+  getEventService(): TransactionEventService {
+    return this.eventService;
+  }
+
+  setEventService(service: TransactionEventService): void {
+    this.eventService = service;
+  }
+
   getProvider(): WalletProvider {
     return this.customProvider ?? this.sessionService.getProvider();
   }
@@ -117,9 +157,311 @@ export class ContractInvocationService {
   }
 
   /**
-   * Evaluates the complete readiness pipeline for invoking a contract circuit.
+   * Constructs an authoritative, typed contract circuit invocation request.
+   */
+  createInvocationRequest(
+    circuitName: string,
+    args?: Partial<ContractInvocationArguments>,
+    options?: Partial<ContractInvocationRequest>
+  ): ContractInvocationRequest {
+    const circuitDef = isKnownCircuit(circuitName) ? getCircuitDefinition(circuitName) : undefined;
+    const action = options?.action ?? circuitDef?.action;
+    const loanId = (args as any)?.loanId ?? options?.loanId ?? (options?.loan as any)?.loanId;
+    const callerPublicKey = (args as any)?.callerPublicKey ?? options?.callerPublicKey ?? null;
+    const callerPublicKeyHex = (args as any)?.callerPublicKeyHex ?? options?.callerPublicKeyHex ?? null;
+
+    const request: ContractInvocationRequest = {
+      circuitName,
+      action,
+      loanId,
+      loan: options?.loan,
+      callerPublicKey,
+      callerPublicKeyHex,
+      arguments: (args as ContractInvocationArguments) ?? undefined,
+      parameters: options?.parameters,
+      context: options?.context,
+      createdAt: options?.createdAt ?? Date.now(),
+    };
+
+    if (loanId) {
+      try {
+        this.eventService.appendEvent({
+          transactionId: `inv-req-${request.createdAt}`,
+          eventType: 'CREATED',
+          action: action ?? circuitName,
+          status: 'DRAFT',
+          source: 'INVOCATION_SERVICE',
+          agreementId: loanId,
+          message: `Created invocation request for circuit "${circuitName}".`,
+        });
+      } catch {
+        // Safe non-blocking event append
+      }
+    }
+
+    return request;
+  }
+
+  /**
+   * Retrieves the authoritative circuit definition from the canonical Compact manifest.
+   */
+  getCircuitDefinition(circuitName: string): ContractCircuitDefinition | undefined {
+    return isKnownCircuit(circuitName) ? getCircuitDefinition(circuitName) : undefined;
+  }
+
+  /**
+   * Validates circuit request parameters and explicit argument schemas.
+   */
+  validateInvocationRequest(request: ContractInvocationRequest): {
+    isValid: boolean;
+    error?: ContractInvocationError;
+    validatedArguments?: ContractInvocationArguments;
+  } {
+    if (!request.circuitName || request.circuitName.trim().length === 0) {
+      return {
+        isValid: false,
+        error: new ContractInvocationError(
+          'CIRCUIT_NOT_FOUND',
+          'Circuit name is required for contract invocation.'
+        ),
+      };
+    }
+
+    if (!isKnownCircuit(request.circuitName)) {
+      return {
+        isValid: false,
+        error: new ContractInvocationError(
+          'CIRCUIT_NOT_IN_MANIFEST',
+          `Circuit "${request.circuitName}" is not defined in the canonical contract manifest.`
+        ),
+      };
+    }
+
+    const circuitName = request.circuitName;
+    const loanId = (request.arguments as any)?.loanId ?? request.loanId ?? (request.loan as any)?.loanId;
+
+    // Validate loanId presence for circuits requiring an agreement context
+    if (request.arguments && (!loanId || typeof loanId !== 'string' || loanId.trim().length === 0)) {
+      return {
+        isValid: false,
+        error: new ContractInvocationError(
+          'INVALID_ARGUMENTS',
+          `Circuit "${circuitName}" requires a valid non-empty loan agreement identifier.`
+        ),
+      };
+    }
+
+    // Circuit-specific argument schema validations
+    switch (circuitName) {
+      case 'verifyEligibility': {
+        const borrowerPk = (request.arguments as any)?.borrowerPublicKey ?? request.callerPublicKey;
+        if (borrowerPk && (!(borrowerPk instanceof Uint8Array) || borrowerPk.length !== 32)) {
+          return {
+            isValid: false,
+            error: new ContractInvocationError(
+              'INVALID_ARGUMENTS',
+              'verifyEligibility requires borrowerPublicKey to be a 32-byte Uint8Array.'
+            ),
+          };
+        }
+        break;
+      }
+      case 'fundLoan': {
+        // Loan amount validation
+        if (request.loan) {
+          const loan = request.loan;
+          if (typeof loan.amount === 'bigint' && loan.amount <= 0n) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'INVALID_ARGUMENTS',
+                'Invalid agreement parameters: amount must be positive.'
+              ),
+            };
+          }
+        }
+        if (request.parameters?.amount !== undefined) {
+          const amt = request.parameters.amount;
+          if ((typeof amt === 'bigint' && amt <= 0n) || (typeof amt === 'number' && amt <= 0)) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'INVALID_ARGUMENTS',
+                'Invalid invocation parameters: amount must be positive.'
+              ),
+            };
+          }
+        }
+
+        // Authorization check: Borrower cannot fund own loan
+        if (request.loan && request.callerPublicKeyHex) {
+          if (request.callerPublicKeyHex === request.loan.borrower) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CALLER_NOT_AUTHORIZED',
+                'Borrower cannot fund their own loan.'
+              ),
+            };
+          }
+        }
+
+        // Contract state check: must be requested and verified
+        if (request.loan) {
+          if (request.loan.status !== LoanStatus.requested && (request.loan.status as any) !== 'requested') {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CONTRACT_STATE_INVALID',
+                `Loan must be in requested state to be funded (current status: ${request.loan.status}).`
+              ),
+            };
+          }
+          if (!request.loan.isEligibilityVerified) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CONTRACT_STATE_INVALID',
+                'Loan eligibility must be verified prior to funding.'
+              ),
+            };
+          }
+        }
+        break;
+      }
+      case 'repayLoan': {
+        // Authorization check: Only borrower can repay
+        if (request.loan && request.callerPublicKeyHex) {
+          if (request.loan.borrower && request.callerPublicKeyHex !== request.loan.borrower) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CALLER_NOT_AUTHORIZED',
+                'Only the designated borrower is authorized to repay this loan.'
+              ),
+            };
+          }
+        }
+
+        // Contract state check: must be funded
+        if (request.loan) {
+          if (request.loan.status !== LoanStatus.funded && (request.loan.status as any) !== 'funded') {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CONTRACT_STATE_INVALID',
+                `Loan must be in funded state to be repaid (current status: ${request.loan.status}).`
+              ),
+            };
+          }
+        }
+
+        const repaymentAmount = (request.arguments as any)?.repaymentAmount ?? request.parameters?.repaymentAmount;
+        if (repaymentAmount !== undefined) {
+          if ((typeof repaymentAmount === 'bigint' && repaymentAmount <= 0n) || (typeof repaymentAmount === 'number' && repaymentAmount <= 0)) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'INVALID_ARGUMENTS',
+                'Repayment amount must be positive.'
+              ),
+            };
+          }
+        }
+        break;
+      }
+      case 'settleLoan': {
+        // Authorization check: Borrower or designated lender
+        if (request.loan && request.callerPublicKeyHex) {
+          const isBorrower = request.callerPublicKeyHex === request.loan.borrower;
+          const isLender = request.loan.lender && request.callerPublicKeyHex === request.loan.lender;
+          if (!isBorrower && !isLender) {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CALLER_NOT_AUTHORIZED',
+                'Only the borrower or designated lender is authorized to settle this loan.'
+              ),
+            };
+          }
+        }
+
+        // Contract state check: must be repaid
+        if (request.loan) {
+          if (request.loan.status !== LoanStatus.repaid && (request.loan.status as any) !== 'repaid') {
+            return {
+              isValid: false,
+              error: new ContractInvocationError(
+                'CONTRACT_STATE_INVALID',
+                `Loan must be in repaid state before settlement (current status: ${request.loan.status}).`
+              ),
+            };
+          }
+        }
+        break;
+      }
+      case 'getLoanStatus':
+      case 'getLoanDetails':
+        // Only requires loanId which is verified above
+        break;
+    }
+
+    return {
+      isValid: true,
+      validatedArguments: request.arguments as ContractInvocationArguments,
+    };
+  }
+
+  /**
+   * Queries whether a circuit is currently executable under active deployment,
+   * network, wallet, and capability conditions.
+   */
+  isCircuitExecutable(circuitName: string, context?: Partial<ContractInvocationContext>): boolean {
+    if (!isKnownCircuit(circuitName)) return false;
+    const prep = this.prepareInvocation({ circuitName, context });
+    return prep.isReady;
+  }
+
+  /**
+   * Derives the standardized invocation status from a preparation descriptor.
+   */
+  getInvocationStatus(preparation: ContractInvocationPreparation): ContractInvocationStatus {
+    return preparation.status;
+  }
+
+  /**
+   * Evaluates the complete readiness pipeline for invoking a contract circuit,
+   * recording lifecycle audit events when an agreement context is provided.
    */
   prepareInvocation(request: ContractInvocationRequest): ContractInvocationPreparation {
+    const prep = this.evaluatePreparation(request);
+    const loanId = request.loanId ?? (request.loan as any)?.loanId ?? (request.arguments as any)?.loanId;
+    if (loanId) {
+      try {
+        const eventType: TransactionLifecycleEventType =
+          prep.status === 'READY'
+            ? 'PREPARED'
+            : prep.status === 'UNSUPPORTED'
+            ? 'UNSUPPORTED'
+            : 'BLOCKED';
+        this.eventService.appendEvent({
+          transactionId: `inv-prep-${loanId}-${Date.now()}`,
+          eventType,
+          action: prep.action ?? prep.circuitName,
+          status: prep.status,
+          source: 'INVOCATION_SERVICE',
+          agreementId: loanId,
+          networkId: prep.networkId ?? undefined,
+          message: prep.message,
+        });
+      } catch {
+        // Safe non-blocking event recording
+      }
+    }
+    return prep;
+  }
+
+  private evaluatePreparation(request: ContractInvocationRequest): ContractInvocationPreparation {
     // 1. Resolve circuit from action or explicit name
     let circuitName = request.circuitName;
     let action = request.action;
@@ -832,7 +1174,9 @@ export function getContractInvocationService(
   networkConfigService?: NetworkConfigService,
   sessionService?: WalletSessionService,
   executionService?: TransactionExecutionService,
-  provider?: WalletProvider
+  provider?: WalletProvider,
+  verificationService?: ContractVerificationService,
+  eventService?: TransactionEventService
 ): ContractInvocationService {
   if (
     !serviceInstance ||
@@ -840,14 +1184,18 @@ export function getContractInvocationService(
     networkConfigService ||
     sessionService ||
     executionService ||
-    provider
+    provider ||
+    verificationService ||
+    eventService
   ) {
     serviceInstance = new ContractInvocationService(
       deploymentService,
       networkConfigService,
       sessionService,
       executionService,
-      provider
+      provider,
+      verificationService,
+      eventService
     );
   }
   return serviceInstance;
@@ -862,14 +1210,18 @@ export function resetContractInvocationService(
   networkConfigService?: NetworkConfigService,
   sessionService?: WalletSessionService,
   executionService?: TransactionExecutionService,
-  provider?: WalletProvider
+  provider?: WalletProvider,
+  verificationService?: ContractVerificationService,
+  eventService?: TransactionEventService
 ): ContractInvocationService {
   serviceInstance = new ContractInvocationService(
     deploymentService,
     networkConfigService,
     sessionService,
     executionService,
-    provider
+    provider,
+    verificationService,
+    eventService
   );
   return serviceInstance;
 }

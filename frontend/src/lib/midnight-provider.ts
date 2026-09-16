@@ -22,6 +22,10 @@ import type {
   TransactionSubmissionResult,
   TransactionStatusResult,
 } from '../types/transaction-request.ts';
+import type {
+  ContractInvocationRequest,
+  ContractInvocationResult,
+} from '../types/contract-invocation.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 
 export const PROTOTYPE_BORROWER_PK = new Uint8Array(32).fill(1);
@@ -191,6 +195,21 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
       'UNSUPPORTED_OPERATION',
       'Transaction status tracking is unavailable in prototype mode.'
     );
+  }
+
+  async invokeCircuit<T = unknown>(
+    request: ContractInvocationRequest
+  ): Promise<ContractInvocationResult<T>> {
+    return {
+      success: false,
+      status: 'UNSUPPORTED',
+      circuitName: request.circuitName,
+      action: request.action,
+      loanId: request.loanId,
+      error: 'On-chain circuit invocation is unavailable in prototype mode.',
+      errorCode: 'PROVIDER_UNSUPPORTED',
+      message: 'On-chain circuit invocation is unavailable in prototype mode.',
+    };
   }
 
   private deriveNetworkAccount(

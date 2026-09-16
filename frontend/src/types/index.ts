@@ -252,6 +252,14 @@ export {
   type ContractInvocationRequest,
   type ContractInvocationPreparation,
   type ContractInvocationResult,
+  type ContractInvocationArguments,
+  type ContractInvocationContext,
+  type VerifyEligibilityArguments,
+  type FundLoanArguments,
+  type RepayLoanArguments,
+  type SettleLoanArguments,
+  type GetLoanStatusArguments,
+  type GetLoanDetailsArguments,
 } from './contract-invocation.ts';
 
 export {

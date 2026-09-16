@@ -3008,3 +3008,109 @@ Commit #36 is verified by 26 dedicated unit and integration tests (Tests 513–5
 
 
 
+
+---
+
+## Section 37: Real Midnight Transaction Execution Adapter & Confirmation Lifecycle
+
+### Overview
+
+Commit #37 introduces the `MidnightTransactionExecutionAdapter` and `TransactionConfirmationService` —
+the real provider routing and genuine on-chain confirmation layers of the Midnight P2P Lending Desk.
+
+### 37.1 Type Extensions (transaction-execution.ts)
+
+**`TransactionExecutionStatus`** — Extended with:
+- `AWAITING_SIGNATURE`, `SIGNED`, `SUBMITTED`, `CHECKING_CONFIRMATION`, `UNKNOWN_PROVIDER_STATE`
+
+**`TransactionExecutionStage`** — New 19-stage granular lifecycle type:
+```
+NOT_STARTED → SESSION_VALIDATION → NETWORK_CONFIG_VALIDATION → NETWORK_COMPATIBILITY_CHECK
+→ CONNECTOR_DETECTION → DEPLOYMENT_VALIDATION → CIRCUIT_CLASSIFICATION → LIFECYCLE_GUARD_EVALUATION
+→ CAPABILITY_VERIFICATION → SIGNING_REQUEST → AWAITING_USER_SIGNATURE → SIGNATURE_VERIFIED
+→ SUBMISSION_REQUEST → AWAITING_NETWORK_ACKNOWLEDGEMENT → SUBMISSION_ACKNOWLEDGED
+→ CONFIRMATION_POLLING → CONFIRMATION_VERIFIED → REGISTRY_MUTATION_GATE → COMPLETE
+```
+
+**`TransactionExecutionMode`** — New classification enum:
+- `PROTOTYPE_LOCAL` — No signing/submission (offline prototype)
+- `ADAPTER_UNSUPPORTED` — Real boundary reached; live SDK not yet integrated
+- `LIVE_WALLET` — Real Midnight/Lace wallet; full lifecycle
+- `UNKNOWN` — Mode cannot be determined
+
+**`ConfirmationPollState`** — Tracks bounded poll progress without fabricating status.
+
+**Extended error codes**: `WALLET_NOT_CONNECTED`, `USER_REJECTED`, `NETWORK_MISMATCH`,
+`UNKNOWN_WALLET_NETWORK`, `CONTRACT_NOT_VERIFIED`, `CONTRACT_NOT_DEPLOYED`, `CIRCUIT_UNAVAILABLE`,
+`SIGNING_FAILED`, `SUBMISSION_FAILED`, `TRANSACTION_NOT_FOUND`, `CONFIRMATION_TIMEOUT`,
+`PROVIDER_UNAVAILABLE`, `UNKNOWN_PROVIDER_STATE`.
+
+### 37.2 MidnightTransactionExecutionAdapter (midnight-transaction-execution-adapter.ts)
+
+Production-grade adapter implementing real wallet routing:
+
+**Circuit Classification Gate:**
+- `LOCAL_PROOF` (verifyEligibility) → bypasses signing/submission lifecycle immediately
+- `STATE_READ` (getLoanStatus, getLoanDetails) → bypasses signing/submission lifecycle immediately
+- `TRANSACTION_EXECUTION` (fundLoan, repayLoan, settleLoan) → full 11-stage signing/submission path
+
+**Execution Path (11 Stages):**
+1. Network Configuration Gate
+2. Network Compatibility Check (for non-LOCAL)
+3. Circuit Classification
+4. Prototype Provider Honest Rejection
+5. Connector Detection
+6. Capability Verification
+7. Signing Request (emits `SIGNING_STARTED`, `SIGNED`)
+8. Network Submission (emits `SUBMISSION_STARTED`)
+9. Submission Result Routing
+10. Confirmed — Registry Mutation Gate (emits `CONFIRMED`) — **ONLY real CONFIRMED mutates registry**
+11. Failed Submission (emits `FAILED`)
+
+**Anti-Fabrication Guarantees:**
+- Never generates fake transaction IDs, hashes, block heights, or signatures
+- Returns typed `UNSUPPORTED`/`UNAVAILABLE` when live Midnight SDK is absent
+- `LoanRegistry` is NEVER mutated unless the provider explicitly confirms with `CONFIRMED` status
+- All `PENDING`/`SUBMITTED` outcomes explicitly set `registryUpdated: false`
+
+### 37.3 TransactionConfirmationService (transaction-confirmation-service.ts)
+
+Bounded genuine polling for on-chain confirmation:
+
+**Invariants:**
+- Returns `CONFIRMED` ONLY when provider explicitly reports `CONFIRMED` status
+- Never infers confirmation from elapsed time, submission success, or heuristics
+- Always terminates — bounded by `maxPolls` or `timeoutMs`
+- Returns `PROVIDER_UNAVAILABLE` immediately if provider lacks `getTransactionStatus`
+- Returns `TIMEOUT` when polls exhausted without confirmed response
+- Returns `REJECTED` when provider reports `FAILED` or `REJECTED`
+
+**Event Emission:**
+- `CONFIRMATION_CHECK_STARTED` — when polling begins
+- `CONFIRMED` — when provider explicitly confirms
+- `REJECTED` — when provider rejects
+- `FAILED` — on timeout
+
+### 37.4 Event System Extensions (transaction-events.ts)
+
+New `TransactionEventSource` values:
+- `EXECUTION_ADAPTER` — Events emitted by `MidnightTransactionExecutionAdapter`
+- `CONFIRMATION_SERVICE` — Events emitted by `TransactionConfirmationService`
+
+### 37.5 Test Coverage (Tests 539–570: 32 new tests)
+
+- Tests 539–541: New type definitions and error codes
+- Tests 542–561: MidnightTransactionExecutionAdapter — circuit classification, execution modes,
+  prototype rejection, signing rejection routing, CONFIRMED/PENDING/FAILED outcomes,
+  registry mutation gate, poll state initialization, status query
+- Tests 562–568: TransactionConfirmationService — instantiation, PROVIDER_UNAVAILABLE,
+  TIMEOUT, CONFIRMED, REJECTED, anti-fabrication, reset
+- Tests 569–570: Event source validation and contract integrity guard
+
+### 37.6 Architectural Invariants Preserved
+
+1. `contracts/src/index.compact` — Zero modifications
+2. All 593 prior tests remain passing (625 total; 32 new)
+3. Zero occurrences of forbidden privacy terms across >= 75 frontend source files
+4. `LoanRegistry` mutations remain strictly gated behind authentic CONFIRMED status
+5. `LocalPrototypeWalletProvider` continues to reject all signing/submission/confirmation operations

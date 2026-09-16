@@ -28,6 +28,8 @@ export type TransactionLifecycleEventType =
  */
 export type TransactionEventSource =
   | 'EXECUTION_SERVICE'
+  | 'EXECUTION_ADAPTER'
+  | 'CONFIRMATION_SERVICE'
   | 'STATUS_SERVICE'
   | 'RECOVERY_SERVICE'
   | 'RECONCILIATION_SERVICE'

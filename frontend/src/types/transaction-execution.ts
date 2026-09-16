@@ -12,13 +12,52 @@ export type TransactionExecutionStatus =
   | 'NOT_STARTED'
   | 'VALIDATING'
   | 'PREPARING'
+  | 'AWAITING_SIGNATURE'
+  | 'SIGNED'
   | 'SUBMITTING'
+  | 'SUBMITTED'
+  | 'CHECKING_CONFIRMATION'
   | 'BLOCKED'
   | 'PENDING'
   | 'CONFIRMED'
   | 'REJECTED'
   | 'FAILED'
-  | 'UNSUPPORTED';
+  | 'UNSUPPORTED'
+  | 'UNKNOWN_PROVIDER_STATE';
+
+/**
+ * Granular execution stage for the 19-stage lifecycle pipeline.
+ * Provides finer-grained observability than TransactionExecutionStatus.
+ */
+export type TransactionExecutionStage =
+  | 'NOT_STARTED'
+  | 'SESSION_VALIDATION'
+  | 'NETWORK_CONFIG_VALIDATION'
+  | 'NETWORK_COMPATIBILITY_CHECK'
+  | 'CONNECTOR_DETECTION'
+  | 'DEPLOYMENT_VALIDATION'
+  | 'CIRCUIT_CLASSIFICATION'
+  | 'LIFECYCLE_GUARD_EVALUATION'
+  | 'CAPABILITY_VERIFICATION'
+  | 'SIGNING_REQUEST'
+  | 'AWAITING_USER_SIGNATURE'
+  | 'SIGNATURE_VERIFIED'
+  | 'SUBMISSION_REQUEST'
+  | 'AWAITING_NETWORK_ACKNOWLEDGEMENT'
+  | 'SUBMISSION_ACKNOWLEDGED'
+  | 'CONFIRMATION_POLLING'
+  | 'CONFIRMATION_VERIFIED'
+  | 'REGISTRY_MUTATION_GATE'
+  | 'COMPLETE';
+
+/**
+ * Classification of the active transaction execution mode.
+ */
+export type TransactionExecutionMode =
+  | 'PROTOTYPE_LOCAL'       // Offline local prototype; no signing/submission
+  | 'ADAPTER_UNSUPPORTED'   // Real adapter boundary reached; SDK not integrated
+  | 'LIVE_WALLET'           // Real Midnight/Lace wallet; full lifecycle
+  | 'UNKNOWN';              // Mode cannot be determined
 
 /**
  * Low-level submission status returned by or negotiated with the wallet provider.
@@ -42,21 +81,55 @@ export type ConfirmationState =
   | 'UNCONFIRMED_PRESERVED';
 
 /**
+ * State of an active bounded confirmation poll.
+ * Used by TransactionConfirmationService to track polling progress without fabricating status.
+ */
+export interface ConfirmationPollState {
+  /** Transaction ID being polled */
+  transactionId: string;
+  /** Number of polls executed so far */
+  pollCount: number;
+  /** Maximum allowed polls before timeout */
+  maxPolls: number;
+  /** Interval between polls in milliseconds */
+  pollIntervalMs: number;
+  /** Whether a timeout has been reached */
+  timedOut: boolean;
+  /** Current provider-reported status */
+  lastStatus: ProviderSubmissionStatus | null;
+  /** Timestamp of the last poll */
+  lastPollAt: number | null;
+}
+
+/**
  * Sanitized domain error codes for transaction execution failures.
  */
 export type TransactionExecutionErrorCode =
   | 'DISCONNECTED_WALLET'
+  | 'WALLET_NOT_CONNECTED'
   | 'UNSUPPORTED_PROVIDER'
   | 'REJECTED_SIGNATURE'
   | 'REJECTED_CONNECTION'
+  | 'USER_REJECTED'
   | 'UNSUPPORTED_CAPABILITY'
   | 'GUARD_VALIDATION_FAILED'
   | 'MALFORMED_REQUEST'
   | 'PROVIDER_ERROR'
   | 'NETWORK_ERROR'
+  | 'NETWORK_MISMATCH'
+  | 'UNKNOWN_WALLET_NETWORK'
+  | 'CONTRACT_NOT_VERIFIED'
+  | 'CONTRACT_NOT_DEPLOYED'
+  | 'CIRCUIT_UNAVAILABLE'
+  | 'SIGNING_FAILED'
+  | 'SUBMISSION_FAILED'
+  | 'TRANSACTION_NOT_FOUND'
   | 'CONFIRMATION_TIMEOUT'
+  | 'PROVIDER_UNAVAILABLE'
+  | 'UNKNOWN_PROVIDER_STATE'
   | 'UNKNOWN_STATUS'
   | 'CONTRACT_ERROR';
+
 
 /**
  * Public transaction receipt containing only genuine provider-returned metadata.
@@ -139,6 +212,10 @@ export interface TransactionExecutionResult {
   registryUpdated: boolean;
   /** Explicit confirmation state */
   confirmationState: ConfirmationState;
+  /** Active execution mode, if resolved */
+  executionMode?: TransactionExecutionMode;
+  /** Granular execution stage reached, if resolved */
+  executionStage?: TransactionExecutionStage;
 }
 
 /**

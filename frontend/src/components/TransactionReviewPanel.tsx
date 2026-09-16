@@ -17,6 +17,7 @@ import {
 } from '../lib/contract-manifest.ts';
 import { getWalletProvider } from '../lib/account-service.ts';
 import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
+import { getContractStateInspectionService } from '../lib/contract-state-inspection-service.ts';
 import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import { evaluateNetworkCompatibility } from '../lib/wallet-network-compatibility.ts';
 
@@ -109,6 +110,10 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
   } else {
     invocationStatusText = 'BLOCKED';
   }
+
+  const stateInspectionService = getContractStateInspectionService();
+  const stateSnapshot = stateInspectionService.getInspectionState();
+  const stateStatusText = stateSnapshot.status;
 
   const circuitDef = getCircuitDefinition(circuitName);
   const classification = circuitDef?.classification ?? getInvocationClassification(circuitName) ?? (action === 'VERIFY_ELIGIBILITY' ? 'LOCAL_PROOF' : 'TRANSACTION_EXECUTION');
@@ -415,6 +420,26 @@ export const TransactionReviewPanel: React.FC<TransactionReviewPanelProps> = ({
               }}
             >
               {invocationStatusText}
+            </div>
+          </div>
+          <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '4px' }} data-testid="diagnostic-state-inspection">
+            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>State Inspection</div>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color:
+                  stateStatusText === 'VERIFIED' || stateStatusText === 'AVAILABLE'
+                    ? '#86efac'
+                    : stateStatusText === 'CHECKING'
+                    ? '#93c5fd'
+                    : stateStatusText === 'UNSUPPORTED'
+                    ? '#fde68a'
+                    : '#94a3b8',
+                marginTop: '2px',
+              }}
+            >
+              {stateStatusText}
             </div>
           </div>
         </div>

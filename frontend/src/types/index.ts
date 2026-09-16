@@ -253,3 +253,15 @@ export {
   type ContractInvocationPreparation,
   type ContractInvocationResult,
 } from './contract-invocation.ts';
+
+export {
+  ContractStateInspectionError,
+  DEFAULT_UNINSPECTED_SNAPSHOT,
+  type ContractStateInspectionStatus,
+  type ContractStateInspectionReason,
+  type ContractStateSource,
+  type ContractStateSnapshot,
+  type ContractStateInspectionRequest,
+  type ContractStateInspectionResult,
+} from './contract-state-inspection.ts';
+

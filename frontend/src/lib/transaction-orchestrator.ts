@@ -15,6 +15,10 @@ import { getNetworkConfigService } from './network-config-service.ts';
 import { evaluateConnectorCapabilities } from './wallet-connector-discovery.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 import type { ContractDeploymentService } from './contract-deployment-service.ts';
+import {
+  type ContractStateInspectionService,
+  getContractStateInspectionService,
+} from './contract-state-inspection-service.ts';
 import { isKnownCircuit } from './contract-manifest.ts';
 import {
   type LifecycleTransactionAction,
@@ -341,7 +345,9 @@ export function evaluateTransactionReadiness(
   account: { publicKey?: Uint8Array | null } | null,
   action: LifecycleTransactionAction,
   provider?: WalletProvider,
-  deploymentService?: ContractDeploymentService
+  deploymentService?: ContractDeploymentService,
+  stateInspectionService?: ContractStateInspectionService,
+  options?: { requireStateInspection?: boolean }
 ): TransactionReadinessEvaluation {
   const activeProvider = provider ?? getWalletProvider();
   const netConfig = getNetworkConfigService().getNetworkConfig();
@@ -558,6 +564,32 @@ export function evaluateTransactionReadiness(
           status: 'BLOCKED',
           readinessReason: 'CONTRACT_CIRCUIT_UNAVAILABLE',
           authorizationReason: `Circuit "${circuitName}" is not in deployment manifest.`,
+        },
+      };
+    }
+  }
+
+  // 8.5 Authoritative Contract State Inspection Gate
+  const isExecutingAction =
+    action === 'FUND_LOAN' || action === 'REPAY_LOAN' || action === 'SETTLE_LOAN';
+  if (options?.requireStateInspection && isExecutingAction) {
+    const stateService = stateInspectionService ?? getContractStateInspectionService();
+    const state = stateService.getInspectionState();
+    if (
+      state.status === 'UNAVAILABLE' ||
+      state.status === 'UNSUPPORTED' ||
+      state.status === 'FAILED' ||
+      !state.stateAvailable
+    ) {
+      return {
+        isReady: false,
+        reason: 'STATE_INSPECTION_UNAVAILABLE',
+        message: 'Transaction blocked: Authoritative contract state inspection is unavailable.',
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: 'STATE_INSPECTION_UNAVAILABLE',
+          authorizationReason: 'Authoritative contract state inspection is unavailable.',
         },
       };
     }

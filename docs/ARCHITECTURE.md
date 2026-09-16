@@ -2738,6 +2738,120 @@ Zero private financial parameters, secret underwriting values, or witness state 
 
 Commit #34 is verified by 24 dedicated unit and integration tests (Tests 462–485 in `tests/frontend.test.js`), bringing total test suite coverage to **540 tests** (486 frontend tests + 54 contract tests), all passing cleanly with zero failures.
 
+## 35. Authoritative On-Chain Contract State Inspection Boundary
+
+### 35.1 Overview & Architectural Objectives
+
+Commit #35 introduces the canonical **Authoritative On-Chain Contract State Inspection Boundary** (`frontend/src/lib/contract-state-inspection-service.ts`, `frontend/src/lib/contract-state-provider.ts`, `frontend/src/lib/midnight-contract-state-adapter.ts`, and `frontend/src/types/contract-state-inspection.ts`).
+
+This boundary establishes a formal separation between local prototype simulated state and authentic on-chain provider state:
+$$\text{LOCAL SIMULATED STATE} \neq \text{UNVERIFIED PROVIDER READ} \neq \text{AUTHORITATIVE ON-CHAIN STATE}$$
+
+Key architectural objectives include:
+1. **Authoritative State Discrimination**: Clear differentiation between `LOCAL_PROTOTYPE` (ephemeral UI/testing projection), `PROVIDER_READ` (unverified provider response), and `PROVIDER_VERIFIED` (attested on-chain ledger state with valid block context).
+2. **Anti-Fabrication Invariant**: Never fabricate synthetic block heights, timestamps, or fake transaction identifiers when querying state in prototype mode.
+3. **Registry Immutability Invariant**: State inspection is strictly read-only and idempotent; it NEVER mutates or alters `LoanRegistry` state or agreement records.
+4. **Multi-Stage Gating**: Systematic verification encompassing address validation, target network compatibility, deployment confirmation, and circuit classification before executing queries.
+5. **Canonical Circuit Classification**: Only `STATE_READ` circuits (`getLoanStatus`, `getLoanDetails`) are queryable; `TRANSACTION_EXECUTION` (`fundLoan`, `repayLoan`, `settleLoan`) and `LOCAL_PROOF` (`verifyEligibility`) circuits are strictly rejected for state inspection.
+
+### 35.2 Core State Inspection Domain Models & Invariants
+
+The state inspection domain models (`frontend/src/types/contract-state-inspection.ts`) establish strongly typed lifecycle representations:
+
+- **`ContractStateInspectionStatus`**:
+  - `NOT_CHECKED`: Initial state before inspection has occurred.
+  - `CHECKING`: Active asynchronous inspection operation in progress.
+  - `AVAILABLE`: Contract state is inspectable via local prototype or unverified provider read.
+  - `VERIFIED`: Contract state is verified against an authentic on-chain provider with verifiable block context.
+  - `NOT_DEPLOYED`: Target contract bytecode has not been confirmed on the ledger.
+  - `NETWORK_MISMATCH`: Target network of contract differs from active network configuration.
+  - `INVALID`: Invalid contract address format or corrupted state parameters.
+  - `UNAVAILABLE`: Provider is unreachable or RPC indexer is offline.
+  - `UNSUPPORTED`: Provider or requested circuit does not support state queries.
+  - `FAILED`: Unhandled provider or execution error encountered during inspection.
+
+- **`ContractStateSource`**:
+  - `LOCAL_PROTOTYPE`: In-memory prototype registry simulation. Block height is strictly `null`.
+  - `PROVIDER_READ`: Live provider state queried without full block consensus verification.
+  - `PROVIDER_VERIFIED`: Live provider state verified with authentic block height and network consensus.
+
+- **`ContractStateSnapshot`**:
+  Immutable snapshot capturing `contractAddress`, `targetNetwork`, `status`, `reason`, `source`, `stateAvailable`, `deploymentVerified`, `blockHeight`, `lastInspectedAt`, and optional `details`.
+
+- **Anti-Fabrication Guarantees**:
+  - `blockHeight` is strictly `null` under `LOCAL_PROTOTYPE`.
+  - Zero synthetic transaction hashes, proof IDs, or fake cryptographic commitments are fabricated.
+  - Snapshots are frozen (`Object.freeze`) to guarantee immutability.
+
+### 35.3 Tri-Partite State Provider Abstraction
+
+State query capabilities are abstracted through the `ContractStateProvider` interface (`frontend/src/lib/contract-state-provider.ts`):
+- `inspectContractState(request: ContractStateInspectionRequest): Promise<ContractStateInspectionResult>`
+- `queryCircuitState(circuitName: string, params?: unknown): Promise<ContractStateInspectionResult>`
+- `getStateAtReference(reference: string, options?: unknown): Promise<ContractStateInspectionResult>`
+
+Two primary provider implementations fulfill this interface:
+1. **`LocalPrototypeContractStateProvider`**:
+   - Inspects the local `LoanRegistry` without fabricating blockchain activity.
+   - Always assigns `source: 'LOCAL_PROTOTYPE'`, `blockHeight: null`, and `stateAvailable: true`.
+   - Leaves central registry state 100% immutable.
+2. **`MidnightContractStateAdapter`**:
+   - Production adapter for live Midnight Network RPC/indexer queries.
+   - Returns honest `UNSUPPORTED` / `UNAVAILABLE` in the absence of live network connection.
+   - Provides test injection hooks (`injectMockStateQuery`, `clearMockStateQuery`, `setSupported`) allowing deterministic unit/integration testing of all live provider edge cases.
+
+### 35.4 ContractStateInspectionService Architecture
+
+`ContractStateInspectionService` (`frontend/src/lib/contract-state-inspection-service.ts`) coordinates end-to-end inspection:
+1. **Address Validation**: Ensures the target contract address matches the canonical 32-byte hexadecimal format. Returns `FAILED` with `INVALID_CONTRACT_ADDRESS` on malformed inputs.
+2. **Network Compatibility**: Validates that target network matches active network configuration. Returns `NETWORK_MISMATCH` if inconsistent.
+3. **Deployment Status Validation**: Checks with `ContractDeploymentService` to confirm contract configuration and deployment status.
+4. **Circuit Classification Gate**: Enforces circuit classification via `CONTRACT_CIRCUIT_MANIFEST`. Rejects non-read circuits (`fundLoan`, `repayLoan`, `settleLoan`, `verifyEligibility`) with `UNSUPPORTED` and reason `STATE_QUERY_UNSUPPORTED`.
+5. **Deterministic Lifecycle Transitions**: Transitions through `NOT_CHECKED` $\to$ `CHECKING` $\to$ `AVAILABLE` / `VERIFIED` or typed failure states.
+6. **Reactive State Subscriptions**: Provides `subscribe(listener)` and `getSnapshot()` enabling UI components to re-render in real-time upon state changes.
+
+### 35.5 Integration with ContractClient & Transaction Orchestrator
+
+- **`ContractClient` Integration**:
+  - Exposes `inspectContractState(request?)` delegating directly to the inspection service.
+  - Exposes `getAuthoritativeLoanStatus(loanId)` and `getAuthoritativeLoanDetails(loanId)` returning authoritative ledger state or typed inspection failures.
+- **`TransactionOrchestrator` Integration**:
+  - `evaluateTransactionReadiness` integrates a dedicated state inspection gate.
+  - Verifies that authoritative state is inspectable before permitting dependent on-chain actions.
+  - Emits `STATE_INSPECTION_UNAVAILABLE` or `STATE_NOT_AVAILABLE` when state verification fails or is blocked.
+
+### 35.6 Technical Diagnostic UI Elements
+
+Technical state inspection indicators provide complete operator transparency:
+- **`NetworkStatusPanel.tsx`**: Renders a dedicated "Contract State Inspection" diagnostic section (`data-testid="contract-state-inspection-section"`) displaying:
+  - Contract Address (`data-testid="state-inspection-address"`)
+  - Target Network (`data-testid="state-inspection-network"`)
+  - Verification Status (`data-testid="state-inspection-status"`)
+  - State Source (`data-testid="state-inspection-source"`)
+  - State Availability (`data-testid="state-inspection-availability"`)
+  - Block Height (`data-testid="state-inspection-block-height"`)
+- **`TransactionReviewPanel.tsx`**: Renders a dedicated diagnostic card (`data-testid="diagnostic-state-inspection"`) inside the technical diagnostics grid displaying live inspection status, state source, and availability.
+
+### 35.7 Strict Zero-Knowledge Privacy & Invariant Verification
+
+All state inspection models, service classes, UI panels, and helper methods operate exclusively on public identifiers and agreement metadata (`loanId`, `status`, `amount`, `interestRateBps`, `durationBlocks`). Zero private financial parameters or witness state are exposed or retained in the inspection subsystem.
+
+### 35.8 Verification & Test Coverage
+
+Commit #35 is verified by 27 dedicated unit and integration tests (Tests 486–512 in `tests/frontend.test.js`), bringing total test suite coverage to **567 tests** (513 frontend tests + 54 contract tests), all passing cleanly with zero failures:
+- Address validation and format rejection
+- Network mismatch handling
+- Deployment verification prerequisites
+- Local prototype non-fabrication (null block height)
+- Midnight adapter live query and error mapping
+- Circuit classification enforcement (read-only vs execution/proof)
+- State inspection lifecycle transitions and subscriptions
+- ContractClient authoritative queries
+- TransactionOrchestrator readiness integration
+- UI diagnostic rendering in NetworkStatusPanel and TransactionReviewPanel
+- Full privacy audit across all frontend source files (zero forbidden terms)
+- Immutable contract verification (`contracts/src/index.compact` untouched)
+
 
 
 

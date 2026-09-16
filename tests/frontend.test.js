@@ -247,6 +247,22 @@ import {
   resetContractInvocationService,
 } from '../frontend/src/lib/contract-invocation-service.ts';
 import {
+  ContractStateInspectionError,
+  DEFAULT_UNINSPECTED_SNAPSHOT,
+} from '../frontend/src/types/contract-state-inspection.ts';
+import {
+  LocalPrototypeContractStateProvider,
+} from '../frontend/src/lib/contract-state-provider.ts';
+import {
+  MidnightContractStateAdapter,
+  createDefaultContractStateProvider,
+} from '../frontend/src/lib/midnight-contract-state-adapter.ts';
+import {
+  ContractStateInspectionService,
+  getContractStateInspectionService,
+  resetContractStateInspectionService,
+} from '../frontend/src/lib/contract-state-inspection-service.ts';
+import {
   getInvocationClassification,
 } from '../frontend/src/lib/contract-manifest.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
@@ -11025,6 +11041,664 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
   });
 
   it('Test 485 (Commit #34 & Contract Integrity): contracts/src/index.compact has zero modifications', () => {
+    const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+    assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
+
+    const contractContent = fs.readFileSync(contractPath);
+    const expectedHash = crypto.createHash('sha256').update(contractContent).digest('hex');
+
+    assert.equal(
+      COMPACT_SOURCE_FINGERPRINT,
+      expectedHash,
+      'Compact smart contract bytecode/source must have zero modifications'
+    );
+  });
+
+  it('Test 486 (Commit #35): Default inspection state is NOT_CHECKED with uninspected defaults and null block height', () => {
+    resetContractStateInspectionService();
+    const service = getContractStateInspectionService();
+    const state = service.getInspectionState();
+    assert.equal(state.status, 'NOT_CHECKED');
+    assert.equal(state.reason, 'CONTRACT_NOT_CONFIGURED');
+    assert.equal(state.source, 'NONE');
+    assert.equal(state.stateAvailable, false);
+    assert.equal(state.deploymentVerified, false);
+    assert.equal(state.blockHeight, null);
+    assert.equal(state.data, null);
+    assert.deepEqual(state, DEFAULT_UNINSPECTED_SNAPSHOT);
+  });
+
+  it('Test 487 (Commit #35): Contract address validation rejects invalid format with status FAILED and reason INVALID_CONTRACT_ADDRESS', async () => {
+    const service = new ContractStateInspectionService();
+    const result = await service.inspectContractState({
+      contractAddress: 'invalid-address-not-hex',
+      networkId: 'midnight-testnet',
+    });
+    assert.equal(result.status, 'FAILED');
+    assert.equal(result.reason, 'INVALID_CONTRACT_ADDRESS');
+    assert.equal(result.snapshot.stateAvailable, false);
+    assert.equal(result.snapshot.deploymentVerified, false);
+    assert.equal(result.snapshot.blockHeight, null);
+  });
+
+  it('Test 488 (Commit #35): Network mismatch between target network and active network produces NETWORK_MISMATCH', async () => {
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet-01',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-mainnet-99',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+    });
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    const result = await service.inspectContractState({
+      contractAddress: validAddr,
+      networkId: 'midnight-mainnet-99',
+    });
+
+    assert.equal(result.status, 'NETWORK_MISMATCH');
+    assert.equal(result.reason, 'NETWORK_MISMATCH');
+    assert.equal(result.snapshot.stateAvailable, false);
+  });
+
+  it('Test 489 (Commit #35): Unconfigured deployment produces UNAVAILABLE / CONTRACT_NOT_CONFIGURED', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.clearDeployment();
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'LOCAL',
+      networkId: 'midnight-prototype-local',
+      nodeUrl: null,
+      indexerUrl: null,
+      proofServerUrl: null,
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    const result = await service.inspectContractState({});
+
+    assert.equal(result.status, 'UNAVAILABLE');
+    assert.equal(result.reason, 'CONTRACT_NOT_CONFIGURED');
+    assert.equal(result.snapshot.stateAvailable, false);
+  });
+
+  it('Test 490 (Commit #35): Unverified deployment produces CONTRACT_VERIFICATION_UNAVAILABLE when deployment not verified', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet',
+      isVerified: false,
+      status: 'CONFIGURED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: null,
+      source: 'MANUAL_ENTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const adapter = new MidnightContractStateAdapter();
+    const service = new ContractStateInspectionService(deploymentService, netConfigService, adapter);
+    const result = await service.inspectContractState();
+
+    assert.equal(result.status, 'UNAVAILABLE');
+    assert.equal(result.reason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+    assert.equal(result.snapshot.deploymentVerified, false);
+  });
+
+  it('Test 491 (Commit #35): Local prototype inspection returns AVAILABLE with source LOCAL_PROTOTYPE and null block height', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'LOCAL',
+      networkId: 'midnight-prototype-local',
+      nodeUrl: null,
+      indexerUrl: null,
+      proofServerUrl: null,
+    });
+
+    const protoProvider = new LocalPrototypeContractStateProvider();
+    const service = new ContractStateInspectionService(deploymentService, netConfigService, protoProvider);
+    const registry = createDefaultLoanRegistry();
+    const result = await service.inspectContractState(undefined, registry);
+
+    assert.equal(result.status, 'AVAILABLE');
+    assert.equal(result.reason, 'STATE_FOUND');
+    assert.equal(result.source, 'LOCAL_PROTOTYPE');
+    assert.equal(result.snapshot.stateAvailable, true);
+    assert.equal(result.snapshot.deploymentVerified, true);
+    assert.equal(result.snapshot.blockHeight, null);
+    assert.ok(result.data !== null);
+  });
+
+  it('Test 492 (Commit #35): Real Midnight state inspection adapter reports PROVIDER_VERIFIED with genuine block height when mock query provided', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MIDNIGHT_INDEXER',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      stateFound: true,
+      blockHeight: 987654n,
+      data: { loanStatus: 1 },
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService, adapter);
+    const result = await service.queryCircuitState('getLoanStatus', { loanId: 'loan-001' });
+
+    assert.equal(result.status, 'VERIFIED');
+    assert.equal(result.reason, 'STATE_FOUND');
+    assert.equal(result.source, 'PROVIDER_VERIFIED');
+    assert.equal(result.snapshot.deploymentVerified, true);
+    assert.equal(result.snapshot.stateAvailable, true);
+    assert.equal(result.snapshot.blockHeight, 987654n);
+    assert.deepEqual(result.data, { loanStatus: 1 });
+  });
+
+  it('Test 493 (Commit #35): Real Midnight adapter reports UNAVAILABLE / PROVIDER_UNAVAILABLE when adapter is unsupported or query fails', async () => {
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      isUnavailable: true,
+    });
+
+    const res = await adapter.inspectContractState({
+      circuitName: 'getLoanStatus',
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+    });
+
+    assert.equal(res.status, 'UNAVAILABLE');
+    assert.equal(res.reason, 'PROVIDER_UNAVAILABLE');
+    assert.equal(res.snapshot.stateAvailable, false);
+  });
+
+  it('Test 494 (Commit #35): Provider returns UNSUPPORTED / STATE_QUERY_UNSUPPORTED when circuit is not supported for query', async () => {
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      isUnsupported: true,
+    });
+
+    const res = await adapter.inspectContractState({
+      circuitName: 'getLoanStatus',
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+    });
+
+    assert.equal(res.status, 'UNSUPPORTED');
+    assert.equal(res.reason, 'STATE_QUERY_UNSUPPORTED');
+  });
+
+  it('Test 495 (Commit #35): State query succeeds returning STATE_FOUND with accurate ledger state snapshot', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'LOCAL',
+      networkId: 'midnight-prototype-local',
+      nodeUrl: null,
+      indexerUrl: null,
+      proofServerUrl: null,
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    const registry = createDefaultLoanRegistry();
+    const result = await service.queryCircuitState('getLoanStatus', { loanId: 'loan-001' }, registry);
+
+    assert.equal(result.status, 'AVAILABLE');
+    assert.equal(result.reason, 'STATE_FOUND');
+    assert.ok(result.data !== null);
+    assert.equal(result.data.status, 0);
+  });
+
+  it('Test 496 (Commit #35): State query provider error is caught and mapped to FAILED / STATE_QUERY_FAILED', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MIDNIGHT_INDEXER',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      shouldFail: true,
+      errorMessage: 'Midnight RPC node timeout',
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService, adapter);
+    const result = await service.queryCircuitState('getLoanStatus', { loanId: 'loan-001' });
+
+    assert.equal(result.status, 'FAILED');
+    assert.equal(result.reason, 'STATE_QUERY_FAILED');
+    assert.equal(result.snapshot.stateAvailable, false);
+    assert.ok(result.error && result.error.includes('Midnight RPC node timeout'));
+  });
+
+  it('Test 497 (Commit #35): Unknown provider state maps cleanly to UNKNOWN_PROVIDER_STATE', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-testnet',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'MIDNIGHT_INDEXER',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'TESTNET',
+      networkId: 'midnight-testnet',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      unknownProviderState: true,
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService, adapter);
+    const result = await service.queryCircuitState('getLoanStatus', { loanId: 'loan-001' });
+
+    assert.equal(result.status, 'FAILED');
+    assert.equal(result.reason, 'UNKNOWN_PROVIDER_STATE');
+    assert.equal(result.snapshot.stateAvailable, false);
+  });
+
+  it('Test 498 (Commit #35): Genuine block height (e.g. 12345n) reported by Midnight adapter is preserved without modification', async () => {
+    const adapter = new MidnightContractStateAdapter();
+    adapter.injectMockStateQuery({
+      stateFound: true,
+      blockHeight: 12345n,
+      data: { details: 'authoritative-details' },
+    });
+
+    const res = await adapter.inspectContractState({
+      circuitName: 'getLoanDetails',
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet',
+      loanId: 'loan-001',
+    });
+
+    assert.equal(res.snapshot.blockHeight, 12345n);
+    assert.equal(res.source, 'PROVIDER_VERIFIED');
+  });
+
+  it('Test 499 (Commit #35 & Anti-Fabrication Invariant): Local prototype inspection strictly leaves blockHeight null (never generates synthetic block height)', async () => {
+    const protoProvider = new LocalPrototypeContractStateProvider();
+    protoProvider.setLoanRegistry(createDefaultLoanRegistry());
+    const res = await protoProvider.inspectContractState({
+      circuitName: 'getLoanStatus',
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-prototype-local',
+      loanId: 'loan-001',
+    });
+
+    assert.equal(res.snapshot.blockHeight, null);
+    assert.equal(res.snapshot.deploymentVerified, false);
+    assert.equal(res.source, 'LOCAL_PROTOTYPE');
+  });
+
+  it('Test 500 (Commit #35 & Anti-Fabrication Invariant): State inspection result and snapshot never invent or contain transaction hashes', async () => {
+    const service = new ContractStateInspectionService();
+    const result = await service.inspectContractState();
+    assert.equal(result.txHash, undefined);
+    assert.equal(result.transactionHash, undefined);
+    const snapshot = service.getInspectionState();
+    assert.equal(snapshot.txHash, undefined);
+    assert.equal(snapshot.transactionHash, undefined);
+  });
+
+  it('Test 501 (Commit #35 & Immutability Invariant): LoanRegistry remains 100% unmodified across state inspection queries', async () => {
+    const registry = createDefaultLoanRegistry();
+    const initialLoans = Object.values(registry.getLoans());
+    const initialCount = initialLoans.length;
+    const initialFirst = { ...initialLoans[0] };
+
+    const service = new ContractStateInspectionService();
+    await service.inspectContractState(undefined, registry);
+    await service.queryCircuitState('getLoanStatus', { loanId: 'loan-001' }, registry);
+    await service.queryCircuitState('getLoanDetails', { loanId: 'loan-001' }, registry);
+
+    const postLoans = Object.values(registry.getLoans());
+    assert.equal(postLoans.length, initialCount);
+    assert.deepEqual(postLoans[0], initialFirst);
+  });
+
+  it('Test 502 (Commit #35): Read-only circuit classification allows getLoanStatus and getLoanDetails', () => {
+    const statusDef = getCircuitDefinition('getLoanStatus');
+    const detailsDef = getCircuitDefinition('getLoanDetails');
+
+    assert.equal(statusDef?.classification, 'STATE_READ');
+    assert.equal(detailsDef?.classification, 'STATE_READ');
+    assert.equal(statusDef?.isReadOnly, true);
+    assert.equal(detailsDef?.isReadOnly, true);
+  });
+
+  it('Test 503 (Commit #35): Transaction-executing circuits (fundLoan, repayLoan, settleLoan) and local proof circuit (verifyEligibility) are rejected for state query', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+    });
+    const netConfigService = new NetworkConfigService();
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    const executingCircuits = ['fundLoan', 'repayLoan', 'settleLoan', 'verifyEligibility'];
+
+    for (const circuit of executingCircuits) {
+      const result = await service.queryCircuitState(circuit, { loanId: 'loan-001' });
+      assert.equal(result.status, 'FAILED');
+      assert.equal(result.reason, 'STATE_QUERY_UNSUPPORTED');
+      assert.equal(result.snapshot.stateAvailable, false);
+    }
+  });
+
+  it('Test 504 (Commit #35): State inspection transitions through NOT_CHECKED -> CHECKING -> AVAILABLE / VERIFIED', async () => {
+    const observedStates = [];
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig({
+      environment: 'LOCAL',
+      networkId: 'midnight-prototype-local',
+      nodeUrl: null,
+      indexerUrl: null,
+      proofServerUrl: null,
+    });
+
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    service.subscribe((snap) => {
+      observedStates.push(snap.status);
+    });
+
+    assert.equal(service.getInspectionState().status, 'NOT_CHECKED');
+    await service.inspectContractState(undefined, createDefaultLoanRegistry());
+
+    assert.ok(observedStates.includes('CHECKING'));
+    assert.ok(observedStates.includes('AVAILABLE'));
+  });
+
+  it('Test 505 (Commit #35): State inspection listener subscription notifies listeners on snapshot update', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const validAddr = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    deploymentService.setDeployment({
+      contractAddress: validAddr,
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const netConfigService = new NetworkConfigService();
+    const service = new ContractStateInspectionService(deploymentService, netConfigService);
+    let notificationCount = 0;
+    const unsubscribe = service.subscribe(() => {
+      notificationCount++;
+    });
+
+    await service.inspectContractState(
+      { contractAddress: validAddr },
+      createDefaultLoanRegistry()
+    );
+
+    assert.ok(notificationCount >= 2);
+    unsubscribe();
+
+    const previousCount = notificationCount;
+    service.resetInspectionState();
+    assert.equal(notificationCount, previousCount);
+  });
+
+  it('Test 506 (Commit #35): ContractClient.inspectContractState delegates cleanly to ContractStateInspectionService', async () => {
+    resetContractClient();
+    const client = getContractClient();
+    assert.ok(typeof client.inspectContractState === 'function');
+
+    const result = await client.inspectContractState();
+    assert.ok(result);
+    assert.ok(result.status);
+    assert.ok(result.reason);
+  });
+
+  it('Test 507 (Commit #35): ContractClient.getAuthoritativeLoanStatus and getAuthoritativeLoanDetails return authoritative state', async () => {
+    resetNetworkConfig();
+    resetContractDeploymentService();
+    resetContractStateInspectionService();
+    resetContractClient();
+
+    const deploymentService = getContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-prototype-local',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      deployedAt: Date.now(),
+      verifiedAt: Date.now(),
+      source: 'LOCAL_REGISTRY',
+    });
+    const client = getContractClient();
+    const registry = createDefaultLoanRegistry();
+
+    const statusResult = await client.getAuthoritativeLoanStatus('loan-001', registry);
+    assert.ok(statusResult);
+    assert.equal(statusResult.reason, 'STATE_FOUND');
+
+    const detailsResult = await client.getAuthoritativeLoanDetails('loan-001', registry);
+    assert.ok(detailsResult);
+    assert.equal(detailsResult.reason, 'STATE_FOUND');
+  });
+
+  it('Test 508 (Commit #35): evaluateTransactionReadiness evaluates state inspection readiness and reports STATE_INSPECTION_UNAVAILABLE when unavailable', async () => {
+    const registry = createDefaultLoanRegistry();
+    const verifiedRegistry = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK);
+    const verifiedLoan = verifiedRegistry.getLoan('loan-001');
+
+    const lenderContext = {
+      persona: 'LENDER',
+      activeRole: 'LENDER',
+      publicKey: PROTOTYPE_LENDER_PK,
+      publicKeyHex: '0x10',
+      role: 'LENDER',
+    };
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: lenderContext,
+      signingAvailable: true,
+      submissionAvailable: true,
+      reportedNetworkId: 'midnight-testnet-01',
+    });
+    await adapter.connect('LENDER');
+
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      contractAddress: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      networkId: 'midnight-testnet-01',
+      isVerified: true,
+      status: 'VERIFIED',
+      contractName: 'MicroLendingDesk',
+      circuitNames: ['fundLoan', 'repayLoan', 'settleLoan', 'getLoanStatus', 'getLoanDetails', 'verifyEligibility'],
+    });
+
+    const netConfigService = getNetworkConfigService();
+    netConfigService.setNetworkConfig({
+      networkId: 'midnight-testnet-01',
+      environment: 'TESTNET',
+      status: 'CONFIGURED',
+      nodeRpcEndpoint: { url: 'https://rpc.testnet.midnight.network' },
+    });
+
+    const stateInspectionService = new ContractStateInspectionService();
+
+    const readiness = evaluateTransactionReadiness(
+      verifiedLoan,
+      lenderContext,
+      'FUND_LOAN',
+      adapter,
+      deploymentService,
+      stateInspectionService,
+      { requireStateInspection: true }
+    );
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'STATE_INSPECTION_UNAVAILABLE');
+  });
+
+  it('Test 509 (Commit #35): NetworkStatusPanel and TransactionReviewPanel render technical state inspection sections and indicators', () => {
+    const networkPanel = fs.readFileSync(path.join(srcDir, 'components', 'NetworkStatusPanel.tsx'), 'utf8');
+    assert.ok(networkPanel.includes('contract-state-inspection-section'));
+    assert.ok(networkPanel.includes('Contract State Inspection'));
+    assert.ok(networkPanel.includes('State Inspection Status:'));
+    assert.ok(networkPanel.includes('State Source:'));
+    assert.ok(networkPanel.includes('Block Height:'));
+
+    const reviewPanel = fs.readFileSync(path.join(srcDir, 'components', 'TransactionReviewPanel.tsx'), 'utf8');
+    assert.ok(reviewPanel.includes('diagnostic-state-inspection'));
+    assert.ok(reviewPanel.includes('State Inspection'));
+  });
+
+  it('Test 510 (Commit #35): types/index.ts re-exports all contract state inspection domain models and error types', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+    assert.ok(content.includes('ContractStateInspectionError'));
+    assert.ok(content.includes('ContractStateInspectionStatus'));
+    assert.ok(content.includes('ContractStateInspectionReason'));
+    assert.ok(content.includes('ContractStateSource'));
+    assert.ok(content.includes('ContractStateSnapshot'));
+    assert.ok(content.includes('ContractStateInspectionRequest'));
+    assert.ok(content.includes('ContractStateInspectionResult'));
+    assert.ok(content.includes('DEFAULT_UNINSPECTED_SNAPSHOT'));
+  });
+
+  it('Test 511 (Commit #35 & Strict Privacy Audit): All frontend source files (>= 75 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 75, `Must audit all frontend source files including state inspection modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  it('Test 512 (Commit #35 & Contract Integrity): contracts/src/index.compact has zero modifications', () => {
     const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
     assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
 

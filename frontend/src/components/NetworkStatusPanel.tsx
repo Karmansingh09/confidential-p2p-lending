@@ -7,6 +7,7 @@ import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import { getWalletSessionService } from '../lib/wallet-session-service.ts';
 import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
 import { getContractVerificationService } from '../lib/contract-verification-service.ts';
+import { getContractStateInspectionService } from '../lib/contract-state-inspection-service.ts';
 
 export interface NetworkStatusPanelProps {
   networkContext?: NetworkContext;
@@ -107,6 +108,57 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
     : deployment.deployedAt
     ? new Date(deployment.deployedAt).toISOString()
     : 'None';
+
+  const stateInspectionService = getContractStateInspectionService();
+  const stateSnapshot = stateInspectionService.getInspectionState();
+
+  const getStateInspectionDisplayStatus = () => {
+    if (!deployment.contractAddress) {
+      return 'Not Configured';
+    }
+    if (stateSnapshot.status === 'VERIFIED') {
+      return 'Verified';
+    }
+    if (stateSnapshot.status === 'AVAILABLE') {
+      return 'Available';
+    }
+    if (stateSnapshot.status === 'CHECKING') {
+      return 'Checking';
+    }
+    if (stateSnapshot.status === 'NOT_DEPLOYED') {
+      return 'Not Deployed';
+    }
+    if (stateSnapshot.status === 'NETWORK_MISMATCH') {
+      return 'Network Mismatch';
+    }
+    if (stateSnapshot.status === 'UNAVAILABLE') {
+      return 'Unavailable';
+    }
+    if (stateSnapshot.status === 'UNSUPPORTED') {
+      return 'Unsupported';
+    }
+    if (stateSnapshot.status === 'FAILED') {
+      return 'Failed';
+    }
+    return 'Not Checked';
+  };
+
+  const stateInspectionStatusText = getStateInspectionDisplayStatus();
+  const stateSourceLabel =
+    stateSnapshot.source === 'PROVIDER_VERIFIED'
+      ? 'PROVIDER VERIFIED'
+      : stateSnapshot.source === 'LOCAL_PROTOTYPE'
+      ? 'LOCAL PROTOTYPE'
+      : 'NONE';
+  const stateInspectionTimestampText = stateSnapshot.inspectedAt
+    ? new Date(stateSnapshot.inspectedAt).toISOString()
+    : 'Not Inspected';
+  const stateBlockHeightText =
+    stateSnapshot.blockHeight !== null && stateSnapshot.blockHeight !== undefined
+      ? stateSnapshot.blockHeight.toString()
+      : 'None (Unconfirmed / Prototype)';
+  const stateAvailabilityText = stateSnapshot.stateAvailable ? 'Available' : 'Unavailable';
+  const stateReasonText = stateSnapshot.reason;
 
   return (
     <div
@@ -662,6 +714,175 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           }}
         >
           Authoritative on-chain existence verification via genuine provider/indexer response.
+        </div>
+      </div>
+
+      {/* Contract State Inspection (Commit #35) */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+          border: '1px solid #1e293b',
+        }}
+        data-testid="contract-state-inspection-section"
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}
+          >
+            Contract State Inspection
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <span
+              style={{
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 600,
+                background: stateSnapshot.source === 'PROVIDER_VERIFIED' ? '#064e3b' : '#78350f',
+                color: stateSnapshot.source === 'PROVIDER_VERIFIED' ? '#a7f3d0' : '#fde68a',
+              }}
+            >
+              {stateSourceLabel}
+            </span>
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 600,
+                background:
+                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
+                    ? '#064e3b'
+                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
+                    ? '#450a0a'
+                    : stateInspectionStatusText === 'Checking'
+                    ? '#1e3a8a'
+                    : '#78350f',
+                color:
+                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
+                    ? '#a7f3d0'
+                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
+                    ? '#fca5a5'
+                    : stateInspectionStatusText === 'Checking'
+                    ? '#93c5fd'
+                    : '#fde68a',
+              }}
+            >
+              {stateInspectionStatusText}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '8px',
+            fontSize: '11px',
+            marginBottom: '8px',
+          }}
+        >
+          <div>
+            <span style={{ color: '#94a3b8' }}>Contract Address: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {deployment.contractAddress
+                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                : 'Not Configured'}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Target Network: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {expectedNetworkText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Deployment Verification: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {verificationStatusText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>State Inspection Status: </span>
+            <span
+              style={{
+                color:
+                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
+                    ? '#34d399'
+                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
+                    ? '#f87171'
+                    : '#fbbf24',
+                fontWeight: 500,
+              }}
+            >
+              {stateInspectionStatusText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>State Source: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {stateSourceLabel}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>State Availability: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {stateAvailabilityText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Block Height: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {stateBlockHeightText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Last Inspection Time: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {stateInspectionTimestampText}
+            </span>
+          </div>
+
+          <div style={{ gridColumn: '1 / -1' }}>
+            <span style={{ color: '#94a3b8' }}>Inspection Reason: </span>
+            <span style={{ color: '#93c5fd', fontFamily: 'monospace', fontSize: '10px' }}>
+              {stateReasonText}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: '10px',
+            color: '#94a3b8',
+            fontStyle: 'italic',
+            borderTop: '1px solid #1e293b',
+            paddingTop: '6px',
+          }}
+        >
+          Authoritative on-chain contract state inspection boundary. Local state is strictly separated from provider-verified state.
         </div>
       </div>
 

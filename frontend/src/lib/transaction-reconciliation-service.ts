@@ -181,7 +181,24 @@ export class TransactionReconciliationService {
     // 2.5. Evaluate contract deployment configuration
     if (effectiveDeploymentService) {
       const deployment = effectiveDeploymentService.getDeployment();
-      if (deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED') {
+      const isVerifiedOrReady =
+        deployment.isVerified || deployment.status === 'VERIFIED' || deployment.status === 'READY';
+      if (
+        !isVerifiedOrReady ||
+        deployment.status === 'NOT_DEPLOYED' ||
+        deployment.status === 'UNCONFIGURED' ||
+        deployment.status === 'INVALID' ||
+        deployment.status === 'UNSUPPORTED'
+      ) {
+        const failureReason =
+          deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
+            ? 'Contract deployment is not configured or not deployed.'
+            : deployment.status === 'INVALID'
+            ? 'Contract deployment configuration is invalid.'
+            : deployment.status === 'UNSUPPORTED'
+            ? 'Contract deployment verification is unsupported.'
+            : 'Contract deployment is not verified on the network.';
+
         this.eventService.appendEvent({
           transactionId: tx.id,
           eventType: 'RECONCILIATION_FAILED',
@@ -191,7 +208,7 @@ export class TransactionReconciliationService {
           networkId,
           status: tx.status,
           source: 'RECONCILIATION_SERVICE',
-          message: 'Reconciliation aborted: Contract deployment is not configured or not deployed.',
+          message: `Reconciliation aborted: ${failureReason}`,
         });
 
         return {
@@ -202,7 +219,7 @@ export class TransactionReconciliationService {
           reason: 'STATUS_UNAVAILABLE',
           registryMutationAllowed: false,
           reconciledAt: now,
-          message: 'Reconciliation cannot proceed: Contract deployment is not configured or not deployed.',
+          message: `Reconciliation cannot proceed: ${failureReason}`,
           success: false,
           previousStatus,
           reconciledStatus: tx.status,
@@ -210,8 +227,11 @@ export class TransactionReconciliationService {
           providerTransactionId: tx.providerTransactionId,
           blockHeight: tx.blockHeight,
           registryUpdated: false,
-          error: 'Contract deployment not configured.',
-          errorCode: 'NOT_CONFIGURED',
+          error: failureReason,
+          errorCode:
+            deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
+              ? 'NOT_CONFIGURED'
+              : 'UNSUPPORTED_OPERATION',
         };
       }
     }

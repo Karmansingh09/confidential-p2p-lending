@@ -291,6 +291,16 @@ export function prepareLifecycleTransaction(
       status = 'BLOCKED';
       readinessReason = 'CONTRACT_INVALID';
       authorizationReason = 'Contract deployment configuration is invalid.';
+    } else if (
+      (action === 'FUND_LOAN' || action === 'REPAY_LOAN' || action === 'SETTLE_LOAN') &&
+      !deployment.isVerified &&
+      deployment.status !== 'READY' &&
+      deployment.status !== 'VERIFIED'
+    ) {
+      status = 'BLOCKED';
+      readinessReason = 'CONTRACT_VERIFICATION_UNAVAILABLE';
+      authorizationReason =
+        'Contract deployment is not verified on the target network. Transaction execution blocked.';
     }
   }
 
@@ -492,6 +502,33 @@ export function evaluateTransactionReadiness(
           status: 'BLOCKED',
           readinessReason: 'CONTRACT_INVALID',
           authorizationReason: 'Contract deployment configuration is invalid.',
+        },
+      };
+    }
+
+    // Invariant 1: CONFIGURED ADDRESS != ON-CHAIN DEPLOYMENT
+    // For transaction-executing circuits (fundLoan, repayLoan, settleLoan),
+    // execution must be blocked unless deployment verification is confirmed on the target network.
+    const isExecutingAction =
+      action === 'FUND_LOAN' || action === 'REPAY_LOAN' || action === 'SETTLE_LOAN';
+    const isVerifiedOrReady =
+      deployment.isVerified || deployment.status === 'VERIFIED' || deployment.status === 'READY';
+
+    if (isExecutingAction && !isVerifiedOrReady) {
+      const reason: TransactionReadinessReason =
+        deployment.status === 'CONFIGURED' || deployment.status === 'VALIDATING'
+          ? 'CONTRACT_VERIFICATION_UNAVAILABLE'
+          : 'CONTRACT_NOT_DEPLOYED';
+      return {
+        isReady: false,
+        reason,
+        message: 'Transaction blocked: Contract address is configured but not verified on the network.',
+        preparation: {
+          ...prep,
+          status: 'BLOCKED',
+          readinessReason: reason,
+          authorizationReason:
+            'Contract deployment verification required before on-chain execution.',
         },
       };
     }

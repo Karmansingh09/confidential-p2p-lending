@@ -234,3 +234,15 @@ export {
   type ContractDeploymentErrorCode,
 } from './contract-deployment.ts';
 
+export {
+  ContractVerificationError,
+  type ContractVerificationStatus,
+  type ContractVerificationReason,
+  type ContractVerificationResult,
+  type ContractDeploymentMetadata,
+  type ContractIdentity,
+  type ContractCodeMetadata,
+  type ContractVerificationErrorCode,
+} from './contract-verification.ts';
+
+

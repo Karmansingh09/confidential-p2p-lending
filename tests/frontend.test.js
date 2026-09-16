@@ -224,6 +224,20 @@ import {
 import {
   ContractDeploymentError,
 } from '../frontend/src/types/contract-deployment.ts';
+import {
+  ContractVerificationService,
+  getContractVerificationService,
+  resetContractVerificationService,
+  DEFAULT_UNVERIFIED_RESULT,
+} from '../frontend/src/lib/contract-verification-service.ts';
+import {
+  LocalPrototypeVerificationProvider,
+  MidnightVerificationAdapter,
+  createDefaultVerificationProvider,
+} from '../frontend/src/lib/contract-verification-provider.ts';
+import {
+  ContractVerificationError,
+} from '../frontend/src/types/contract-verification.ts';
 import { canVerifyEligibility, canFundLoan, canRepayLoan, canSettleLoan } from '../contracts/dist/index.js';
 
 describe('Frontend Foundation & UI Architecture Tests', () => {
@@ -9694,6 +9708,646 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
         );
       }
     }
+  });
+
+  const VALID_CONTRACT_ADDR = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const VALID_TESTNET_CONFIG = {
+    environment: 'TESTNET',
+    networkName: 'Midnight Testnet',
+    networkId: 'midnight-testnet-01',
+    nodeRpcEndpoint: {
+      url: 'https://rpc.testnet.midnight.network',
+      protocol: 'https',
+      reachable: true,
+      status: 'CONFIGURED',
+    },
+    indexerEndpoint: {
+      url: 'https://indexer.testnet.midnight.network',
+      protocol: 'https',
+      reachable: true,
+      status: 'CONFIGURED',
+    },
+    walletConnectorAvailable: true,
+    isRealNetwork: true,
+    isPrototype: false,
+    status: 'CONFIGURED',
+  };
+
+  it('Test 439 (Commit #33): Unconfigured contract address reports NO_CONTRACT_CONFIGURED and NOT_DEPLOYED', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const verificationService = new ContractVerificationService(deploymentService);
+
+    assert.equal(verificationService.getVerificationStatus(), 'NOT_CHECKED');
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'NOT_DEPLOYED');
+    assert.equal(result.reason, 'NO_CONTRACT_CONFIGURED');
+    assert.equal(result.contractAddress, null);
+    assert.equal(result.deploymentTransactionId, null);
+    assert.equal(result.deploymentBlockHeight, null);
+    assert.equal(result.deployedAt, null);
+    assert.equal(verificationService.getVerificationStatus(), 'NOT_DEPLOYED');
+  });
+
+  it('Test 440 (Commit #33): Invalid contract address reports ADDRESS_INVALID and INVALID', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.setDeployment({
+      status: 'INVALID',
+      contractAddress: 'invalid-hex-address',
+      networkId: 'midnight-testnet-01',
+    });
+    const verificationService = new ContractVerificationService(deploymentService);
+
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'INVALID');
+    assert.equal(result.reason, 'ADDRESS_INVALID');
+    assert.equal(result.contractAddress, 'invalid-hex-address');
+    assert.equal(result.deploymentTransactionId, null);
+    assert.equal(result.deploymentBlockHeight, null);
+    assert.equal(result.deployedAt, null);
+    assert.equal(verificationService.getVerificationStatus(), 'INVALID');
+  });
+
+  it('Test 441 (Commit #33): Configured contract address without verification reports unverified, blocking transaction execution', () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-prototype-local',
+    });
+
+    const deployment = deploymentService.getDeployment();
+    assert.equal(deployment.status, 'CONFIGURED');
+    assert.equal(deployment.isVerified, false);
+    assert.equal(deploymentService.isReady(), false);
+
+    const loan = MOCK_LOANS['loan-002'];
+    const account = getMockAccount('LENDER');
+    const provider = new LocalPrototypeWalletProvider();
+
+    const readiness = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', provider, deploymentService);
+    assert.equal(readiness.isReady, false);
+    assert.equal(readiness.reason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+  });
+
+  it('Test 442 (Commit #33): Genuine verified deployment on target network reports VERIFIED, CONTRACT_FOUND, and genuine metadata', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({
+      mockExists: true,
+      observedNetworkId: 'midnight-testnet-01',
+      mockMetadata: {
+        contractAddress: VALID_CONTRACT_ADDR,
+        deploymentTransactionId: '0xgenuine_tx_8899aabbcc',
+        deploymentBlockHeight: 987654n,
+        deployedAt: 1718000000000,
+        sourceFingerprint: COMPACT_SOURCE_FINGERPRINT,
+      },
+    });
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'VERIFIED');
+    assert.equal(result.reason, 'CONTRACT_FOUND');
+    assert.equal(result.contractAddress, VALID_CONTRACT_ADDR);
+    assert.equal(result.expectedNetworkId, 'midnight-testnet-01');
+    assert.equal(result.observedNetworkId, 'midnight-testnet-01');
+    assert.equal(result.deploymentTransactionId, '0xgenuine_tx_8899aabbcc');
+    assert.equal(result.deploymentBlockHeight, 987654n);
+    assert.equal(result.deployedAt, 1718000000000);
+
+    const activeDeployment = deploymentService.getDeployment();
+    assert.equal(activeDeployment.status, 'VERIFIED');
+    assert.equal(activeDeployment.isVerified, true);
+    assert.equal(deploymentService.isReady(), true);
+  });
+
+  it('Test 443 (Commit #33): Contract address not found on-chain reports CONTRACT_NOT_FOUND and NOT_DEPLOYED', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({
+      mockExists: false,
+      observedNetworkId: 'midnight-testnet-01',
+    });
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'NOT_DEPLOYED');
+    assert.equal(result.reason, 'CONTRACT_NOT_FOUND');
+    assert.equal(result.deploymentTransactionId, null);
+    assert.equal(result.deploymentBlockHeight, null);
+    assert.equal(result.deployedAt, null);
+
+    const activeDeployment = deploymentService.getDeployment();
+    assert.equal(activeDeployment.status, 'NOT_DEPLOYED');
+    assert.equal(activeDeployment.isVerified, false);
+    assert.equal(deploymentService.isReady(), false);
+  });
+
+  it('Test 444 (Commit #33): Network mismatch between configured contract and active network reports NETWORK_MISMATCH', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const devnetConfig = {
+      ...VALID_TESTNET_CONFIG,
+      networkId: 'midnight-devnet',
+      networkName: 'Midnight Devnet',
+    };
+    const netConfigService = new NetworkConfigService(devnetConfig);
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService);
+
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'NETWORK_MISMATCH');
+    assert.equal(result.reason, 'NETWORK_MISMATCH');
+    assert.equal(result.expectedNetworkId, 'midnight-devnet');
+    assert.equal(result.observedNetworkId, 'midnight-testnet-01');
+    assert.equal(deploymentService.getDeployment().isVerified, false);
+    assert.equal(deploymentService.isReady(), false);
+  });
+
+  it('Test 445 (Commit #33): Active network not configured reports NETWORK_NOT_CONFIGURED and UNAVAILABLE', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService();
+    netConfigService.setNetworkConfig(
+      {
+        environment: 'TESTNET',
+        networkName: 'Invalid Config',
+        networkId: '',
+        nodeRpcEndpoint: null,
+        indexerEndpoint: null,
+        walletConnectorAvailable: false,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'INVALID',
+      },
+      true
+    );
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService);
+    const result = await verificationService.verifyDeployment();
+
+    assert.equal(result.status, 'UNAVAILABLE');
+    assert.equal(result.reason, 'NETWORK_NOT_CONFIGURED');
+    assert.equal(deploymentService.getDeployment().isVerified, false);
+  });
+
+  it('Test 446 (Commit #33): Verification provider or indexer unavailable reports PROVIDER_UNAVAILABLE or INDEXER_UNAVAILABLE', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({ isUnavailable: true });
+
+    const service1 = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    const result1 = await service1.verifyDeployment();
+
+    assert.equal(result1.status, 'UNAVAILABLE');
+    assert.equal(result1.reason, 'PROVIDER_UNAVAILABLE');
+
+    adapter.injectMockVerifierForTesting({ isIndexerUnavailable: true });
+    const service2 = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    const result2 = await service2.verifyDeployment();
+
+    assert.equal(result2.status, 'UNAVAILABLE');
+    assert.equal(result2.reason, 'INDEXER_UNAVAILABLE');
+  });
+
+  it('Test 447 (Commit #33): Verification unsupported environment reports VERIFICATION_UNSUPPORTED and UNSUPPORTED', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+
+    const adapter = new MidnightVerificationAdapter();
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+
+    const result = await verificationService.verifyDeployment();
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.equal(result.reason, 'VERIFICATION_UNSUPPORTED');
+    assert.equal(deploymentService.getDeployment().isVerified, false);
+  });
+
+  it('Test 448 (Commit #33 & Anti-Fabrication): Verification service never invents transaction IDs, block heights, or timestamps when unverified', async () => {
+    const deploymentService = new ContractDeploymentService();
+    const verificationService = new ContractVerificationService(deploymentService);
+
+    // 1. Unconfigured
+    const resUnconf = await verificationService.verifyDeployment();
+    assert.equal(resUnconf.deploymentTransactionId, null);
+    assert.equal(resUnconf.deploymentBlockHeight, null);
+    assert.equal(resUnconf.deployedAt, null);
+
+    // 2. Invalid address
+    deploymentService.setDeployment({ status: 'INVALID', contractAddress: 'bad-addr' });
+    const resInvalid = await verificationService.verifyDeployment();
+    assert.equal(resInvalid.deploymentTransactionId, null);
+    assert.equal(resInvalid.deploymentBlockHeight, null);
+    assert.equal(resInvalid.deployedAt, null);
+
+    // 3. Local prototype
+    const netConfigService = new NetworkConfigService();
+    deploymentService.configureDeployment({ contractAddress: VALID_CONTRACT_ADDR, networkId: 'midnight-prototype-local' });
+    const protoService = new ContractVerificationService(deploymentService, netConfigService);
+    const resProto = await protoService.verifyDeployment();
+    assert.equal(resProto.deploymentTransactionId, null);
+    assert.equal(resProto.deploymentBlockHeight, null);
+    assert.equal(resProto.deployedAt, null);
+
+    const deployment = deploymentService.getDeployment();
+    assert.equal(deployment.deploymentTransactionId, null);
+    assert.equal(deployment.deploymentBlockHeight, null);
+    assert.equal(deployment.deployedAt, null);
+  });
+
+  it('Test 449 (Commit #33): Local prototype provider never reports a real blockchain deployment', async () => {
+    const provider = new LocalPrototypeVerificationProvider();
+    assert.equal(provider.isSupported, false);
+
+    const result = await provider.verifyContractExists(VALID_CONTRACT_ADDR, 'midnight-prototype-local');
+    assert.equal(result.status, 'UNSUPPORTED');
+    assert.equal(result.reason, 'VERIFICATION_UNSUPPORTED');
+    assert.equal(result.deploymentTransactionId, null);
+    assert.equal(result.deploymentBlockHeight, null);
+    assert.equal(result.deployedAt, null);
+
+    const meta = await provider.getDeploymentMetadata(VALID_CONTRACT_ADDR);
+    assert.equal(meta, null);
+
+    const code = await provider.getContractCodeMetadata(VALID_CONTRACT_ADDR);
+    assert.equal(code, null);
+  });
+
+  it('Test 450 (Commit #33): Verified deployment allows transaction readiness to proceed', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+    deploymentService.applyVerificationResult({
+      status: 'VERIFIED',
+      reason: 'CONTRACT_FOUND',
+      contractAddress: VALID_CONTRACT_ADDR,
+      expectedNetworkId: 'midnight-testnet-01',
+      observedNetworkId: 'midnight-testnet-01',
+      deploymentTransactionId: '0xdeploy_tx_verified',
+      deploymentBlockHeight: 500000n,
+      deployedAt: Date.now(),
+      verificationTimestamp: Date.now(),
+      sourceFingerprint: COMPACT_SOURCE_FINGERPRINT,
+      manifestFingerprint: null,
+      error: null,
+    });
+
+    assert.equal(deploymentService.isReady(), true);
+
+    const loan = MOCK_LOANS['loan-002'];
+    const account = getMockAccount('LENDER');
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      mockAccount: account,
+      signingAvailable: true,
+      submissionAvailable: true,
+      reportedNetworkId: 'midnight-testnet-01',
+    });
+    await adapter.connect('LENDER');
+
+    try {
+      setNetworkConfig(VALID_TESTNET_CONFIG);
+      const evalReady = evaluateTransactionReadiness(loan, account, 'FUND_LOAN', adapter, deploymentService);
+      assert.equal(evalReady.isReady, true);
+    } finally {
+      resetNetworkConfig();
+    }
+  });
+
+  it('Test 451 (Commit #33): Unverified deployment blocks transaction execution for fundLoan, repayLoan, settleLoan', () => {
+    const registry = createDefaultLoanRegistry();
+    const lenderAccount = getMockAccount('LENDER');
+    const borrowerAccount = getMockAccount('BORROWER');
+    const provider = new LocalPrototypeWalletProvider();
+
+    const unverifiedDeployment = new ContractDeploymentService();
+    unverifiedDeployment.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-prototype-local',
+    });
+    assert.equal(unverifiedDeployment.getDeployment().isVerified, false);
+
+    // 1. fundLoan on requested loan
+    const requestedLoan = registry.getLoan('loan-002');
+    const fundEval = evaluateTransactionReadiness(requestedLoan, lenderAccount, 'FUND_LOAN', provider, unverifiedDeployment);
+    assert.equal(fundEval.isReady, false);
+    assert.equal(fundEval.reason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+
+    // 2. repayLoan on funded loan
+    const fundedRegistry = registry.fundLoan('loan-002', lenderAccount.publicKey, lenderAccount.publicKey);
+    const fundedLoan = fundedRegistry.getLoan('loan-002');
+    const repayEval = evaluateTransactionReadiness(fundedLoan, borrowerAccount, 'REPAY_LOAN', provider, unverifiedDeployment);
+    assert.equal(repayEval.isReady, false);
+    assert.equal(repayEval.reason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+
+    // 3. settleLoan on repaid loan
+    const repaidRegistry = fundedRegistry.repayLoan('loan-002', borrowerAccount.publicKey);
+    const repaidLoan = repaidRegistry.getLoan('loan-002');
+    const settleEval = evaluateTransactionReadiness(repaidLoan, lenderAccount, 'SETTLE_LOAN', provider, unverifiedDeployment);
+    assert.equal(settleEval.isReady, false);
+    assert.equal(settleEval.reason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+  });
+
+  it('Test 452 (Commit #33): Unverified deployment allows read-only and local proof circuits to evaluate locally', async () => {
+    const loan = MOCK_LOANS['loan-002'];
+    const borrowerAccount = getMockAccount('BORROWER');
+    const provider = new LocalPrototypeWalletProvider();
+
+    const unverifiedDeployment = new ContractDeploymentService();
+    unverifiedDeployment.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-prototype-local',
+    });
+
+    const prep = prepareLifecycleTransaction(loan, borrowerAccount, 'VERIFY_ELIGIBILITY', provider, unverifiedDeployment);
+    assert.equal(prep.circuitName, 'verifyEligibility');
+    assert.notEqual(prep.readinessReason, 'CONTRACT_NOT_DEPLOYED');
+    assert.notEqual(prep.readinessReason, 'CONTRACT_VERIFICATION_UNAVAILABLE');
+
+    const eligibilityResult = await verifyBorrowerEligibility({
+      loanId: 'loan-002',
+      loan,
+      witnessAmount: 50000n,
+    });
+    assert.equal(eligibilityResult.isVerified, true);
+  });
+
+  it('Test 453 (Commit #33): Transaction execution service blocks before wallet signing if contract is unverified', async () => {
+    const sessionService = new WalletSessionService();
+    const execService = new TransactionExecutionService(sessionService);
+    const unverifiedDeployment = new ContractDeploymentService();
+    unverifiedDeployment.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-prototype-local',
+    });
+    execService.setDeploymentService(unverifiedDeployment);
+
+    const registry = createDefaultLoanRegistry();
+    const loan = registry.getLoan('loan-002');
+    const lenderAccount = getMockAccount('LENDER');
+    const req = execService.createTransactionRequest(loan, lenderAccount, 'FUND_LOAN');
+
+    const result = await execService.executePipeline(req, loan, lenderAccount, registry);
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(result.registryUpdated, false);
+    assert.equal(result.errorCode, 'CONTRACT_NOT_VERIFIED');
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+  });
+
+  it('Test 454 (Commit #33): Transaction reconciliation service handles unverified contract safely without throwing unhandled exceptions', async () => {
+    const persistence = new TransactionPersistenceService(new InMemoryTransactionPersistence());
+    const unverifiedDeployment = new ContractDeploymentService();
+    unverifiedDeployment.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+    const service = new TransactionReconciliationService(persistence, undefined, unverifiedDeployment);
+
+    persistence.saveTransaction({
+      id: 'tx-unverified-reconcile',
+      action: 'FUND_LOAN',
+      loanId: 'loan-002',
+      circuitName: 'fundLoan',
+      callerPublicKeyHex: '0x01',
+      networkId: 'midnight-testnet-01',
+      providerKind: 'MIDNIGHT_WALLET',
+      status: 'SUBMITTED',
+      recoveryStatus: 'PENDING',
+      providerTransactionId: '0x999',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+
+    const mockProvider = {
+      isPrototype: false,
+      name: 'MIDNIGHT_WALLET',
+      getConnectionStatus: () => 'CONNECTED',
+      isConnected: () => true,
+      getReportedNetworkId: () => 'midnight-testnet-01',
+      getTransactionStatus: async () => ({ status: 'CONFIRMED', success: true }),
+    };
+
+    const registry = createDefaultLoanRegistry();
+    const result = await service.reconcileTransaction('tx-unverified-reconcile', {
+      provider: mockProvider,
+      loanRegistry: registry,
+      deploymentService: unverifiedDeployment,
+    });
+
+    assert.equal(result.reconciliationStatus, 'UNSUPPORTED');
+    assert.equal(result.registryMutationAllowed, false);
+    assert.equal(registry.getLoan('loan-002')?.status, LoanStatus.requested);
+  });
+
+  it('Test 455 (Commit #33): Deployment verification failures never mutate LoanRegistry', async () => {
+    const registry = createDefaultLoanRegistry();
+    const initialLoans = registry.getOrderedLoans();
+    const initialCount = initialLoans.length;
+
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({ mockExists: false });
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    await verificationService.verifyDeployment();
+
+    const afterLoans = registry.getOrderedLoans();
+    assert.equal(afterLoans.length, initialCount);
+    for (let i = 0; i < initialCount; i++) {
+      assert.equal(afterLoans[i].id, initialLoans[i].id);
+      assert.equal(afterLoans[i].status, initialLoans[i].status);
+      assert.equal(afterLoans[i].amount, initialLoans[i].amount);
+    }
+  });
+
+  it('Test 456 (Commit #33): Verification service is idempotent across repeated calls', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({
+      mockExists: true,
+      mockMetadata: {
+        contractAddress: VALID_CONTRACT_ADDR,
+        deploymentTransactionId: '0xidempotent_tx',
+        deploymentBlockHeight: 42n,
+        deployedAt: 1718000000000,
+      },
+    });
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+
+    const call1 = await verificationService.verifyDeployment();
+    const call2 = await verificationService.verifyDeployment();
+
+    assert.equal(call1.status, call2.status);
+    assert.equal(call1.reason, call2.reason);
+    assert.equal(call1.contractAddress, call2.contractAddress);
+    assert.equal(call1.deploymentTransactionId, call2.deploymentTransactionId);
+    assert.equal(call1.deploymentBlockHeight, call2.deploymentBlockHeight);
+    assert.equal(call1.deployedAt, call2.deployedAt);
+  });
+
+  it('Test 457 (Commit #33): resetVerification restores verification state to unverified defaults', async () => {
+    const deploymentService = new ContractDeploymentService();
+    deploymentService.configureDeployment({
+      contractAddress: VALID_CONTRACT_ADDR,
+      networkId: 'midnight-testnet-01',
+    });
+
+    const netConfigService = new NetworkConfigService(VALID_TESTNET_CONFIG);
+    const adapter = new MidnightVerificationAdapter();
+    adapter.injectMockVerifierForTesting({ mockExists: true });
+
+    const verificationService = new ContractVerificationService(deploymentService, netConfigService, adapter);
+    await verificationService.verifyDeployment();
+    assert.equal(verificationService.getVerificationStatus(), 'VERIFIED');
+
+    verificationService.resetVerification();
+    assert.equal(verificationService.getVerificationStatus(), 'NOT_CHECKED');
+    const res = verificationService.getVerificationResult();
+    assert.equal(res.status, 'NOT_CHECKED');
+    assert.equal(res.contractAddress, null);
+    assert.equal(res.deploymentTransactionId, null);
+  });
+
+  it('Test 458 (Commit #33): types/index.ts re-exports all contract verification domain models and error types', () => {
+    const typesIndexPath = path.join(srcDir, 'types', 'index.ts');
+    const content = fs.readFileSync(typesIndexPath, 'utf8');
+
+    assert.ok(content.includes('ContractVerificationStatus'));
+    assert.ok(content.includes('ContractVerificationReason'));
+    assert.ok(content.includes('ContractVerificationResult'));
+    assert.ok(content.includes('ContractDeploymentMetadata'));
+    assert.ok(content.includes('ContractIdentity'));
+    assert.ok(content.includes('ContractCodeMetadata'));
+    assert.ok(content.includes('ContractVerificationErrorCode'));
+    assert.ok(content.includes('ContractVerificationError'));
+  });
+
+  it('Test 459 (Commit #33): NetworkStatusPanel and TransactionReviewPanel render technical verification sections and indicators', () => {
+    const networkPanel = fs.readFileSync(path.join(srcDir, 'components', 'NetworkStatusPanel.tsx'), 'utf8');
+    assert.ok(networkPanel.includes('contract-verification-section'));
+    assert.ok(networkPanel.includes('Contract Deployment Verification'));
+    assert.ok(networkPanel.includes('Verification Status:'));
+    assert.ok(networkPanel.includes('Expected Network:'));
+    assert.ok(networkPanel.includes('Observed Network:'));
+    assert.ok(networkPanel.includes('Deployment Transaction ID:'));
+    assert.ok(networkPanel.includes('Deployment Block Height:'));
+    assert.ok(networkPanel.includes('Deployment Timestamp:'));
+
+    const reviewPanel = fs.readFileSync(path.join(srcDir, 'components', 'TransactionReviewPanel.tsx'), 'utf8');
+    assert.ok(reviewPanel.includes('Contract: VERIFIED'));
+    assert.ok(reviewPanel.includes('Contract: NOT VERIFIED — execution blocked'));
+  });
+
+  it('Test 460 (Commit #33 & Strict Privacy Audit): All frontend source files (>= 70 files) contain zero forbidden terms', () => {
+    const forbiddenTerms = [
+      'getPrivateFinancialValue',
+      'BORROWER_PRIVATE_FINANCIAL_VALUE',
+      'privateFinancialValue',
+      'witness context',
+      'privateState',
+      'witness values',
+      'borrower income',
+      'salary',
+      'bank balance',
+      'credit score',
+      'seed phrase',
+      'private key',
+      'wallet secret',
+      'financial documents',
+    ];
+
+    const walkDir = (dir) => {
+      let results = [];
+      const list = fs.readdirSync(dir);
+      list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+          results = results.concat(walkDir(filePath));
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          results.push(filePath);
+        }
+      });
+      return results;
+    };
+
+    const files = walkDir(srcDir);
+    assert.ok(files.length >= 70, `Must audit all frontend source files including verification modules (found ${files.length})`);
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const term of forbiddenTerms) {
+        assert.equal(
+          content.includes(term),
+          false,
+          `Forbidden privacy-violating string "${term}" found in ${file}`
+        );
+      }
+    }
+  });
+
+  it('Test 461 (Commit #33 & Contract Integrity): contracts/src/index.compact has zero modifications', () => {
+    const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+    assert.ok(fs.existsSync(contractPath), 'Compact smart contract file must exist');
+
+    const contractContent = fs.readFileSync(contractPath);
+    const expectedHash = crypto.createHash('sha256').update(contractContent).digest('hex');
+
+    assert.equal(
+      COMPACT_SOURCE_FINGERPRINT,
+      expectedHash,
+      'Compact smart contract bytecode/source must have zero modifications'
+    );
   });
 });
 

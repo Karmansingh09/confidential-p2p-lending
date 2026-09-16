@@ -2504,5 +2504,149 @@ Provides a typed boundary for invoking contract operations:
 3. **Compact Source Untouched**: `contracts/src/index.compact` is 100% untouched.
 4. **Automated Test Coverage**: 493 tests passing across contracts and frontend test suites.
 
+---
+
+## 33. Real On-Chain Contract Deployment Verification Boundary
+
+```
+                                  ┌─────────────────────────────────────────┐
+                                  │      Contract Deployment Service        │
+                                  │     (Configured / Validating / Verified)│
+                                  └────────────────────┬────────────────────┘
+                                                       │
+                                                       ▼
+┌──────────────────────────────┐        ┌──────────────────────────────┐        ┌──────────────────────────────┐
+│  Network Config Service      │───────▶│ Contract Verification Service│◀───────│ Contract Verification        │
+│  - Active Network ID         │        │ - Readiness Evaluation       │        │   Provider Abstraction       │
+│  - Environment Validation    │        │ - Status Transition Machine  │        │ - Prototype: UNSUPPORTED     │
+└──────────────────────────────┘        │ - Anti-Fabrication Boundary  │        │ - Midnight: Adapter / Query  │
+                                        └──────────────┬───────────────┘        └──────────────────────────────┘
+                                                       │
+                                        ┌──────────────┴──────────────┐
+                                        ▼                             ▼
+                        ┌──────────────────────────────┐┌──────────────────────────────┐
+                        │ Transaction Orchestrator     ││ Transaction Execution Service│
+                        │ - Executing circuits blocked ││ - Pre-signature gate         │
+                        │ - Local ZK proofs allowed    ││ - LoanRegistry immutable     │
+                        └──────────────────────────────┘└──────────────────────────────┘
+```
+
+### 33.1 Architectural Principles: Configured Contract Address != Proof of On-Chain Deployment
+
+A fundamental security principle of Midnight decentralized applications is that client-side configuration must never be confused with verified ledger state:
+
+1. **Configuration Is Merely Intent**:
+   Setting a contract address in application configuration (in-memory or `localStorage`) does **not** prove that the contract bytecode actually exists on the target network.
+2. **Connected Wallet Is Not Deployment**:
+   A connected wallet proves account authorization, but does not confirm that the target contract is deployed on the ledger.
+3. **Manifest Is Not Bytecode Proof**:
+   The local circuit manifest describes the expected Compact interface, but is not cryptographic evidence of deployed bytecode.
+4. **Authoritative Network Query**:
+   The contract is considered `VERIFIED` if and only if an authoritative network query (via node RPC or indexer) confirms contract existence on the target network.
+5. **Honest Local Simulation**:
+   In prototype mode, the system truthfully reports `UNSUPPORTED` (`VERIFICATION_UNSUPPORTED`) rather than fabricating simulated on-chain confirmations.
+6. **Immutable LoanRegistry**:
+   Contract deployment verification failures must never mutate `LoanRegistry` state or alter existing loan agreement terms.
+
+### 33.2 Contract Verification Lifecycle & Domain Models (`types/contract-verification.ts`)
+
+The verification boundary introduces strongly typed domain models capturing all potential lifecycle outcomes:
+
+- **`ContractVerificationStatus`**:
+  `'NOT_CHECKED' | 'CHECKING' | 'VERIFIED' | 'NOT_DEPLOYED' | 'NETWORK_MISMATCH' | 'INVALID' | 'UNAVAILABLE' | 'UNSUPPORTED' | 'FAILED'`
+  *Default state is strictly `NOT_CHECKED`.*
+- **`ContractVerificationReason`**:
+  `'NO_CONTRACT_CONFIGURED' | 'ADDRESS_INVALID' | 'NETWORK_NOT_CONFIGURED' | 'NETWORK_MISMATCH' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_FOUND' | 'PROVIDER_UNAVAILABLE' | 'INDEXER_UNAVAILABLE' | 'VERIFICATION_UNSUPPORTED' | 'VERIFICATION_FAILED' | 'SOURCE_FINGERPRINT_UNVERIFIED' | 'MANIFEST_UNVERIFIED'`
+- **`ContractVerificationResult`**:
+  Immutable public technical verification descriptor containing:
+  - `status`: High-level verification lifecycle status.
+  - `reason`: Granular technical reason for current status.
+  - `contractAddress`: Normalized 32-byte hex address (or `null`).
+  - `expectedNetworkId`: Network identifier expected by active application configuration.
+  - `observedNetworkId`: Network identifier observed from authoritative provider query (or `null`).
+  - `deploymentTransactionId`: On-chain deployment transaction hash (or `null`).
+  - `deploymentBlockHeight`: On-chain block height at deployment (or `null`).
+  - `deployedAt`: Epoch millisecond timestamp of deployment (or `null`).
+  - `verificationTimestamp`: Epoch millisecond timestamp of verification execution.
+  - `sourceFingerprint`: Cryptographic SHA-256 fingerprint of canonical Compact source.
+  - `manifestFingerprint`: Manifest fingerprint (or `null`).
+  - `error`: Technical error message if query failed.
+- **`ContractDeploymentMetadata`**, **`ContractIdentity`**, **`ContractCodeMetadata`**:
+  Public interfaces defining deployment metadata, network identity, and code metadata.
+- **`ContractVerificationErrorCode` & `ContractVerificationError`**:
+  Domain error class representing typed verification errors.
+- **Re-exports**:
+  All verification domain models are re-exported via `frontend/src/types/index.ts`.
+
+### 33.3 Contract Verification Provider Abstraction (`lib/contract-verification-provider.ts`)
+
+A dedicated read-only provider boundary decouples verification logic from specific node RPC or indexer query implementations:
+
+- **`ContractVerificationProvider` Interface**:
+  - `verifyContractExists(address: string, networkId?: string | null): Promise<ContractVerificationResult>`
+  - `getDeploymentMetadata(address: string, networkId?: string | null): Promise<ContractDeploymentMetadata | null>`
+  - `getContractIdentity(address: string, networkId?: string | null): Promise<ContractIdentity | null>`
+  - `getContractCodeMetadata(address: string, networkId?: string | null): Promise<ContractCodeMetadata | null>`
+- **`LocalPrototypeVerificationProvider`**:
+  Honest prototype implementation: returns `UNSUPPORTED` (`VERIFICATION_UNSUPPORTED`) and null metadata. Enforces the invariant that local simulation never claims a real blockchain deployment exists.
+- **`MidnightVerificationAdapter`**:
+  Adapter for live Midnight networks. In the absence of live indexer SDK packages, returns honest `UNSUPPORTED` or `UNAVAILABLE` rather than synthesizing fake ledger queries. Includes `injectMockVerifierForTesting` and `clearMockVerifierForTesting` for deterministic test verification.
+
+### 33.4 Contract Verification Service (`lib/contract-verification-service.ts`)
+
+Authoritative service coordinating the contract verification lifecycle:
+
+1. **Unconfigured Check**: Rejects unconfigured addresses with `NOT_DEPLOYED` and `NO_CONTRACT_CONFIGURED`.
+2. **Address Validation**: Validates 32-byte hexadecimal structure using `validateContractAddress`, rejecting invalid addresses with `INVALID` and `ADDRESS_INVALID`.
+3. **Network Configuration**: Verifies that active network configuration is valid, rejecting unconfigured networks with `UNAVAILABLE` and `NETWORK_NOT_CONFIGURED`.
+4. **Network Compatibility**: Compares configured deployment network with active network, flagging mismatches with `NETWORK_MISMATCH`.
+5. **Local Mode Handling**: Truthfully marks local prototype mode as `UNSUPPORTED` (`VERIFICATION_UNSUPPORTED`).
+6. **Lifecycle State Transition**: Transitions state to `CHECKING` and dispatches provider queries.
+7. **Deployment Synchronization**: Updates `ContractDeploymentService` with `applyVerificationResult`, promoting status to `VERIFIED` and setting `isVerified: true` only upon genuine verification.
+8. **Listener Notification**: Publishes verification transitions to registered UI listeners.
+
+### 33.5 Multi-Stage Transaction Readiness & Execution Gating
+
+The transaction pipeline enforces strict separation between read-only/local operations and transaction-executing operations:
+
+| Circuit Name | Classification | Requires Verification? | Behavior on Unverified Deployment |
+| :--- | :--- | :--- | :--- |
+| `verifyEligibility` | `LOCAL_PROOF` / `OFF_CHAIN_PROOF` | **No** | Generates Zero-Knowledge proof locally; execution allowed |
+| `getLoanStatus` | `STATE_READ` | **No** | Read-only state inspection; returns local/mock state |
+| `getLoanDetails` | `STATE_READ` | **No** | Read-only terms inspection; returns agreement metadata |
+| `fundLoan` | `TRANSACTION_EXECUTION` | **Yes** | **Blocked**: `CONTRACT_VERIFICATION_UNAVAILABLE` / `CONTRACT_NOT_DEPLOYED` |
+| `repayLoan` | `TRANSACTION_EXECUTION` | **Yes** | **Blocked**: `CONTRACT_VERIFICATION_UNAVAILABLE` / `CONTRACT_NOT_DEPLOYED` |
+| `settleLoan` | `TRANSACTION_EXECUTION` | **Yes** | **Blocked**: `CONTRACT_VERIFICATION_UNAVAILABLE` / `CONTRACT_NOT_DEPLOYED` |
+
+- **`TransactionOrchestrator`**:
+  `prepareLifecycleTransaction` and `evaluateTransactionReadiness` evaluate verification state. If an executing action (`FUND_LOAN`, `REPAY_LOAN`, `SETTLE_LOAN`) is attempted on an unverified deployment, the operation is blocked with `CONTRACT_VERIFICATION_UNAVAILABLE` or `CONTRACT_NOT_DEPLOYED`.
+- **`TransactionExecutionService`**:
+  `executePipeline` checks deployment verification in Phase 2.8 before wallet signing occurs. If unverified, execution is rejected with `CONTRACT_NOT_VERIFIED`, preventing any signature prompt and guaranteeing that `LoanRegistry` is never mutated.
+- **`TransactionReconciliationService`**:
+  `reconcileTransaction` safely handles unverified deployments without throwing unhandled exceptions, returning honest `'UNSUPPORTED'` status and disallowing registry mutation.
+
+### 33.6 UI Enhancements & Indicators
+
+- **`NetworkStatusPanel` (`frontend/src/components/NetworkStatusPanel.tsx`)**:
+  Adds a technical "Contract Deployment Verification" card (`data-testid="contract-verification-section"`) displaying:
+  - Contract Address & Configuration Status
+  - Verification Status Badge (`Verified`, `Checking`, `Not Deployed`, `Network Mismatch`, `Unavailable`, `Unsupported`)
+  - Expected Network vs. Observed Network
+  - Deployment Transaction ID, Block Height, and Timestamp
+- **`TransactionReviewPanel` (`frontend/src/components/TransactionReviewPanel.tsx`)**:
+  Renders live verification badges:
+  - `Contract: VERIFIED` when deployment verification succeeds.
+  - `Contract: NOT VERIFIED — execution blocked` when configured but unverified.
+  - `Contract: NOT CONFIGURED` when no contract address is set.
+  - Automatically disables the execution button when the contract is unverified.
+
+### 33.7 Anti-Fabrication & Strict Zero-Knowledge Privacy Invariants
+
+1. **Zero Fabrication**: Default deployment state is strictly unverified. No synthetic transaction hashes, fictitious block numbers, or fake timestamps are ever invented.
+2. **Zero Forbidden Terms**: All 70+ frontend source files scanned for the 14 forbidden terms (`witness context`, `privateState`, `borrower income`, `salary`, `bank balance`, etc.) with zero occurrences.
+3. **Compact Source Integrity**: `contracts/src/index.compact` is 100% untouched; SHA-256 fingerprint strictly matches `608d88fbbf3380ebf479d6cfb4310dd9dd8eb0db124797de16a0fe77f9785f53`.
+4. **Automated Test Coverage**: 516 passing tests across contracts and frontend test suites (462 frontend tests + 54 contract tests).
+
+
 
 

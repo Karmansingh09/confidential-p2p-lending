@@ -6,6 +6,7 @@ import { getSupportedLifecycleActions } from '../lib/transaction-orchestrator.ts
 import { getNetworkConfigService } from '../lib/network-config-service.ts';
 import { getWalletSessionService } from '../lib/wallet-session-service.ts';
 import { getContractDeploymentService } from '../lib/contract-deployment-service.ts';
+import { getContractVerificationService } from '../lib/contract-verification-service.ts';
 
 export interface NetworkStatusPanelProps {
   networkContext?: NetworkContext;
@@ -59,6 +60,53 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
       : netContext.isPrototype || readinessState === 'NOT_DETECTED' || readinessState === 'INCOMPATIBLE'
       ? 'UNSUPPORTED'
       : 'BLOCKED';
+
+  const verificationService = getContractVerificationService();
+  const verificationResult = verificationService.getVerificationResult();
+
+  const getVerificationDisplayStatus = () => {
+    if (!deployment.contractAddress) {
+      return 'Not Configured';
+    }
+    if (verificationResult.status === 'VERIFIED' || deployment.status === 'VERIFIED') {
+      return 'Verified';
+    }
+    if (verificationResult.status === 'CHECKING') {
+      return 'Checking';
+    }
+    if (verificationResult.status === 'NOT_DEPLOYED') {
+      return 'Not Deployed';
+    }
+    if (verificationResult.status === 'NETWORK_MISMATCH') {
+      return 'Network Mismatch';
+    }
+    if (verificationResult.status === 'UNAVAILABLE') {
+      return 'Unavailable';
+    }
+    if (verificationResult.status === 'UNSUPPORTED') {
+      return 'Unsupported';
+    }
+    return 'Configured — Not Verified';
+  };
+
+  const verificationStatusText = getVerificationDisplayStatus();
+  const deploymentConfigText = deployment.contractAddress
+    ? deployment.status === 'INVALID'
+      ? 'Invalid'
+      : 'Configured'
+    : 'Not Configured';
+  const expectedNetworkText =
+    netConfig.networkId ?? (netConfig.environment === 'LOCAL' ? 'midnight-prototype-local' : 'None');
+  const observedNetworkText = verificationResult.observedNetworkId ?? 'None';
+  const deploymentTxIdText =
+    verificationResult.deploymentTransactionId ?? deployment.deploymentTransactionId ?? 'None';
+  const deploymentBlockHeightText =
+    (verificationResult.deploymentBlockHeight ?? deployment.deploymentBlockHeight)?.toString() ?? 'None';
+  const deploymentTimestampText = verificationResult.deployedAt
+    ? new Date(verificationResult.deployedAt).toISOString()
+    : deployment.deployedAt
+    ? new Date(deployment.deployedAt).toISOString()
+    : 'None';
 
   return (
     <div
@@ -466,6 +514,154 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           }}
         >
           Configured address is a routing reference and does not guarantee on-chain existence without provider validation.
+        </div>
+      </div>
+
+      {/* Contract Deployment Verification (Commit #33) */}
+      <div
+        style={{
+          background: '#0f172a',
+          padding: '12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+          border: '1px solid #1e293b',
+        }}
+        data-testid="contract-verification-section"
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}
+          >
+            Contract Deployment Verification
+          </div>
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 600,
+              background:
+                verificationStatusText === 'Verified'
+                  ? '#064e3b'
+                  : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
+                  ? '#450a0a'
+                  : verificationStatusText === 'Checking'
+                  ? '#1e3a8a'
+                  : '#78350f',
+              color:
+                verificationStatusText === 'Verified'
+                  ? '#a7f3d0'
+                  : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
+                  ? '#fca5a5'
+                  : verificationStatusText === 'Checking'
+                  ? '#93c5fd'
+                  : '#fde68a',
+            }}
+          >
+            {verificationStatusText}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '8px',
+            fontSize: '11px',
+            marginBottom: '8px',
+          }}
+        >
+          <div>
+            <span style={{ color: '#94a3b8' }}>Contract Address: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {deployment.contractAddress
+                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                : 'Not Configured'}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Deployment Configuration: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {deploymentConfigText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Verification Status: </span>
+            <span
+              style={{
+                color:
+                  verificationStatusText === 'Verified'
+                    ? '#34d399'
+                    : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
+                    ? '#f87171'
+                    : '#fbbf24',
+                fontWeight: 500,
+              }}
+            >
+              {verificationStatusText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Expected Network: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {expectedNetworkText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Observed Network: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {observedNetworkText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Deployment Transaction ID: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {deploymentTxIdText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Deployment Block Height: </span>
+            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
+              {deploymentBlockHeightText}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8' }}>Deployment Timestamp: </span>
+            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
+              {deploymentTimestampText}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: '10px',
+            color: '#94a3b8',
+            fontStyle: 'italic',
+            borderTop: '1px solid #1e293b',
+            paddingTop: '6px',
+          }}
+        >
+          Authoritative on-chain existence verification via genuine provider/indexer response.
         </div>
       </div>
 

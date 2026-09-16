@@ -432,6 +432,24 @@ export class TransactionExecutionService {
         };
         return { result };
       }
+      const isExecutingAction = action === 'FUND_LOAN' || action === 'REPAY_LOAN' || action === 'SETTLE_LOAN';
+      const isVerifiedOrReady = deployment.isVerified || deployment.status === 'VERIFIED' || deployment.status === 'READY';
+      if (isExecutingAction && !isVerifiedOrReady) {
+        const result: TransactionExecutionResult = {
+          success: false,
+          status: 'BLOCKED',
+          action,
+          circuitName,
+          loanId,
+          message: 'Transaction blocked: Contract deployment is not verified on this network.',
+          errorCode: 'CONTRACT_NOT_VERIFIED' as any,
+          error: 'Contract deployment not verified.',
+          unsupportedReason: 'Contract deployment verification required before on-chain execution.',
+          registryUpdated: false,
+          confirmationState: 'NOT_CONFIRMED',
+        };
+        return { result };
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -1019,6 +1037,24 @@ export class TransactionExecutionService {
           isReady: false,
           reason: `Transaction blocked: Contract network mismatch (${deployment.networkId} !== ${netConfig.networkId}).`,
           errorCode: 'NETWORK_MISMATCH',
+          prep,
+        };
+      }
+      const isExecuting =
+        request.action === 'FUND_LOAN' || request.action === 'REPAY_LOAN' || request.action === 'SETTLE_LOAN';
+      const isVerifiedOrReady =
+        deployment.isVerified || deployment.status === 'VERIFIED' || deployment.status === 'READY';
+      if (isExecuting && !isVerifiedOrReady) {
+        request.status = 'BLOCKED';
+        request.error = 'Transaction blocked: Contract deployment is not verified on this network.';
+        request.errorCode = 'CONTRACT_NOT_VERIFIED' as any;
+        request.updatedAt = Date.now();
+        const prep = prepareLifecycleTransaction(loan, account as any, request.action, provider, activeDeploymentService);
+        this.persistRequest(request);
+        return {
+          isReady: false,
+          reason: 'Transaction blocked: Contract deployment is not verified on this network.',
+          errorCode: 'CONTRACT_NOT_VERIFIED' as any,
           prep,
         };
       }

@@ -120,7 +120,7 @@ console.log(settled.loanDetails.statusText); // 'settled'
 Run the automated test suite covering all 5 lifecycle transitions, client API, and frontend:
 ```bash
 npm test
-# 453 passing tests across 8 test suites
+# 516 passing tests across 8 test suites
 ```
 
 ## React + TypeScript Frontend Foundation (`frontend/`)
@@ -139,7 +139,17 @@ npm run typecheck:frontend
 npm run build:frontend
 ```
 
-### Current Status & Features (Commit #32)
+### Current Status & Features (Commit #33)
+- **Real On-Chain Contract Deployment Verification & Discovery Boundary (Commit #33)**:
+  - **Core Architectural Invariant**: Formally enforces $\text{CONFIGURED CONTRACT ADDRESS} \neq \text{PROOF OF ON-CHAIN DEPLOYMENT}$. Storing a contract address in application configuration or connecting a wallet does not prove that bytecode exists on the target ledger.
+  - **Contract Verification Domain Models & Lifecycle**: Introduces `ContractVerificationStatus` (`NOT_CHECKED`, `CHECKING`, `VERIFIED`, `NOT_DEPLOYED`, `NETWORK_MISMATCH`, `INVALID`, `UNAVAILABLE`, `UNSUPPORTED`, `FAILED`), `ContractVerificationReason` (12 granular technical reasons), `ContractVerificationResult`, and `ContractVerificationError` in `frontend/src/types/contract-verification.ts`, re-exported via `frontend/src/types/index.ts`.
+  - **Read-Only Verification Provider Abstraction**: Implements `ContractVerificationProvider` (`frontend/src/lib/contract-verification-provider.ts`) with `LocalPrototypeVerificationProvider` (honestly reporting `UNSUPPORTED`) and `MidnightVerificationAdapter` (live boundary reporting honest `UNSUPPORTED` / `UNAVAILABLE` in the absence of live indexer SDK packages, with test injection hooks).
+  - **Contract Verification Service**: Coordinates validation, address format checks, network configuration checks, and provider queries (`frontend/src/lib/contract-verification-service.ts`), transitioning states from `NOT_CHECKED` to `VERIFIED` and synchronizing with `ContractDeploymentService`.
+  - **Multi-Stage Readiness & Execution Gating**: Allows read-only circuits (`getLoanStatus`, `getLoanDetails`) and local proof generation (`verifyEligibility`) to evaluate locally, while strictly blocking state-executing circuits (`fundLoan`, `repayLoan`, `settleLoan`) with `CONTRACT_VERIFICATION_UNAVAILABLE` or `CONTRACT_NOT_DEPLOYED`.
+  - **Pre-Signature Execution Gating & Registry Immutability**: `TransactionExecutionService` blocks unverified deployments before wallet signing occurs, preventing signature popups and ensuring `LoanRegistry` is never mutated.
+  - **Safe Reconciliation**: `TransactionReconciliationService` handles unverified deployments safely without throwing unhandled exceptions, returning honest `'UNSUPPORTED'` status.
+  - **Technical Dashboard Diagnostics UI**: Renders dedicated "Contract Deployment Verification" card (`data-testid="contract-verification-section"`) in `NetworkStatusPanel.tsx` (displaying address, configuration status, verification badge, expected/observed network, deployment transaction hash, block height, and timestamp) and live verification badges with execution disabling in `TransactionReviewPanel.tsx`.
+  - **516 Passing Automated Tests**: 100% test pass rate across 8 test suites (462 frontend tests + 54 contract tests) verifying unconfigured/invalid addresses, genuine verified deployments, contract not found, network mismatches, provider unreachability, anti-fabrication invariants (zero synthetic hashes/heights), prototype isolation, pre-signature blocking, registry immutability, and full privacy audit across 70+ files.
 - **Midnight Contract Deployment Configuration Boundary (Commit #32)**:
   - **Triadic Deployment Axioms**: Formally enforces $\text{CONFIGURED CONTRACT ADDRESS} \neq \text{PROOF OF ON-CHAIN DEPLOYMENT}$, $\text{WALLET CONNECTION} \neq \text{CONTRACT READINESS}$, and $\text{CIRCUIT MANIFEST} \neq \text{PROOF OF BYTECODE MATCH}$.
   - **Contract Deployment Models & Lifecycle States**: Defines `ContractDeployment` (`frontend/src/types/contract-deployment.ts`) and `ContractDeploymentStatus` (`NOT_DEPLOYED`, `UNCONFIGURED`, `CONFIGURING`, `CONFIGURED`, `VALIDATING`, `READY`, `INVALID`, `UNSUPPORTED`) defaulting strictly to `NOT_DEPLOYED`.

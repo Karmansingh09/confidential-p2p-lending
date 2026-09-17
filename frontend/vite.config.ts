@@ -6,8 +6,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@contracts': path.resolve(__dirname, '../contracts/dist/index.js'),
+      'contracts': path.resolve(__dirname, './src/lib/contracts-client-facade.ts'),
+      '@contracts': path.resolve(__dirname, './src/lib/contracts-client-facade.ts'),
     },
+  },
+  build: {
+    target: 'esnext',
   },
   server: {
     port: 3000,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { LoanRegistry } from '../lib/loan-registry.ts';
 import type {
   PersistedTransaction,
@@ -38,9 +38,11 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
   const [transactions, setTransactions] = useState<PersistedTransaction[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterAction, setFilterAction] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const [isReconcilingAll, setIsReconcilingAll] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
   const loadTransactions = useCallback(() => {
     try {
@@ -118,62 +120,91 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
     });
   };
 
-  // Filter items
-  const filteredTransactions = transactions.filter((tx) => {
-    if (filterStatus !== 'ALL') {
-      if (filterStatus === 'PENDING' && tx.status !== 'SUBMITTED' && tx.status !== 'SUBMITTING' && tx.recoveryStatus !== 'PENDING') {
-        return false;
-      }
-      if (filterStatus === 'CONFIRMED' && tx.status !== 'CONFIRMED') {
-        return false;
-      }
-      if (filterStatus === 'FAILED' && tx.status !== 'FAILED') {
-        return false;
-      }
-      if (filterStatus === 'REJECTED' && tx.status !== 'REJECTED') {
-        return false;
-      }
-      if (filterStatus === 'UNSUPPORTED' && tx.status !== 'UNSUPPORTED' && tx.status !== 'BLOCKED') {
-        return false;
-      }
-    }
-    if (filterAction !== 'ALL' && tx.action !== filterAction) {
-      return false;
-    }
-    return true;
-  });
+  // Summary Metrics derived directly from real transactions
+  const totalCount = transactions.length;
+  const pendingCount = transactions.filter(
+    (tx) => tx.status === 'SUBMITTED' || tx.status === 'SUBMITTING' || tx.recoveryStatus === 'PENDING'
+  ).length;
+  const confirmedCount = transactions.filter((tx) => tx.status === 'CONFIRMED').length;
+  const failedCount = transactions.filter((tx) => tx.status === 'FAILED' || tx.status === 'REJECTED').length;
+  const recoverableCount = transactions.filter(
+    (tx) => tx.recoveryStatus === 'RECOVERABLE' || (tx.recoveryStatus === 'PENDING' && tx.status !== 'CONFIRMED')
+  ).length;
 
-  const getStatusBadgeStyle = (status: string) => {
+  // Filter items
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (filterStatus !== 'ALL') {
+        if (
+          filterStatus === 'PENDING' &&
+          tx.status !== 'SUBMITTED' &&
+          tx.status !== 'SUBMITTING' &&
+          tx.recoveryStatus !== 'PENDING'
+        ) {
+          return false;
+        }
+        if (filterStatus === 'CONFIRMED' && tx.status !== 'CONFIRMED') {
+          return false;
+        }
+        if (filterStatus === 'FAILED' && tx.status !== 'FAILED') {
+          return false;
+        }
+        if (filterStatus === 'REJECTED' && tx.status !== 'REJECTED') {
+          return false;
+        }
+        if (filterStatus === 'UNSUPPORTED' && tx.status !== 'UNSUPPORTED' && tx.status !== 'BLOCKED') {
+          return false;
+        }
+      }
+      if (filterAction !== 'ALL' && tx.action !== filterAction) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesId = tx.id.toLowerCase().includes(q);
+        const matchesLoan = tx.loanId.toLowerCase().includes(q);
+        const matchesAction = tx.action.toLowerCase().includes(q);
+        const matchesCircuit = tx.circuitName.toLowerCase().includes(q);
+        const matchesTxId = tx.providerTransactionId?.toLowerCase().includes(q) ?? false;
+        if (!matchesId && !matchesLoan && !matchesAction && !matchesCircuit && !matchesTxId) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [transactions, filterStatus, filterAction, searchQuery]);
+
+  const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
-        return { background: '#14532d', color: '#86efac', border: '1px solid #16a34a' };
+        return 'status-badge-confirmed';
       case 'SUBMITTED':
       case 'SUBMITTING':
-        return { background: '#1e3a8a', color: '#93c5fd', border: '1px solid #2563eb' };
+        return 'status-badge-submitted';
       case 'REJECTED':
-        return { background: '#581c87', color: '#d8b4fe', border: '1px solid #9333ea' };
+        return 'status-badge-rejected';
       case 'FAILED':
-        return { background: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626' };
+        return 'status-badge-failed';
       case 'UNSUPPORTED':
       case 'BLOCKED':
       default:
-        return { background: '#334155', color: '#94a3b8', border: '1px solid #475569' };
+        return 'status-badge-unsupported';
     }
   };
 
-  const getRecoveryBadgeStyle = (recovery: TransactionRecoveryStatus) => {
+  const getRecoveryBadgeClass = (recovery: TransactionRecoveryStatus) => {
     switch (recovery) {
       case 'CONFIRMED':
-        return { background: '#064e3b', color: '#a7f3d0' };
+        return 'recovery-badge-confirmed';
       case 'PENDING':
       case 'RECOVERABLE':
-        return { background: '#78350f', color: '#fde68a' };
+        return 'recovery-badge-pending';
       case 'UNSUPPORTED':
-        return { background: '#1e293b', color: '#94a3b8' };
+        return 'recovery-badge-unsupported';
       case 'FAILED':
       case 'REJECTED':
       default:
-        return { background: '#450a0a', color: '#fecaca' };
+        return 'recovery-badge-failed';
     }
   };
 
@@ -207,82 +238,46 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
   };
 
   return (
-    <div
-      style={{
-        background: '#0f172a',
-        border: '1px solid #334155',
-        borderRadius: '10px',
-        padding: '20px',
-        margin: '16px 0',
-        color: '#f8fafc',
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
-      }}
-      data-testid="transaction-history-panel"
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: '1px solid #334155',
-          paddingBottom: '12px',
-          marginBottom: '16px',
-        }}
-      >
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#f8fafc', fontWeight: 600 }}>
-            Transaction History & Lifecycle Recovery
-          </h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+    <div className="tx-history-panel" data-testid="transaction-history-panel">
+      {/* 1. Panel Header & Primary Actions */}
+      <div className="tx-panel-header">
+        <div className="tx-panel-title-wrap">
+          <div className="tx-panel-kicker font-mono">
+            <span>RECONCILIATION &amp; AUDIT</span>
+            <span className="kicker-sep">//</span>
+            <span>PERSISTED LOGS</span>
+          </div>
+          <h3 className="tx-panel-title">Transaction History &amp; Lifecycle Recovery</h3>
+          <p className="tx-panel-sub">
             Locally persisted records with provider-backed reconciliation and crash recovery.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+
+        <div className="tx-panel-actions font-mono">
           <button
+            type="button"
             onClick={handleReconcileAll}
             disabled={isReconcilingAll || transactions.length === 0}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '6px',
-              border: 'none',
-              background: isReconcilingAll ? '#334155' : '#2563eb',
-              color: '#ffffff',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              cursor: isReconcilingAll || transactions.length === 0 ? 'not-allowed' : 'pointer',
-            }}
+            className="btn-tx-reconcile-all"
             data-testid="reconcile-all-button"
           >
             {isReconcilingAll ? 'Reconciling...' : 'Reconcile All'}
           </button>
           <button
+            type="button"
             onClick={handleClearHistory}
             disabled={transactions.length === 0}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid #475569',
-              background: 'transparent',
-              color: '#94a3b8',
-              fontSize: '0.85rem',
-              cursor: transactions.length === 0 ? 'not-allowed' : 'pointer',
-            }}
+            className="btn-tx-clear"
             data-testid="clear-history-button"
           >
             Clear
           </button>
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: '1px solid #475569',
-                background: 'transparent',
-                color: '#94a3b8',
-                cursor: 'pointer',
-              }}
+              className="btn-tx-close"
+              aria-label="Close panel"
             >
               ✕
             </button>
@@ -290,81 +285,88 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
         </div>
       </div>
 
-      {/* Honest Anti-Fabrication Notice */}
-      <div
-        style={{
-          background: 'rgba(30, 58, 138, 0.25)',
-          borderLeft: '4px solid #3b82f6',
-          padding: '10px 14px',
-          borderRadius: '4px',
-          marginBottom: '16px',
-          fontSize: '0.8rem',
-          color: '#cbd5e1',
-          lineHeight: '1.4',
-        }}
-      >
-        <span style={{ fontWeight: 600, color: '#93c5fd' }}>LOCAL PERSISTENCE ≠ BLOCKCHAIN CONFIRMATION:</span>{' '}
-        This panel records locally persisted lifecycle metadata and off-chain execution requests.
-        Canonical loan registry status is updated strictly when the active wallet provider verifies
-        on-chain confirmation.
+      {/* 2. Transaction Summary Metrics Rail (Derived Real Data) */}
+      <div className="tx-summary-grid font-mono">
+        <div className="tx-summary-card">
+          <span className="tx-summary-label">TOTAL RECORDS</span>
+          <span className="tx-summary-val">{totalCount}</span>
+          <span className="tx-summary-sub">Persisted Logs</span>
+        </div>
+        <div className="tx-summary-card">
+          <span className="tx-summary-label">PENDING</span>
+          <span className="tx-summary-val text-amber">{pendingCount}</span>
+          <span className="tx-summary-sub">Awaiting Network</span>
+        </div>
+        <div className="tx-summary-card">
+          <span className="tx-summary-label">CONFIRMED</span>
+          <span className="tx-summary-val text-success">{confirmedCount}</span>
+          <span className="tx-summary-sub">Provider Verified</span>
+        </div>
+        <div className="tx-summary-card">
+          <span className="tx-summary-label">FAILED</span>
+          <span className="tx-summary-val text-danger">{failedCount}</span>
+          <span className="tx-summary-sub">Rejected / Errored</span>
+        </div>
+        <div className="tx-summary-card">
+          <span className="tx-summary-label">RECOVERABLE</span>
+          <span className="tx-summary-val text-accent">{recoverableCount}</span>
+          <span className="tx-summary-sub">Reconciliation Ready</span>
+        </div>
       </div>
 
-      {/* Feedback Banner */}
+      {/* 3. Honest Anti-Fabrication Notice */}
+      <div className="tx-notice-strip font-mono">
+        <div className="notice-icon">⚠</div>
+        <div className="notice-content">
+          <strong className="notice-heading">LOCAL PERSISTENCE ≠ BLOCKCHAIN CONFIRMATION</strong>
+          <p className="notice-text">
+            This panel records locally persisted lifecycle metadata and off-chain execution requests.
+            Canonical loan registry status is updated strictly when the active wallet provider verifies
+            on-chain confirmation.
+          </p>
+        </div>
+      </div>
+
+      {/* 4. Feedback Banner */}
       {feedback && (
         <div
-          style={{
-            padding: '10px 14px',
-            borderRadius: '6px',
-            marginBottom: '14px',
-            fontSize: '0.85rem',
-            background:
-              feedback.type === 'success'
-                ? 'rgba(20, 83, 45, 0.3)'
-                : feedback.type === 'error'
-                ? 'rgba(127, 29, 29, 0.3)'
-                : 'rgba(30, 58, 138, 0.3)',
-            color:
-              feedback.type === 'success'
-                ? '#86efac'
-                : feedback.type === 'error'
-                ? '#fca5a5'
-                : '#93c5fd',
-            border:
-              feedback.type === 'success'
-                ? '1px solid #16a34a'
-                : feedback.type === 'error'
-                ? '1px solid #dc2626'
-                : '1px solid #2563eb',
-          }}
+          className={`tx-feedback-banner feedback-${feedback.type} font-mono`}
           data-testid="transaction-history-feedback"
         >
-          {feedback.message}
+          <span className="feedback-dot" />
+          <span>{feedback.message}</span>
         </div>
       )}
 
-      {/* Filter Controls */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '12px',
-          marginBottom: '14px',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Status:</label>
+      {/* 5. Filter & Search Toolbar */}
+      <div className="tx-filter-toolbar font-mono">
+        <div className="tx-search-box">
+          <span className="search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search transactions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="tx-search-input"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => setSearchQuery('')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="tx-filter-group">
+          <label htmlFor="filter-status-select" className="filter-label">Status:</label>
           <select
+            id="filter-status-select"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            style={{
-              background: '#1e293b',
-              color: '#f8fafc',
-              border: '1px solid #334155',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              fontSize: '0.8rem',
-            }}
+            className="tx-filter-select"
             data-testid="filter-status-select"
           >
             <option value="ALL">All Statuses</option>
@@ -376,19 +378,13 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
           </select>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Action:</label>
+        <div className="tx-filter-group">
+          <label htmlFor="filter-action-select" className="filter-label">Action:</label>
           <select
+            id="filter-action-select"
             value={filterAction}
             onChange={(e) => setFilterAction(e.target.value)}
-            style={{
-              background: '#1e293b',
-              color: '#f8fafc',
-              border: '1px solid #334155',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              fontSize: '0.8rem',
-            }}
+            className="tx-filter-select"
             data-testid="filter-action-select"
           >
             <option value="ALL">All Actions</option>
@@ -399,94 +395,68 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
           </select>
         </div>
 
-        <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: 'auto' }}>
+        <div className="tx-filter-counter">
           Showing {filteredTransactions.length} of {transactions.length} transactions
-        </span>
+        </div>
       </div>
 
-      {/* Transaction List */}
+      {/* 6. Transaction List / Empty State */}
       {filteredTransactions.length === 0 ? (
-        <div
-          style={{
-            padding: '24px',
-            textAlign: 'center',
-            color: '#64748b',
-            fontSize: '0.9rem',
-            background: '#0b1120',
-            borderRadius: '8px',
-            border: '1px dashed #334155',
-          }}
-          data-testid="empty-transaction-history"
-        >
-          No persisted transactions found matching the selected filters.
+        <div className="tx-empty-state font-mono" data-testid="empty-transaction-history">
+          <div className="empty-icon-shield">
+            <span>⬡</span>
+          </div>
+          <h4 className="empty-title">
+            {transactions.length === 0 ? '0 TRANSACTIONS' : 'NO TRANSACTION RECORDS'}
+          </h4>
+          <p className="empty-desc">
+            {transactions.length === 0
+              ? 'NO PERSISTED EXECUTION RECORDS'
+              : 'No persisted transactions found matching the selected filters.'}
+          </p>
+          <p className="empty-sub">
+            When transaction activity occurs, lifecycle records will appear here.
+          </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="tx-records-stack">
           {filteredTransactions.map((tx) => {
-            const statusStyle = getStatusBadgeStyle(tx.status);
-            const recoveryStyle = getRecoveryBadgeStyle(tx.recoveryStatus);
+            const statusClass = getStatusBadgeClass(tx.status);
+            const recoveryClass = getRecoveryBadgeClass(tx.recoveryStatus);
             const isReconcilingThis = reconcilingId === tx.id;
             const canReconcile =
               tx.recoveryStatus === 'PENDING' ||
               tx.recoveryStatus === 'RECOVERABLE' ||
               tx.status === 'SUBMITTED' ||
               tx.status === 'SUBMITTING';
+            const isExpanded = expandedTxId === tx.id;
 
             return (
               <div
                 key={tx.id}
-                style={{
-                  background: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                  padding: '14px',
-                }}
+                className={`tx-record-card ${isExpanded ? 'is-expanded' : ''}`}
                 data-testid={`tx-row-${tx.id}`}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <div>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        fontSize: '0.95rem',
-                        color: '#f8fafc',
-                        marginRight: '8px',
-                      }}
-                    >
-                      {tx.action}
-                    </span>
-                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                      Loan ID: {tx.loanId}
+                {/* Card Top Row */}
+                <div className="tx-record-top">
+                  <div className="tx-record-identity">
+                    <span className="tx-action-title font-mono">{tx.action}</span>
+                    <span className="tx-loan-badge font-mono">Loan: {tx.loanId}</span>
+                    <span className="tx-id-badge font-mono" title={tx.id}>
+                      ID: {tx.id.slice(0, 8)}...
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+
+                  <div className="tx-badges-group font-mono">
                     <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        padding: '2px 8px',
-                        borderRadius: '10px',
-                        ...statusStyle,
-                      }}
+                      className={`tx-status-pill ${statusClass}`}
                       data-testid={`tx-status-${tx.id}`}
                     >
+                      <span className="pill-dot" />
                       {tx.status}
                     </span>
                     <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        padding: '2px 8px',
-                        borderRadius: '10px',
-                        ...recoveryStyle,
-                      }}
+                      className={`tx-recovery-pill ${recoveryClass}`}
                       data-testid={`tx-recovery-${tx.id}`}
                     >
                       {tx.recoveryStatus}
@@ -494,174 +464,189 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
                   </div>
                 </div>
 
-                {/* Metadata Row */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                    gap: '8px',
-                    fontSize: '0.78rem',
-                    color: '#cbd5e1',
-                    marginBottom: '10px',
-                  }}
-                >
-                  <div>
-                    <span style={{ color: '#64748b' }}>Circuit: </span>
-                    <code>{tx.circuitName}()</code>
+                {/* Metadata Grid */}
+                <div className="tx-meta-grid font-mono">
+                  <div className="meta-cell">
+                    <span className="cell-label">Circuit:</span>
+                    <code className="cell-code">{tx.circuitName}()</code>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Network: </span>
-                    <span>{tx.networkId}</span>
+                  <div className="meta-cell">
+                    <span className="cell-label">Network:</span>
+                    <span className="cell-val">{tx.networkId}</span>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Provider: </span>
-                    <span>{tx.providerKind}</span>
+                  <div className="meta-cell">
+                    <span className="cell-label">Provider:</span>
+                    <span className="cell-val">{tx.providerKind}</span>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Created: </span>
-                    <span>{formatTimestamp(tx.createdAt)}</span>
+                  <div className="meta-cell">
+                    <span className="cell-label">Created:</span>
+                    <span className="cell-val">{formatTimestamp(tx.createdAt)}</span>
                   </div>
                   {tx.providerTransactionId && (
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <span style={{ color: '#64748b' }}>Tx ID: </span>
-                      <code style={{ fontSize: '0.72rem' }}>{tx.providerTransactionId}</code>
+                    <div className="meta-cell col-span-2">
+                      <span className="cell-label">Tx ID:</span>
+                      <code className="cell-code">{tx.providerTransactionId}</code>
                     </div>
                   )}
                   {tx.blockHeight !== undefined && (
-                    <div>
-                      <span style={{ color: '#64748b' }}>Block: </span>
-                      <span>#{tx.blockHeight.toString()}</span>
+                    <div className="meta-cell">
+                      <span className="cell-label">Block:</span>
+                      <span className="cell-val">#{tx.blockHeight.toString()}</span>
                     </div>
                   )}
                   {tx.amount !== undefined && (
-                    <div>
-                      <span style={{ color: '#64748b' }}>Amount: </span>
-                      <span>{tx.amount.toString()}</span>
+                    <div className="meta-cell">
+                      <span className="cell-label">Amount:</span>
+                      <span className="cell-val">{tx.amount.toString()} UNITS</span>
                     </div>
                   )}
                 </div>
 
                 {/* Compact Lifecycle Timeline */}
                 <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    margin: '8px 0',
-                    padding: '6px 10px',
-                    background: '#0f172a',
-                    borderRadius: '6px',
-                    border: '1px solid #334155',
-                    fontSize: '0.74rem',
-                    flexWrap: 'wrap',
-                  }}
+                  className="tx-timeline-track font-mono"
                   data-testid={`tx-timeline-${tx.id}`}
                 >
-                  <span style={{ color: '#94a3b8', fontWeight: 600, marginRight: '4px' }}>Timeline:</span>
-                  {getTimelineSteps(tx).map((step, idx, arr) => (
-                    <React.Fragment key={step.name}>
-                      <span
-                        style={{
-                          color: step.active ? '#93c5fd' : step.completed ? '#86efac' : step.failed ? '#fca5a5' : '#64748b',
-                          fontWeight: step.active || step.completed ? 600 : 400,
-                        }}
-                      >
-                        {step.completed ? '✓ ' : step.failed ? '✗ ' : ''}{step.name}
-                      </span>
-                      {idx < arr.length - 1 && <span style={{ color: '#475569' }}>→</span>}
-                    </React.Fragment>
-                  ))}
+                  <span className="timeline-title">Timeline:</span>
+                  <div className="timeline-steps-wrap">
+                    {getTimelineSteps(tx).map((step, idx, arr) => (
+                      <React.Fragment key={step.name}>
+                        <span
+                          className={`timeline-step ${
+                            step.active
+                              ? 'step-active'
+                              : step.completed
+                              ? 'step-completed'
+                              : step.failed
+                              ? 'step-failed'
+                              : 'step-pending'
+                          }`}
+                        >
+                          {step.completed ? '✓ ' : step.failed ? '✗ ' : ''}
+                          {step.name}
+                        </span>
+                        {idx < arr.length - 1 && (
+                          <span className="timeline-arrow" aria-hidden="true">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Technical Diagnostic Section */}
+                {/* Technical Diagnostic Section (LOCAL vs PROVIDER vs CANONICAL) */}
                 <div
-                  style={{
-                    display: 'flex',
-                    gap: '12px',
-                    padding: '8px 10px',
-                    background: '#090d16',
-                    borderRadius: '4px',
-                    border: '1px solid #1e293b',
-                    fontSize: '0.72rem',
-                    fontFamily: 'monospace',
-                    margin: '8px 0',
-                    flexWrap: 'wrap',
-                  }}
+                  className="tx-diagnostic-bar font-mono"
                   data-testid={`tx-diagnostic-${tx.id}`}
                 >
-                  <div>
-                    <span style={{ color: '#64748b' }}>LOCAL: </span>
-                    <span style={{ color: '#f8fafc', fontWeight: 600 }}>{tx.status}</span>
+                  <div className="diag-item">
+                    <span className="diag-label">LOCAL: </span>
+                    <span className="diag-val diag-val-local">{tx.status}</span>
                   </div>
-                  <div style={{ color: '#334155' }}>|</div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>PROVIDER: </span>
-                    <span style={{ color: tx.status === 'CONFIRMED' ? '#86efac' : tx.recoveryStatus === 'PENDING' ? '#fde68a' : '#94a3b8', fontWeight: 600 }}>
-                      {tx.status === 'CONFIRMED' ? 'CONFIRMED' : tx.providerTransactionId ? tx.recoveryStatus : 'UNAVAILABLE'}
+                  <div className="diag-sep" aria-hidden="true">|</div>
+                  <div className="diag-item">
+                    <span className="diag-label">PROVIDER: </span>
+                    <span
+                      className={`diag-val ${
+                        tx.status === 'CONFIRMED'
+                          ? 'diag-val-success'
+                          : tx.recoveryStatus === 'PENDING'
+                          ? 'diag-val-pending'
+                          : 'diag-val-muted'
+                      }`}
+                    >
+                      {tx.status === 'CONFIRMED'
+                        ? 'CONFIRMED'
+                        : tx.providerTransactionId
+                        ? tx.recoveryStatus
+                        : 'UNAVAILABLE'}
                     </span>
                   </div>
-                  <div style={{ color: '#334155' }}>|</div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>RECONCILIATION: </span>
-                    <span style={{ color: tx.recoveryStatus === 'CONFIRMED' ? '#86efac' : '#93c5fd', fontWeight: 600 }}>
+                  <div className="diag-sep" aria-hidden="true">|</div>
+                  <div className="diag-item">
+                    <span className="diag-label">RECONCILIATION: </span>
+                    <span
+                      className={`diag-val ${
+                        tx.recoveryStatus === 'CONFIRMED' ? 'diag-val-success' : 'diag-val-accent'
+                      }`}
+                    >
                       {tx.recoveryStatus === 'CONFIRMED' ? 'RECONCILED' : tx.recoveryStatus}
                     </span>
                   </div>
-                  <div style={{ color: '#334155' }}>|</div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>REGISTRY: </span>
-                    <span style={{ color: tx.status === 'CONFIRMED' ? '#86efac' : '#94a3b8', fontWeight: 600 }}>
+                  <div className="diag-sep" aria-hidden="true">|</div>
+                  <div className="diag-item">
+                    <span className="diag-label">REGISTRY: </span>
+                    <span
+                      className={`diag-val ${
+                        tx.status === 'CONFIRMED' ? 'diag-val-success' : 'diag-val-muted'
+                      }`}
+                    >
                       {tx.status === 'CONFIRMED' ? 'UPDATED' : 'UNCHANGED'}
                     </span>
                   </div>
                 </div>
 
-                {/* Event count */}
-                {(() => {
-                  const txEvents = eventService.getEventsForTransaction(tx.id);
-                  return (
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 8px 0' }}>
-                      Lifecycle Events Recorded: <span style={{ color: '#93c5fd', fontWeight: 600 }}>{txEvents.length}</span>
-                    </div>
-                  );
-                })()}
+                {/* Event Count & Error Notes */}
+                <div className="tx-card-bottom-row font-mono">
+                  {(() => {
+                    const txEvents = eventService.getEventsForTransaction(tx.id);
+                    return (
+                      <div className="tx-events-count">
+                        Lifecycle Events Recorded: <span className="events-num">{txEvents.length}</span>
+                      </div>
+                    );
+                  })()}
 
-                {/* Error/Notice Message if any */}
-                {tx.error && (
-                  <div
-                    style={{
-                      fontSize: '0.76rem',
-                      color: '#fca5a5',
-                      background: 'rgba(127, 29, 29, 0.2)',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Note: {tx.error}
+                  <div className="tx-card-actions">
+                    <button
+                      type="button"
+                      className="btn-tx-details-toggle font-mono"
+                      onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                    >
+                      {isExpanded ? 'Hide Details ▲' : 'Technical Details ▼'}
+                    </button>
+                    {canReconcile && (
+                      <button
+                        type="button"
+                        onClick={() => handleReconcile(tx.id)}
+                        disabled={isReconcilingThis}
+                        className="btn-tx-reconcile-single font-mono"
+                        data-testid={`reconcile-btn-${tx.id}`}
+                      >
+                        {isReconcilingThis ? 'Checking Status...' : 'Reconcile Status'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded Technical Details */}
+                {isExpanded && (
+                  <div className="tx-expanded-details font-mono">
+                    <div className="details-header">TECHNICAL DIAGNOSTIC LOG</div>
+                    <div className="details-grid">
+                      <div>
+                        <span className="detail-key">Full Tx ID:</span>
+                        <code className="detail-val">{tx.id}</code>
+                      </div>
+                      <div>
+                        <span className="detail-key">Action Type:</span>
+                        <span className="detail-val">{tx.action}</span>
+                      </div>
+                      <div>
+                        <span className="detail-key">Circuit Target:</span>
+                        <span className="detail-val">{tx.circuitName}</span>
+                      </div>
+                      <div>
+                        <span className="detail-key">Caller PK:</span>
+                        <code className="detail-val">{tx.callerPublicKeyHex || 'N/A'}</code>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Reconcile Action Button */}
-                {canReconcile && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                    <button
-                      onClick={() => handleReconcile(tx.id)}
-                      disabled={isReconcilingThis}
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #3b82f6',
-                        background: isReconcilingThis ? '#1e293b' : 'rgba(59, 130, 246, 0.15)',
-                        color: '#93c5fd',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        cursor: isReconcilingThis ? 'not-allowed' : 'pointer',
-                      }}
-                      data-testid={`reconcile-btn-${tx.id}`}
-                    >
-                      {isReconcilingThis ? 'Checking Status...' : 'Reconcile Status'}
-                    </button>
+                {/* Error / Notice Message if any */}
+                {tx.error && (
+                  <div className="tx-error-notice font-mono">
+                    Note: {tx.error}
                   </div>
                 )}
               </div>
@@ -672,3 +657,5 @@ export const TransactionHistoryPanel: React.FC<TransactionHistoryPanelProps> = (
     </div>
   );
 };
+
+export default TransactionHistoryPanel;

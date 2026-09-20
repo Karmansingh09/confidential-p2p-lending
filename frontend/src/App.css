@@ -4983,7 +4983,6 @@
 /* =============================================================================
    Global Page Max-Width & Whitespace (Other Pages)
    ============================================================================= */
-.wallet-page,
 .network-page,
 .contract-privacy-page,
 .loan-details-page {
@@ -9324,6 +9323,996 @@
   }
   .tx-summary-val {
     font-size: 22px;
+  }
+}
+
+/* =============================================================================
+   CONFIDENTIAL LENDING DESK — WALLET & READINESS WORKSPACE
+   Institutional Multi-Column Wallet & Identity Console (1440x900)
+   ============================================================================= */
+.wallet-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  max-width: 100%;
+  padding: 32px 36px 64px;
+  box-sizing: border-box;
+}
+
+.wallet-workspace * {
+  box-sizing: border-box;
+}
+
+/* 1. WORKSPACE HERO & TELEMETRY ENCLAVE */
+.wallet-hero-section {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  align-items: stretch;
+  gap: 40px;
+  width: 100%;
+}
+
+.wallet-hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.wallet-hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #9FB8D8;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
+}
+
+.wallet-hero-kicker .kicker-sep {
+  color: var(--accent-primary, #64B5F6);
+  opacity: 0.6;
+}
+
+.wallet-hero-headline {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: #F2F4F7;
+  margin: 0 0 16px 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+}
+
+.wallet-hero-lead {
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: #8D96A6;
+  max-width: 740px;
+  margin: 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+}
+
+.wallet-hero-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wallet-telemetry-enclave {
+  background: #0D111A;
+  border: 1px solid #202936;
+  border-radius: 8px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.wallet-telemetry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1A2230;
+}
+
+.wallet-telemetry-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9FB8D8;
+}
+
+.wallet-telemetry-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wallet-telemetry-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wallet-telemetry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.wallet-telemetry-key {
+  color: #6C7A8D;
+  font-weight: 500;
+}
+
+.wallet-telemetry-val {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+.wallet-telemetry-val.text-accent {
+  color: #64B5F6;
+}
+
+.wallet-telemetry-footer {
+  padding-top: 10px;
+  border-top: 1px solid #1A2230;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 2. WORKSPACE GRID LAYOUT (62% / 38%) */
+.wallet-grid-layout {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 32px;
+  width: 100%;
+  align-items: start;
+}
+
+.wallet-grid-main {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+
+.wallet-grid-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+
+/* 3. CARD CONTAINER */
+.wallet-card {
+  background: #0D111A;
+  border: 1px solid #202936;
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.wallet-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.card-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9FB8D8;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.card-title {
+  margin: 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 20px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.015em;
+}
+
+.wallet-card-title {
+  margin: 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 20px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.015em;
+}
+
+.card-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64B5F6;
+  background: rgba(100, 181, 246, 0.1);
+  border: 1px solid rgba(100, 181, 246, 0.25);
+  border-radius: 4px;
+  padding: 4px 10px;
+  letter-spacing: 0.06em;
+}
+
+/* 4. ACCOUNT SWITCHER & IDENTITY CONSOLE */
+.wallet-identity-console {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.identity-status-card {
+  background: #0D111A;
+  border: 1px solid #202936;
+  border-radius: 8px;
+  padding: 22px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.status-primary-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-indicator-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-dot-lg {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-lg.dot-connected {
+  background: #34D399;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+}
+
+.status-dot-lg.dot-disconnected {
+  background: #F87171;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.5);
+}
+
+.status-text-lg {
+  font-size: 26px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.02em;
+}
+
+.status-role-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64B5F6;
+  background: rgba(100, 181, 246, 0.12);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  border-radius: 4px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.identity-provider-name {
+  font-size: 13.5px;
+  color: #8D96A6;
+}
+
+.identity-actions {
+  display: flex;
+  align-items: center;
+}
+
+.btn-action-disconnect {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #F87171;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-action-disconnect:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: #F87171;
+}
+
+.btn-action-connect {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #34D399;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-action-connect:hover {
+  background: rgba(52, 211, 153, 0.22);
+  border-color: #34D399;
+}
+
+/* Metadata Strip (4 Cells) */
+.identity-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  background: #0D111A;
+  border: 1px solid #202936;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #6C7A8D;
+}
+
+.meta-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meta-value {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #F2F4F7;
+}
+
+.meta-value.font-mono {
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  color: #C2D6EE;
+  font-size: 12.5px;
+}
+
+.btn-copy-address {
+  background: #18202C;
+  border: 1px solid #2A3648;
+  color: #9FB8D8;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-copy-address:hover {
+  color: #F2F4F7;
+  border-color: #64B5F6;
+}
+
+/* Persona Selector Card */
+.persona-selector-card {
+  background: #0D111A;
+  border: 1px solid #202936;
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.persona-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.persona-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: #080B10;
+  border: 1px solid #1E2736;
+  border-radius: 6px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.persona-tab {
+  height: 36px;
+  padding: 0 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #8D96A6;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.persona-tab:hover {
+  color: #F2F4F7;
+}
+
+.persona-tab.is-active {
+  background: #18202C;
+  color: #64B5F6;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.persona-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.persona-role-banner {
+  background: #101520;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.role-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.role-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.015em;
+}
+
+.role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9FB8D8;
+  background: rgba(159, 184, 216, 0.1);
+  border: 1px solid rgba(159, 184, 216, 0.2);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.role-desc {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #8D96A6;
+}
+
+.persona-permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.permission-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #080B10;
+  border: 1px solid #1A2230;
+  border-radius: 6px;
+  padding: 10px 14px;
+  gap: 10px;
+}
+
+.permission-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.permission-indicator.perm-permitted {
+  background: #34D399;
+}
+
+.permission-indicator.perm-active {
+  background: #64B5F6;
+}
+
+.permission-indicator.perm-restricted {
+  background: #64748B;
+}
+
+.permission-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #E2E8F0;
+  flex: 1;
+}
+
+.permission-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.permission-tag.perm-tag-permitted {
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.permission-tag.perm-tag-active {
+  color: #64B5F6;
+  background: rgba(100, 181, 246, 0.1);
+}
+
+.permission-tag.perm-tag-restricted {
+  color: #94A3B8;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+/* Subtle Warning Strip (Required strings) */
+.identity-warning-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #FBBF24;
+  line-height: 1.4;
+}
+
+.warning-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #FBBF24;
+  white-space: nowrap;
+}
+
+.warning-sep {
+  color: rgba(251, 191, 36, 0.5);
+}
+
+.warning-text {
+  color: #FBBF24;
+  opacity: 0.9;
+}
+
+/* 5. EXECUTION READINESS PIPELINE */
+.wallet-readiness-pipeline {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.readiness-step {
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+.step-num-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64B5F6;
+  letter-spacing: 0.08em;
+}
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #6C7A8D;
+}
+
+.step-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.01em;
+}
+
+.step-desc {
+  margin: 0;
+  font-size: 12.5px;
+  color: #8D96A6;
+  line-height: 1.4;
+}
+
+.step-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+
+.step-badge.status-completed {
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+.step-badge.status-warning {
+  color: #FBBF24;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.step-badge.status-pending {
+  color: #94A3B8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* 6. CAPABILITIES TABLE */
+.capabilities-table-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cap-table-header {
+  display: grid;
+  grid-template-columns: 200px 1fr 140px;
+  gap: 16px;
+  padding: 12px 18px;
+  background: #080B10;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9FB8D8;
+  border-bottom: 1px solid #1D2635;
+}
+
+.cap-table-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.cap-table-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 140px;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #151D29;
+  align-items: center;
+  font-size: 13.5px;
+}
+
+.cap-table-row:last-child {
+  border-bottom: none;
+}
+
+.col-cap-name {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+.col-cap-scope {
+  color: #8D96A6;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.col-cap-status {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: right;
+}
+
+.col-cap-status.status-success {
+  color: #34D399;
+}
+
+.col-cap-status.status-warning {
+  color: #FBBF24;
+}
+
+.col-cap-status.status-muted {
+  color: #6C7A8D;
+}
+
+/* 7. PROVIDER RUNTIME & BOUNDARY SELECTION */
+.provider-boundary-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.boundary-btn {
+  height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: #8D96A6;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.boundary-btn:hover {
+  color: #F2F4F7;
+}
+
+.boundary-btn.is-active {
+  background: #18202C;
+  color: #64B5F6;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.provider-specs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.spec-key {
+  color: #6C7A8D;
+  font-weight: 500;
+}
+
+.spec-val {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+.spec-val.text-accent {
+  color: #64B5F6;
+}
+
+/* 8. CONFIDENTIAL PRIVACY SHIELD */
+.badge-shield-active {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+.shield-specs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.shield-note {
+  background: rgba(100, 181, 246, 0.05);
+  border: 1px solid rgba(100, 181, 246, 0.15);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.shield-note-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #9FB8D8;
+}
+
+/* 9. QUICK ACTIONS */
+.quick-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-quick-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 12px 16px;
+  color: #E2E8F0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-action:hover {
+  background: #141B26;
+  border-color: #64B5F6;
+  color: #64B5F6;
+}
+
+.action-arrow {
+  color: #6C7A8D;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.btn-quick-action:hover .action-arrow {
+  color: #64B5F6;
+  transform: translateX(3px);
+}
+
+/* RESPONSIVE MEDIA QUERIES FOR WALLET WORKSPACE */
+@media (max-width: 1280px) {
+  .wallet-workspace {
+    padding: 28px 24px 60px;
+  }
+  .wallet-hero-headline {
+    font-size: 42px;
+  }
+  .identity-meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  .wallet-hero-section {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .wallet-hero-right {
+    justify-content: flex-start;
+  }
+  .wallet-telemetry-enclave {
+    max-width: 100%;
+  }
+  .wallet-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .wallet-workspace {
+    padding: 20px 16px 48px;
+    gap: 24px;
+  }
+  .wallet-hero-headline {
+    font-size: 34px;
+  }
+  .wallet-readiness-pipeline {
+    grid-template-columns: 1fr;
+  }
+  .persona-permissions-grid {
+    grid-template-columns: 1fr;
+  }
+  .cap-table-header {
+    display: none;
+  }
+  .cap-table-row {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .col-cap-scope {
+    grid-column: 1 / -1;
+  }
+  .identity-status-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .wallet-workspace {
+    padding: 16px 12px 40px;
+    gap: 20px;
+  }
+  .wallet-hero-headline {
+    font-size: 28px;
+  }
+  .identity-meta-grid {
+    grid-template-columns: 1fr;
+  }
+  .persona-segmented-control {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .persona-tab {
+    padding: 0 8px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .identity-warning-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 390px) {
+  .wallet-workspace {
+    padding: 14px 10px 36px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .wallet-hero-headline {
+    font-size: 26px;
   }
 }
 

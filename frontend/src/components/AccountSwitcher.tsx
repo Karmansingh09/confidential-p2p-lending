@@ -1,140 +1,232 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { AccountContext, AccountRole } from '../types/account.ts';
 
-interface AccountSwitcherProps {
+export interface AccountSwitcherProps {
   accountContext: AccountContext;
   onSwitchRole: (role: AccountRole) => void;
   onDisconnect?: () => void;
   onConnect?: (role?: AccountRole) => void;
 }
 
+/**
+ * Account Identity & Persona Section.
+ *
+ * Full-width institutional identity console.
+ *
+ * Invariant strings required by Test 105:
+ * - 'Local Prototype Account'
+ * - 'Simulation Only'
+ * - 'No Real Wallet Connected'
+ */
 export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
   accountContext,
   onSwitchRole,
   onDisconnect,
   onConnect,
 }) => {
-  const { identity, selectedRole, connectionStatus, networkName } = accountContext;
-  const isConnected = connectionStatus === 'CONNECTED' && identity !== null;
+  const { identity, selectedRole, connectionStatus } = accountContext;
+  const isConnected = connectionStatus === 'CONNECTED';
+  const [copied, setCopied] = useState(false);
+
+  const roleDescriptions: Record<AccountRole, string> = {
+    BORROWER: 'Generate zero-knowledge eligibility proofs, propose loan terms, and manage repayment obligations.',
+    LENDER: 'Inspect verified borrower requests, allocate liquidity, and finalize capital settlements.',
+    PARTICIPANT: 'Audit agreement state, evaluate circuit proofs, and verify privacy guarantees as an observer.',
+    NONE: 'No active persona selected. Connect an account to interact with the lending protocol.',
+  };
+
+  const roleDisplayNames: Record<AccountRole, string> = {
+    BORROWER: 'Borrower',
+    LENDER: 'Lender',
+    PARTICIPANT: 'Observer',
+    NONE: 'Disconnected',
+  };
+
+  const rolePermissions: Record<AccountRole, Array<{ name: string; status: 'permitted' | 'restricted' | 'active' }>> = {
+    BORROWER: [
+      { name: 'Propose Loan Terms', status: 'permitted' },
+      { name: 'Generate ZK Proofs', status: 'active' },
+      { name: 'Obligation Repayment', status: 'permitted' },
+      { name: 'Capital Allocation', status: 'restricted' },
+    ],
+    LENDER: [
+      { name: 'Inspect Verified Requests', status: 'active' },
+      { name: 'Commit Escrow Capital', status: 'permitted' },
+      { name: 'Finalize Settlement', status: 'permitted' },
+      { name: 'Propose Loan Terms', status: 'restricted' },
+    ],
+    PARTICIPANT: [
+      { name: 'Inspect Public Ledger', status: 'active' },
+      { name: 'Verify Zero-Knowledge Proofs', status: 'permitted' },
+      { name: 'Commit Escrow Capital', status: 'restricted' },
+      { name: 'Propose Loan Terms', status: 'restricted' },
+    ],
+    NONE: [
+      { name: 'Inspect Public Ledger', status: 'restricted' },
+      { name: 'Generate ZK Proofs', status: 'restricted' },
+      { name: 'Commit Escrow Capital', status: 'restricted' },
+      { name: 'Propose Loan Terms', status: 'restricted' },
+    ],
+  };
+
+  const handleCopy = () => {
+    if (identity?.publicKeyHex) {
+      navigator.clipboard?.writeText(identity.publicKeyHex);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
-    <div className="account-switcher-card" aria-label="Account Switcher">
-      <div className="account-switcher-header">
-        <div className="switcher-title-group">
-          <span className="switcher-icon">👤</span>
-          <div>
-            <h4 className="switcher-heading">Local Prototype Account</h4>
-            <span className="switcher-simulation-tag">Simulation Only &bull; Offline Mode</span>
+    <div className="wallet-identity-console" data-testid="account-identity-section">
+      {/* 1. Primary Status Header Card */}
+      <div className="identity-status-card">
+        <div className="status-primary-block">
+          <div className="status-indicator-group">
+            <span className={`status-dot-lg ${isConnected ? 'dot-connected' : 'dot-disconnected'}`} />
+            <span className="status-text-lg">{isConnected ? 'Connected' : 'Disconnected'}</span>
+            <span className="status-role-badge font-mono">{roleDisplayNames[selectedRole]}</span>
+          </div>
+          <span className="identity-provider-name">Local Prototype Account &bull; Simulation Only</span>
+        </div>
+
+        <div className="identity-actions">
+          {isConnected ? (
+            <button
+              type="button"
+              className="btn-action-disconnect"
+              onClick={() => {
+                if (onDisconnect) {
+                  onDisconnect();
+                } else {
+                  onSwitchRole('NONE');
+                }
+              }}
+            >
+              Disconnect
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-action-connect"
+              onClick={() => {
+                if (onConnect) {
+                  onConnect('BORROWER');
+                } else {
+                  onSwitchRole('BORROWER');
+                }
+              }}
+            >
+              Connect Account
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Public Identity & Network Metadata Strip */}
+      <div className="identity-meta-grid">
+        <div className="meta-cell">
+          <span className="meta-label">PUBLIC IDENTITY</span>
+          <div className="meta-value-row">
+            <span className="meta-value font-mono" title={identity?.publicKeyHex ?? 'No account'}>
+              {identity?.publicKeyHex
+                ? `${identity.publicKeyHex.slice(0, 10)}...${identity.publicKeyHex.slice(-8)}`
+                : '0x0000...0000'}
+            </span>
+            {identity?.publicKeyHex && (
+              <button
+                type="button"
+                className="btn-copy-address font-mono"
+                onClick={handleCopy}
+                title="Copy full public key"
+              >
+                {copied ? 'COPIED' : 'COPY'}
+              </button>
+            )}
           </div>
         </div>
-        <div className="network-status-badge">
-          <span className={`status-indicator-dot ${isConnected ? 'online' : 'offline'}`} />
-          <span>{networkName}</span>
+
+        <div className="meta-cell">
+          <span className="meta-label">NETWORK</span>
+          <span className="meta-value">{accountContext.networkName || 'Local Prototype'}</span>
+        </div>
+
+        <div className="meta-cell">
+          <span className="meta-label">ENVIRONMENT</span>
+          <span className="meta-value">Local Sandbox</span>
+        </div>
+
+        <div className="meta-cell">
+          <span className="meta-label">KEYRING</span>
+          <span className="meta-value">Ephemeral In-Memory</span>
         </div>
       </div>
 
-      <div className="account-role-selector" role="group" aria-label="Simulated Account Personas">
-        <button
-          type="button"
-          className={`role-btn ${selectedRole === 'BORROWER' ? 'active-role' : ''}`}
-          onClick={() => onSwitchRole('BORROWER')}
-        >
-          <span className="role-icon">🏷️</span>
-          <span>Borrower Account</span>
-        </button>
+      {/* 3. Persona Selector & Permission Matrix */}
+      <div className="persona-selector-card">
+        <div className="persona-selector-header">
+          <div>
+            <span className="card-kicker font-mono">ACCOUNT PERSONA</span>
+            <h3 className="card-title">Active Persona &amp; Permissions</h3>
+          </div>
+          <div className="persona-segmented-control" role="group" aria-label="Account personas">
+            <button
+              type="button"
+              className={`persona-tab ${selectedRole === 'BORROWER' ? 'is-active' : ''}`}
+              onClick={() => onSwitchRole('BORROWER')}
+            >
+              Borrower
+            </button>
+            <button
+              type="button"
+              className={`persona-tab ${selectedRole === 'LENDER' ? 'is-active' : ''}`}
+              onClick={() => onSwitchRole('LENDER')}
+            >
+              Lender
+            </button>
+            <button
+              type="button"
+              className={`persona-tab ${selectedRole === 'PARTICIPANT' ? 'is-active' : ''}`}
+              onClick={() => onSwitchRole('PARTICIPANT')}
+            >
+              Observer
+            </button>
+          </div>
+        </div>
 
-        <button
-          type="button"
-          className={`role-btn ${selectedRole === 'LENDER' ? 'active-role' : ''}`}
-          onClick={() => onSwitchRole('LENDER')}
-        >
-          <span className="role-icon">💰</span>
-          <span>Lender Account</span>
-        </button>
+        <div className="persona-detail-body">
+          <div className="persona-role-banner">
+            <div className="role-heading">
+              <span className="role-title">{roleDisplayNames[selectedRole]}</span>
+              <span className="role-badge font-mono">SIMULATION PERSONA</span>
+            </div>
+            <p className="role-desc">{roleDescriptions[selectedRole]}</p>
+          </div>
 
-        <button
-          type="button"
-          className={`role-btn ${selectedRole === 'PARTICIPANT' ? 'active-role' : ''}`}
-          onClick={() => onSwitchRole('PARTICIPANT')}
-        >
-          <span className="role-icon">👥</span>
-          <span>Third-Party Account</span>
-        </button>
+          <div className="persona-permissions-grid">
+            {rolePermissions[selectedRole]?.map((perm) => (
+              <div key={perm.name} className="permission-item">
+                <span className={`permission-indicator perm-${perm.status}`} />
+                <span className="permission-name">{perm.name}</span>
+                <span className={`permission-tag font-mono perm-tag-${perm.status}`}>
+                  {perm.status.toUpperCase()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {isConnected ? (
-          <button
-            type="button"
-            className="role-btn btn-disconnect"
-            onClick={() => {
-              if (onDisconnect) {
-                onDisconnect();
-              } else {
-                onSwitchRole('NONE');
-              }
-            }}
-          >
-            <span className="role-icon">🔌</span>
-            <span>Disconnect</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="role-btn btn-connect"
-            onClick={() => {
-              if (onConnect) {
-                onConnect('BORROWER');
-              } else {
-                onSwitchRole('BORROWER');
-              }
-            }}
-          >
-            <span className="role-icon">⚡</span>
-            <span>Connect Borrower</span>
-          </button>
-        )}
-      </div>
-
-      <div className="account-meta-grid">
-        <div className="meta-item">
-          <span className="meta-label">Account Status</span>
-          <span className={`meta-value ${isConnected ? 'status-connected' : 'status-disconnected'}`}>
-            {connectionStatus}
+        {/* 4. Required Test 105 Simulation Warning Strip */}
+        <div className="identity-warning-strip font-mono">
+          <span className="warning-kicker">LOCAL PROTOTYPE</span>
+          <span className="warning-sep">//</span>
+          <span className="warning-text">
+            No Real Wallet Connected &mdash; Account identities are simulated deterministically for interface validation.
           </span>
         </div>
-
-        <div className="meta-item">
-          <span className="meta-label">Simulated Role</span>
-          <span className="meta-value role-label">
-            {selectedRole === 'BORROWER' && 'Borrower'}
-            {selectedRole === 'LENDER' && 'Lender'}
-            {selectedRole === 'PARTICIPANT' && 'Third-Party Observer'}
-            {selectedRole === 'NONE' && 'None (Disconnected)'}
-          </span>
-        </div>
-
-        <div className="meta-item">
-          <span className="meta-label">Public Identity</span>
-          <span className="meta-value public-key-label" title={identity?.publicKeyHex ?? 'No account'}>
-            {identity?.publicKeyHex
-              ? `${identity.publicKeyHex.slice(0, 10)}...${identity.publicKeyHex.slice(-8)}`
-              : '0x0000... (Disconnected)'}
-          </span>
-        </div>
-
-        <div className="meta-item">
-          <span className="meta-label">Wallet Architecture</span>
-          <span className="meta-value simulation-tag">Simulation Only</span>
-        </div>
-      </div>
-
-      <div className="account-switcher-notice">
-        <span className="notice-icon">🛡️</span>
-        <p>
-          <strong>No Real Wallet Connected:</strong> Operating in local prototype account mode.
-          Public account identities are simulated deterministically. No cryptographic signing keys,
-          credentials, or real network transactions are utilized.
-        </p>
       </div>
     </div>
   );
 };
+
+export default AccountSwitcher;

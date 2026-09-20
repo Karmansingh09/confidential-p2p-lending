@@ -3,6 +3,7 @@ import type { LoanDetailsModel } from '../types/index.ts';
 import { LoanMarketplace } from '../components/LoanMarketplace.tsx';
 import type { NavigationTab } from '../types/navigation.ts';
 import { AnimatedNumber } from '../components/common/AnimatedNumber.tsx';
+import { getLifecycleCounts } from '../lib/marketplace.ts';
 
 export interface MarketplacePageProps {
   loansMap: Record<string, LoanDetailsModel>;
@@ -26,120 +27,202 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
   const totalCount = loans.length;
   const verifiedCount = loans.filter((l) => l.isEligibilityVerified).length;
   const totalVolume = loans.reduce((acc, l) => acc + l.amount, 0n);
-  const avgBps = totalCount > 0
-    ? Math.round(Number(loans.reduce((acc, l) => acc + l.interestRateBasisPoints, 0n)) / totalCount)
-    : 0;
+  const counts = getLifecycleCounts(loansMap);
 
   return (
-    <div className="overview-page marketplace-page">
-      {/* 1. Marketplace Introduction */}
-      <section className="overview-intro">
-        <div className="overview-intro-left">
-          <div className="overview-kicker font-mono">
+    <div className="marketplace-workspace">
+      {/* 1. MARKETPLACE HERO (60% / 40%) */}
+      <section className="marketplace-hero-section">
+        <div className="marketplace-hero-left">
+          <div className="marketplace-kicker font-mono">
             <span>MIDNIGHT NETWORK</span>
             <span className="kicker-sep">//</span>
-            <span>CAPITAL ALLOCATION ORDER BOOK</span>
+            <span>PRIVATE CREDIT ORDER BOOK</span>
           </div>
-          <h1 className="overview-headline">Lending Marketplace</h1>
-          <p className="overview-lead">
-            Auditable micro-lending order book. Evaluate borrower zero-knowledge eligibility attestations and deploy capital with deterministic settlement guarantees.
+          <h1 className="marketplace-headline">Private Lending Marketplace</h1>
+          <p className="marketplace-lead">
+            Discover active lending opportunities and evaluate terms without exposing private financial information.
           </p>
-        </div>
 
-        <div className="overview-intro-right">
-          <div className="overview-protocol-meta font-mono">
-            <div className="meta-item">
-              <span className="meta-label">ORDER BOOK</span>
-              <span className="meta-val text-accent">ACTIVE</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">ATTESTATION</span>
-              <span className="meta-val">ZK PROOFS</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">CONFIDENTIALITY</span>
-              <span className="meta-val text-accent">100% SHIELDED</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">SETTLEMENT</span>
-              <span className="meta-val">COMPACT LEDGER</span>
-            </div>
-          </div>
-          <div className="intro-actions-row">
+          <div className="marketplace-actions-row">
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="btn-marketplace-primary"
               onClick={() => onNavigate('create-loan')}
             >
-              + Propose Loan
+              + PROPOSE LOAN
             </button>
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="btn-marketplace-outline"
               onClick={() => onNavigate('overview')}
             >
-              Desk Overview &rarr;
+              DESK OVERVIEW &rarr;
             </button>
           </div>
         </div>
+
+        <div className="marketplace-hero-right">
+          <div className="marketplace-status-enclave font-mono">
+            <div className="status-enclave-header">
+              <span className="status-enclave-title">MARKET STATUS</span>
+              <span className="status-enclave-indicator">
+                <span className="status-dot-sm dot-success" />
+                <span className="status-text-live">OPERATIONAL</span>
+              </span>
+            </div>
+
+            <div className="status-enclave-body">
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">OPPORTUNITIES</span>
+                <span className="status-enclave-val text-accent">{totalCount} Active</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">NETWORK</span>
+                <span className="status-enclave-val">Local Prototype</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">PRIVACY</span>
+                <span className="status-enclave-val text-accent">ZK Attestation</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">ATTESTATION</span>
+                <span className="status-enclave-val">Client-Side ZK</span>
+              </div>
+            </div>
+
+            <div className="status-enclave-footer">
+              <span className="status-enclave-badge">ZERO FINANCIAL EXPOSURE</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* 2. Dominant Market Volume & Protocol State */}
-      <section className="overview-state-section">
-        <div className="primary-desk-state">
-          <div className="primary-number-wrap">
-            <span className="primary-number">
+      {/* 2. WIDE MARKETPLACE SUMMARY STRIP */}
+      <section className="marketplace-summary-strip font-mono" aria-label="Marketplace Liquidity Summary">
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">TOTAL VOLUME</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num">
               <AnimatedNumber value={totalVolume} />
             </span>
-            <span className="primary-number-label font-mono">
-              ACTIVE MARKETPLACE VOLUME (MICRO-UNITS)
-            </span>
+            <span className="summary-stat-unit">UNITS</span>
           </div>
-
-          <div className="portfolio-breakdown font-mono">
-            <span><strong>{totalCount}</strong> opportunities</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{verifiedCount}</strong> ZK verified ({Math.round((verifiedCount / Math.max(1, totalCount)) * 100)}%)</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{avgBps}</strong> bps avg rate ({(avgBps / 100).toFixed(2)}% APR)</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>100%</strong> shielded records</span>
-          </div>
+          <span className="summary-stat-sub">Active Commitments</span>
         </div>
 
-        <div className="protocol-state-module font-mono">
-          <div className="proto-module-header">
-            <span>MARKET STATE</span>
-            <span className="proto-status-indicator">
-              <span className="status-dot-sm dot-success" />
-              <span>ACTIVE BOOK</span>
-            </span>
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">OPPORTUNITIES</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num">{totalCount}</span>
+            <span className="summary-stat-tag">ACTIVE</span>
           </div>
-          <div className="proto-module-body">
-            <div className="proto-row">
-              <span className="proto-label">LIQUIDITY</span>
-              <span className="proto-val">PEER-TO-PEER</span>
-            </div>
-            <div className="proto-row">
-              <span className="proto-label">UNDERWRITING</span>
-              <span className="proto-val text-accent">ZERO-KNOWLEDGE</span>
-            </div>
-            <div className="proto-row">
-              <span className="proto-label">SETTLEMENT</span>
-              <span className="proto-val">ON-CHAIN ATOMIC</span>
-            </div>
+          <span className="summary-stat-sub">{verifiedCount} ZK Verified ({Math.round((verifiedCount / Math.max(1, totalCount)) * 100)}%)</span>
+        </div>
+
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">REQUESTED</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num text-amber">{counts.requested}</span>
+            <span className="summary-stat-tag tag-amber">QUEUED</span>
           </div>
+          <span className="summary-stat-sub">Awaiting Funding</span>
+        </div>
+
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">FUNDED</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num text-blue">{counts.funded}</span>
+            <span className="summary-stat-tag tag-blue">ACCRUING</span>
+          </div>
+          <span className="summary-stat-sub">Active Escrow Locked</span>
+        </div>
+
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">REPAID</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num text-muted">{counts.repaid}</span>
+            <span className="summary-stat-tag">CLEARED</span>
+          </div>
+          <span className="summary-stat-sub">Obligations Cleared</span>
+        </div>
+
+        <div className="summary-stat-col">
+          <span className="summary-stat-label">SETTLED</span>
+          <div className="summary-stat-val-row">
+            <span className="summary-stat-num text-success">{counts.settled}</span>
+            <span className="summary-stat-tag tag-success">FINAL</span>
+          </div>
+          <span className="summary-stat-sub">Terminal State</span>
         </div>
       </section>
 
-      {/* 3. Marketplace Order Book */}
-      <div className="marketplace-content-wrapper">
+      {/* 3. ORDER BOOK (CENTERPIECE) */}
+      <section className="marketplace-orderbook-section">
         <LoanMarketplace
           loansMap={loansMap}
           selectedLoanId={selectedLoanId}
           onSelectLoan={handleSelectAndInspect}
         />
-      </div>
+      </section>
+
+      {/* 4. PRIVACY ASSURANCE & PROTOCOL INTEGRITY (58% / 42%) */}
+      <section className="marketplace-assurance-section">
+        <div className="assurance-card-left">
+          <div className="assurance-kicker font-mono">CRYPTOGRAPHIC ASSURANCE</div>
+          <h3 className="assurance-heading">Market Integrity & Zero-Knowledge Underwriting</h3>
+          <p className="assurance-lead">
+            Every lending opportunity published to this order book evaluates counterparty eligibility through client-side zero-knowledge witnesses. Borrowers prove regulatory compliance and debt thresholds directly to the Midnight network without broadcasting private balances, identity documents, or historical counterparty links.
+          </p>
+          <div className="assurance-features font-mono">
+            <div className="assurance-feature-item">
+              <span className="feature-check">✓</span>
+              <span>Client-Side ZK Proof Generation</span>
+            </div>
+            <div className="assurance-feature-item">
+              <span className="feature-check">✓</span>
+              <span>Zero Counterparty Data Leakage</span>
+            </div>
+            <div className="assurance-feature-item">
+              <span className="feature-check">✓</span>
+              <span>Deterministic Compact Ledger Escrow</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="assurance-card-right font-mono">
+          <div className="privacy-assurance-header">
+            <span className="privacy-assurance-title">MARKET PRIVACY</span>
+            <span className="status-enclave-indicator">
+              <span className="status-dot-sm dot-success" />
+              <span>SHIELDED ENCLAVE</span>
+            </span>
+          </div>
+
+          <div className="privacy-assurance-body">
+            <div className="privacy-assurance-row">
+              <span className="privacy-key">CIRCUITS</span>
+              <span className="privacy-val">6 Compact Verifiers</span>
+            </div>
+            <div className="privacy-assurance-row">
+              <span className="privacy-key">PROOFS</span>
+              <span className="privacy-val text-accent">Client ZK</span>
+            </div>
+            <div className="privacy-assurance-row">
+              <span className="privacy-key">SETTLEMENT</span>
+              <span className="privacy-val">Atomic Escrow</span>
+            </div>
+            <div className="privacy-assurance-row">
+              <span className="privacy-key">STATE PROOFS</span>
+              <span className="privacy-val text-success">Verified On-Chain</span>
+            </div>
+          </div>
+
+          <div className="privacy-assurance-footer">
+            <span className="privacy-badge">100% PRIVATE CREDIT INFRASTRUCTURE</span>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

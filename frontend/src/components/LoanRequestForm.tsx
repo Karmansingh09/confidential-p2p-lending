@@ -16,12 +16,14 @@ interface LoanRequestFormProps {
     duration: bigint | null,
     threshold: bigint | null
   ) => void;
+  onBack?: () => void;
   isSubmitting?: boolean;
 }
 
 export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
   onSubmit,
   onValuesChange,
+  onBack,
   isSubmitting = false,
 }) => {
   const [formValues, setFormValues] = useState<LoanRequestFormValues>({
@@ -106,46 +108,66 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
 
   const currentBps = parsePercentageToBasisPoints(formValues.interestRatePercent).bps;
 
+  // Determine active preset
+  const isMicro = formValues.principalAmount === '10000' && formValues.interestRatePercent === '4.00';
+  const isStandard = formValues.principalAmount === '25000' && formValues.interestRatePercent === '5.00';
+  const isGrowth = formValues.principalAmount === '50000' && formValues.interestRatePercent === '7.50';
+
   return (
-    <form className="loan-request-form-card" onSubmit={handleSubmit} noValidate>
-      <div className="form-header">
+    <form className="loan-params-form-panel" onSubmit={handleSubmit} noValidate>
+      {/* Panel Header */}
+      <div className="params-panel-header">
         <div>
-          <h3>Loan Agreement Parameters</h3>
-          <span className="form-subtitle">Enter terms to be proposed to prospective lenders</span>
+          <h2 className="params-panel-title">Loan Agreement Parameters</h2>
+          <p className="params-panel-subtitle">Define the terms of the proposed loan.</p>
         </div>
-        <div className="prefill-chips">
-          <span className="chips-label">Presets:</span>
-          <button
-            type="button"
-            className="chip-btn"
-            onClick={() => handlePrefill('10000', '4.00', '50', '20000')}
-          >
-            Micro (10k)
-          </button>
-          <button
-            type="button"
-            className="chip-btn"
-            onClick={() => handlePrefill('25000', '5.00', '100', '30000')}
-          >
-            Standard (25k)
-          </button>
-          <button
-            type="button"
-            className="chip-btn"
-            onClick={() => handlePrefill('50000', '7.50', '250', '60000')}
-          >
-            Growth (50k)
-          </button>
+
+        {/* Preset Segmented Control */}
+        <div className="params-presets-container font-mono">
+          <span className="presets-label">PRESETS:</span>
+          <div className="presets-segmented-control" role="group" aria-label="Loan Presets">
+            <button
+              type="button"
+              className={`preset-btn ${isMicro ? 'active' : ''}`}
+              onClick={() => handlePrefill('10000', '4.00', '50', '20000')}
+              title="10,000 Micro-Units at 4.00% over 50 blocks"
+            >
+              <span className="preset-name">MICRO</span>
+              <span className="preset-val">10K</span>
+            </button>
+            <button
+              type="button"
+              className={`preset-btn ${isStandard ? 'active' : ''}`}
+              onClick={() => handlePrefill('25000', '5.00', '100', '30000')}
+              title="25,000 Micro-Units at 5.00% over 100 blocks"
+            >
+              <span className="preset-name">STANDARD</span>
+              <span className="preset-val">25K</span>
+            </button>
+            <button
+              type="button"
+              className={`preset-btn ${isGrowth ? 'active' : ''}`}
+              onClick={() => handlePrefill('50000', '7.50', '250', '60000')}
+              title="50,000 Micro-Units at 7.50% over 250 blocks"
+            >
+              <span className="preset-name">GROWTH</span>
+              <span className="preset-val">50K</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="form-fields-container">
-        {/* Principal Amount */}
-        <div className="form-group">
-          <label htmlFor="principalAmount">
-            Requested Principal Amount <span className="required-star">*</span>
-          </label>
-          <div className="input-with-unit">
+      {/* Form Fields */}
+      <div className="params-fields-stack">
+        {/* 1. Principal Amount */}
+        <div className="param-field-group">
+          <div className="field-label-row">
+            <label htmlFor="principalAmount" className="field-label">
+              Requested Principal Amount <span className="required-star">*</span>
+            </label>
+            <span className="field-meta-tag font-mono">CAPITAL COMMITMENT</span>
+          </div>
+          <div className="param-input-wrap">
             <input
               id="principalAmount"
               name="principalAmount"
@@ -155,10 +177,12 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
               value={formValues.principalAmount}
               onChange={(e) => handleChange('principalAmount', e.target.value)}
               onBlur={() => handleBlur('principalAmount')}
-              className={errors.principalAmount && touched.principalAmount ? 'input-error' : ''}
+              className={`param-input font-mono ${
+                errors.principalAmount && touched.principalAmount ? 'input-error' : ''
+              }`}
               disabled={isSubmitting}
             />
-            <span className="input-unit">MICRO-UNITS</span>
+            <span className="param-unit-badge font-mono">MICRO-UNITS</span>
           </div>
           <ValidationMessage
             error={touched.principalAmount ? errors.principalAmount : undefined}
@@ -166,12 +190,15 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
           />
         </div>
 
-        {/* Interest Rate */}
-        <div className="form-group">
-          <label htmlFor="interestRatePercent">
-            Proposed Interest Rate (% Annual/Term) <span className="required-star">*</span>
-          </label>
-          <div className="input-with-unit">
+        {/* 2. Proposed Interest Rate */}
+        <div className="param-field-group">
+          <div className="field-label-row">
+            <label htmlFor="interestRatePercent" className="field-label">
+              Proposed Interest Rate (% Annual/Term) <span className="required-star">*</span>
+            </label>
+            <span className="field-meta-tag font-mono">SIMPLE INTEREST</span>
+          </div>
+          <div className="param-input-wrap">
             <input
               id="interestRatePercent"
               name="interestRatePercent"
@@ -180,12 +207,12 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
               value={formValues.interestRatePercent}
               onChange={(e) => handleChange('interestRatePercent', e.target.value)}
               onBlur={() => handleBlur('interestRatePercent')}
-              className={
+              className={`param-input font-mono ${
                 errors.interestRatePercent && touched.interestRatePercent ? 'input-error' : ''
-              }
+              }`}
               disabled={isSubmitting}
             />
-            <span className="input-unit">
+            <span className="param-unit-badge font-mono">
               {currentBps !== null ? `${currentBps.toString()} BPS` : '%'}
             </span>
           </div>
@@ -195,12 +222,15 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
           />
         </div>
 
-        {/* Duration Blocks */}
-        <div className="form-group">
-          <label htmlFor="durationBlocks">
-            Term Duration in Blocks <span className="required-star">*</span>
-          </label>
-          <div className="input-with-unit">
+        {/* 3. Term Duration in Blocks */}
+        <div className="param-field-group">
+          <div className="field-label-row">
+            <label htmlFor="durationBlocks" className="field-label">
+              Term Duration in Blocks <span className="required-star">*</span>
+            </label>
+            <span className="field-meta-tag font-mono">MATURITY WINDOW</span>
+          </div>
+          <div className="param-input-wrap">
             <input
               id="durationBlocks"
               name="durationBlocks"
@@ -210,10 +240,12 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
               value={formValues.durationBlocks}
               onChange={(e) => handleChange('durationBlocks', e.target.value)}
               onBlur={() => handleBlur('durationBlocks')}
-              className={errors.durationBlocks && touched.durationBlocks ? 'input-error' : ''}
+              className={`param-input font-mono ${
+                errors.durationBlocks && touched.durationBlocks ? 'input-error' : ''
+              }`}
               disabled={isSubmitting}
             />
-            <span className="input-unit">BLOCKS</span>
+            <span className="param-unit-badge font-mono">BLOCKS</span>
           </div>
           <ValidationMessage
             error={touched.durationBlocks ? errors.durationBlocks : undefined}
@@ -221,12 +253,15 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
           />
         </div>
 
-        {/* Eligibility Threshold */}
-        <div className="form-group">
-          <label htmlFor="eligibilityThreshold">
-            Public Eligibility Qualification Threshold <span className="required-star">*</span>
-          </label>
-          <div className="input-with-unit">
+        {/* 4. Eligibility Qualification Threshold */}
+        <div className="param-field-group">
+          <div className="field-label-row">
+            <label htmlFor="eligibilityThreshold" className="field-label">
+              Public Eligibility Qualification Threshold <span className="required-star">*</span>
+            </label>
+            <span className="field-meta-tag font-mono text-accent">ZK UNDERWRITING</span>
+          </div>
+          <div className="param-input-wrap">
             <input
               id="eligibilityThreshold"
               name="eligibilityThreshold"
@@ -236,24 +271,35 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
               value={formValues.eligibilityThreshold}
               onChange={(e) => handleChange('eligibilityThreshold', e.target.value)}
               onBlur={() => handleBlur('eligibilityThreshold')}
-              className={
+              className={`param-input font-mono ${
                 errors.eligibilityThreshold && touched.eligibilityThreshold ? 'input-error' : ''
-              }
+              }`}
               disabled={isSubmitting}
             />
-            <span className="input-unit">QUALIFICATION MIN</span>
+            <span className="param-unit-badge font-mono">QUALIFICATION MIN</span>
           </div>
           <ValidationMessage
             error={touched.eligibilityThreshold ? errors.eligibilityThreshold : undefined}
-            hint="Underwriting benchmark: you will prove privateValue ≥ this threshold in ZK"
+            hint="Underwriting benchmark: you will prove privateValue ≥ this threshold in ZK. Private values remain in your client enclave."
           />
         </div>
       </div>
 
-      <div className="form-actions-bar">
+      {/* Form Action Controls */}
+      <div className="params-actions-bar">
+        {onBack && (
+          <button
+            type="button"
+            className="btn-params-back font-mono"
+            onClick={onBack}
+            disabled={isSubmitting}
+          >
+            &larr; Back
+          </button>
+        )}
         <button
           type="button"
-          className="btn-secondary"
+          className="btn-params-clear font-mono"
           onClick={() => handlePrefill('', '', '', '')}
           disabled={isSubmitting}
         >
@@ -261,7 +307,7 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
         </button>
         <button
           type="submit"
-          className="btn-primary"
+          className="btn-params-submit"
           disabled={isSubmitting}
         >
           {isSubmitting ? 'Preparing Request...' : 'Create Loan Request (Local Simulation)'}
@@ -270,3 +316,5 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({
     </form>
   );
 };
+
+export default LoanRequestForm;

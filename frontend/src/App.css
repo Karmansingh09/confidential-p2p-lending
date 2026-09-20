@@ -4983,7 +4983,6 @@
 /* =============================================================================
    Global Page Max-Width & Whitespace (Other Pages)
    ============================================================================= */
-.create-loan-page,
 .transactions-page,
 .wallet-page,
 .network-page,
@@ -6972,6 +6971,1199 @@
     font-size: 30px;
   }
 }
+
+/* =============================================================================
+   CONFIDENTIAL LENDING DESK — CREATE LOAN WORKSPACE
+   Institutional Private Credit Loan Origination Terminal (1440x900)
+   ============================================================================= */
+.create-loan-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  width: 100%;
+  margin: 0;
+  padding: 36px 32px 80px;
+  box-sizing: border-box;
+}
+
+/* 1. WORKSPACE HERO (60% / 40%) */
+.create-loan-hero-section {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  align-items: stretch;
+  gap: 40px;
+  width: 100%;
+}
+
+.create-loan-hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.create-loan-top-back-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(159, 184, 216, 0.05);
+  border: 1px solid rgba(159, 184, 216, 0.16);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9FB8D8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: all 0.15s ease;
+}
+
+.create-loan-top-back-btn:hover {
+  background: rgba(159, 184, 216, 0.12);
+  border-color: rgba(159, 184, 216, 0.35);
+  color: #FFFFFF;
+}
+
+.create-loan-top-back-btn .back-arrow {
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+
+.create-loan-top-back-btn:hover .back-arrow {
+  transform: translateX(-3px);
+}
+
+.create-loan-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #9FB8D8;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
+}
+
+.create-loan-kicker .kicker-sep {
+  color: var(--accent-primary);
+  opacity: 0.6;
+}
+
+.create-loan-headline {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #F2F4F7;
+  margin: 0 0 16px 0;
+  font-family: var(--font-sans);
+}
+
+.create-loan-lead {
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: #8D96A6;
+  max-width: 740px;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+.create-loan-hero-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.create-loan-status-enclave {
+  height: 100%;
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.75) 0%, rgba(9, 12, 18, 0.9) 100%);
+  border: 1px solid rgba(159, 184, 216, 0.12);
+  border-radius: 8px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.create-loan-status-enclave .status-enclave-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(159, 184, 216, 0.08);
+}
+
+.create-loan-status-enclave .status-enclave-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #BAC8DA;
+  text-transform: uppercase;
+}
+
+.create-loan-status-enclave .status-enclave-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.create-loan-status-enclave .status-enclave-indicator .text-amber {
+  color: #F59E0B;
+}
+
+.create-loan-status-enclave .status-dot-sm.dot-warning {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #F59E0B;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.create-loan-status-enclave .status-enclave-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.create-loan-status-enclave .status-enclave-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.create-loan-status-enclave .status-enclave-key {
+  color: rgba(159, 184, 216, 0.6);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.create-loan-status-enclave .status-enclave-val {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+.create-loan-status-enclave .status-enclave-val.text-accent {
+  color: var(--accent-primary);
+}
+
+.create-loan-status-enclave .status-enclave-footer {
+  padding-top: 12px;
+  border-top: 1px solid rgba(159, 184, 216, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.btn-back-desk {
+  background: transparent;
+  border: none;
+  color: #9FB8D8;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.btn-back-desk:hover {
+  color: #FFFFFF;
+  transform: translateX(-2px);
+}
+
+/* 2. WORKFLOW STEPPER */
+.create-loan-stepper-section {
+  width: 100%;
+}
+
+.stepper-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.7) 0%, rgba(9, 12, 18, 0.85) 100%);
+  border: 1px solid rgba(159, 184, 216, 0.1);
+  border-radius: 8px;
+  padding: 18px 28px;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.stepper-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.stepper-stage.active .stage-num {
+  color: var(--accent-primary);
+  font-weight: 800;
+}
+
+.stepper-stage.active .stage-label {
+  color: #F2F4F7;
+  font-weight: 700;
+}
+
+.stepper-stage.active .stage-sub {
+  color: #BAC8DA;
+}
+
+.stage-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(159, 184, 216, 0.45);
+  letter-spacing: 0.06em;
+}
+
+.stage-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(215, 229, 245, 0.12);
+  color: #D7E5F5;
+  border: 1px solid rgba(215, 229, 245, 0.25);
+}
+
+.stage-badge.badge-pending {
+  background: rgba(159, 184, 216, 0.05);
+  color: rgba(159, 184, 216, 0.4);
+  border-color: rgba(159, 184, 216, 0.1);
+}
+
+.stage-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(159, 184, 216, 0.5);
+  letter-spacing: 0.06em;
+}
+
+.stage-sub {
+  font-size: 11px;
+  color: rgba(159, 184, 216, 0.4);
+}
+
+.stepper-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(159, 184, 216, 0.12);
+  margin: 0 20px;
+}
+
+/* 3. MAIN WORKSPACE TWO-COLUMN GRID */
+.create-loan-main-grid {
+  display: grid;
+  grid-template-columns: 1.18fr 1fr;
+  gap: 32px;
+  align-items: start;
+  width: 100%;
+}
+
+.create-loan-form-column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.create-loan-preview-column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* 4. LOAN PARAMETERS FORM PANEL */
+.loan-params-form-panel {
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.7) 0%, rgba(9, 12, 18, 0.85) 100%);
+  border: 1px solid rgba(159, 184, 216, 0.1);
+  border-radius: 8px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.params-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(159, 184, 216, 0.08);
+}
+
+.params-panel-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px 0;
+  font-family: var(--font-sans);
+}
+
+.params-panel-subtitle {
+  font-size: 13.5px;
+  color: #8D96A6;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+.params-presets-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.presets-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(159, 184, 216, 0.5);
+  font-weight: 700;
+}
+
+.presets-segmented-control {
+  display: flex;
+  align-items: center;
+  background: rgba(7, 10, 16, 0.6);
+  border: 1px solid rgba(159, 184, 216, 0.12);
+  border-radius: 6px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.preset-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: rgba(186, 200, 218, 0.65);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+  color: #FFFFFF;
+  background: rgba(159, 184, 216, 0.06);
+}
+
+.preset-btn.active {
+  background: rgba(159, 184, 216, 0.14);
+  border-color: rgba(159, 184, 216, 0.25);
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.preset-name {
+  letter-spacing: 0.06em;
+}
+
+.preset-val {
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
+.params-fields-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.param-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.field-label {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #F2F4F7;
+  font-family: var(--font-sans);
+}
+
+.required-star {
+  color: #EF4444;
+  margin-left: 2px;
+}
+
+.field-meta-tag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(159, 184, 216, 0.5);
+  font-weight: 600;
+}
+
+.field-meta-tag.text-accent {
+  color: var(--accent-primary);
+}
+
+.param-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.param-input {
+  width: 100%;
+  height: 54px;
+  background: rgba(7, 10, 16, 0.6);
+  border: 1px solid rgba(159, 184, 216, 0.14);
+  border-radius: 6px;
+  padding: 0 160px 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #F2F4F7;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.param-input:focus {
+  outline: none;
+  border-color: rgba(159, 184, 216, 0.35);
+  box-shadow: 0 0 12px rgba(159, 184, 216, 0.1);
+  background: rgba(7, 10, 16, 0.85);
+}
+
+.param-input.input-error {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.param-unit-badge {
+  position: absolute;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(159, 184, 216, 0.6);
+  background: rgba(159, 184, 216, 0.08);
+  border: 1px solid rgba(159, 184, 216, 0.12);
+  border-radius: 4px;
+  padding: 5px 10px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.params-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(159, 184, 216, 0.08);
+  margin-top: 8px;
+}
+
+.btn-params-back {
+  height: 50px;
+  padding: 0 22px;
+  background: rgba(159, 184, 216, 0.05);
+  border: 1px solid rgba(159, 184, 216, 0.18);
+  border-radius: 6px;
+  color: #9FB8D8;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  transition: all 0.15s ease;
+}
+
+.btn-params-back:hover:not(:disabled) {
+  color: #FFFFFF;
+  border-color: rgba(159, 184, 216, 0.38);
+  background: rgba(159, 184, 216, 0.12);
+  transform: translateX(-2px);
+}
+
+.btn-params-back:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-params-clear {
+  height: 50px;
+  padding: 0 20px;
+  background: transparent;
+  border: 1px solid rgba(159, 184, 216, 0.18);
+  border-radius: 6px;
+  color: rgba(186, 200, 218, 0.7);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-params-clear:hover:not(:disabled) {
+  color: #FFFFFF;
+  border-color: rgba(159, 184, 216, 0.35);
+  background: rgba(159, 184, 216, 0.05);
+}
+
+.btn-params-submit {
+  height: 50px;
+  padding: 0 28px;
+  background-color: #D7E5F5;
+  color: #070A10;
+  border: 1px solid #D7E5F5;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.btn-params-submit:hover:not(:disabled) {
+  background-color: #FFFFFF;
+  border-color: #FFFFFF;
+  box-shadow: 0 0 16px rgba(215, 229, 245, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-params-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 5. LIVE AGREEMENT PREVIEW PANEL */
+.preview-panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.preview-main-card {
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.7) 0%, rgba(9, 12, 18, 0.85) 100%);
+  border: 1px solid rgba(159, 184, 216, 0.1);
+  border-radius: 8px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.preview-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(159, 184, 216, 0.08);
+}
+
+.preview-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+.preview-card-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px 0;
+  font-family: var(--font-sans);
+}
+
+.preview-card-sub {
+  font-size: 13px;
+  color: #8D96A6;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+.preview-status-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.preview-pill.pill-requested {
+  background: rgba(245, 158, 11, 0.1);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.preview-pill.pill-unverified {
+  background: rgba(159, 184, 216, 0.08);
+  color: #BAC8DA;
+  border: 1px solid rgba(159, 184, 216, 0.16);
+}
+
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.pill-dot.dot-requested {
+  background-color: #F59E0B;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.pill-dot.dot-unverified {
+  background-color: #BAC8DA;
+}
+
+.preview-terms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.preview-term-item {
+  background: rgba(7, 10, 16, 0.55);
+  border: 1px solid rgba(159, 184, 216, 0.08);
+  border-radius: 6px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-term-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.term-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(159, 184, 216, 0.5);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.term-value-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.term-val-huge {
+  font-size: 26px;
+  font-weight: 700;
+  color: #F2F4F7;
+  font-feature-settings: "tnum";
+}
+
+.term-val-large {
+  font-size: 20px;
+  font-weight: 700;
+  color: #F2F4F7;
+  font-feature-settings: "tnum";
+}
+
+.term-val-large.highlight-cyan {
+  color: #D7E5F5;
+  text-shadow: 0 0 12px rgba(215, 229, 245, 0.2);
+}
+
+.term-unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(159, 184, 216, 0.6);
+}
+
+.term-bps {
+  font-size: 12px;
+  color: #8D96A6;
+}
+
+.term-desc {
+  font-size: 12px;
+  color: #8D96A6;
+  line-height: 1.4;
+}
+
+.threshold-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.threshold-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* 6. CONFIDENTIALITY ASSURANCE & PRIVACY FLOW */
+.privacy-assurance-card {
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.75) 0%, rgba(9, 12, 18, 0.9) 100%);
+  border: 1px solid rgba(159, 184, 216, 0.12);
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.assurance-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assurance-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.12em;
+}
+
+.assurance-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #F2F4F7;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+.assurance-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #8D96A6;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+.privacy-flow-visual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(7, 10, 16, 0.6);
+  border: 1px solid rgba(159, 184, 216, 0.08);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.flow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.flow-step-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.06em;
+}
+
+.flow-step-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: 0.06em;
+}
+
+.flow-step-sub {
+  font-size: 9.5px;
+  color: rgba(159, 184, 216, 0.5);
+}
+
+.flow-connector {
+  color: rgba(159, 184, 216, 0.35);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.assurance-bullet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #BAC8DA;
+}
+
+.assurance-bullet-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bullet-check {
+  color: var(--status-success);
+  font-weight: 700;
+}
+
+/* 7. SUCCESS PANEL */
+.create-loan-success-panel {
+  background: linear-gradient(180deg, rgba(13, 17, 26, 0.8) 0%, rgba(9, 12, 18, 0.92) 100%);
+  border: 1px solid rgba(78, 186, 134, 0.3);
+  border-radius: 8px;
+  padding: 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.success-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.success-badge-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #4EBA86;
+  background: rgba(78, 186, 134, 0.1);
+  border: 1px solid rgba(78, 186, 134, 0.25);
+  border-radius: 4px;
+  padding: 4px 10px;
+  width: fit-content;
+}
+
+.success-check-icon {
+  font-weight: 800;
+}
+
+.success-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.01em;
+  margin: 4px 0 0 0;
+  font-family: var(--font-sans);
+}
+
+.success-sub {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #8D96A6;
+  margin: 0;
+  max-width: 760px;
+}
+
+.success-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  background: rgba(7, 10, 16, 0.6);
+  border: 1px solid rgba(159, 184, 216, 0.1);
+  border-radius: 6px;
+  padding: 20px 24px;
+}
+
+.success-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(159, 184, 216, 0.5);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.metric-card-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: #F2F4F7;
+  font-feature-settings: "tnum";
+}
+
+.metric-card-sub {
+  font-size: 11px;
+  color: rgba(159, 184, 216, 0.45);
+}
+
+.success-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-success-outline {
+  height: 44px;
+  padding: 0 20px;
+  background: transparent;
+  border: 1px solid rgba(159, 184, 216, 0.2);
+  border-radius: 6px;
+  color: #BAC8DA;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-success-outline:hover {
+  background: rgba(159, 184, 216, 0.06);
+  border-color: rgba(159, 184, 216, 0.35);
+  color: #FFFFFF;
+}
+
+.btn-success-primary {
+  height: 44px;
+  padding: 0 24px;
+  background-color: #D7E5F5;
+  color: #070A10;
+  border: 1px solid #D7E5F5;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-success-primary:hover {
+  background-color: #FFFFFF;
+  border-color: #FFFFFF;
+  box-shadow: 0 0 16px rgba(215, 229, 245, 0.25);
+  transform: translateY(-1px);
+}
+
+/* 8. RESPONSIVE BREAKPOINTS FOR CREATE LOAN WORKSPACE */
+.create-loan-form-column,
+.create-loan-preview-column,
+.loan-params-form-panel,
+.preview-panel-stack,
+.preview-main-card,
+.privacy-assurance-card {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.assurance-bullet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #BAC8DA;
+  word-break: break-word;
+}
+
+.assurance-bullet-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 1280px) {
+  .create-loan-hero-section {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .create-loan-main-grid {
+    grid-template-columns: 100%;
+    gap: 28px;
+  }
+  .success-metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  .create-loan-workspace {
+    padding: 24px 20px 60px;
+    gap: 28px;
+  }
+  .create-loan-headline {
+    font-size: 38px;
+  }
+  .stepper-track {
+    padding: 16px 20px;
+  }
+  .stepper-stage {
+    min-width: 120px;
+  }
+  .stepper-line {
+    margin: 0 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .create-loan-workspace {
+    padding: 20px 16px 48px;
+    gap: 24px;
+  }
+  .create-loan-headline {
+    font-size: 32px;
+  }
+  .stepper-track {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .stepper-stage {
+    width: 100%;
+    min-width: 0;
+  }
+  .stepper-line {
+    display: none;
+  }
+  .preview-terms-grid {
+    grid-template-columns: 1fr;
+  }
+  .privacy-flow-visual {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .flow-connector {
+    transform: rotate(90deg);
+    text-align: center;
+  }
+  .success-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .params-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .params-presets-container {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 480px) {
+  .create-loan-workspace {
+    padding: 16px 12px 40px;
+    gap: 20px;
+  }
+  .create-loan-kicker {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 10.5px;
+  }
+  .create-loan-headline {
+    font-size: 28px;
+  }
+  .loan-params-form-panel {
+    padding: 20px 16px;
+  }
+  .preview-main-card {
+    padding: 20px 16px;
+  }
+  .privacy-assurance-card {
+    padding: 20px 16px;
+  }
+  .params-actions-bar {
+    flex-direction: column;
+    width: 100%;
+  }
+  .btn-params-back,
+  .btn-params-clear,
+  .btn-params-submit {
+    width: 100%;
+    justify-content: center;
+    margin-right: 0;
+  }
+  .presets-segmented-control {
+    width: 100%;
+  }
+  .preset-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 0 6px;
+    font-size: 10.5px;
+  }
+  .param-input {
+    padding-right: 110px;
+    font-size: 14px;
+  }
+  .param-unit-badge {
+    font-size: 9px;
+    padding: 3px 5px;
+  }
+}
+
+@media (max-width: 390px) {
+  .create-loan-workspace {
+    padding: 14px 8px 36px;
+    gap: 16px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .create-loan-headline {
+    font-size: 24px;
+  }
+  .term-val-huge {
+    font-size: 22px;
+  }
+  .term-val-large {
+    font-size: 18px;
+  }
+}
+
 
 /* ==================================================
    CONFIDENTIAL LENDING DESK — OVERVIEW WORKSPACE

@@ -47,190 +47,200 @@ export const CreateLoanPage: React.FC<CreateLoanPageProps> = ({
   };
 
   return (
-    <div className="overview-page create-loan-page">
-      {/* 1. Header */}
-      <section className="overview-intro">
-        <div className="overview-intro-left">
-          <div className="overview-kicker font-mono">
+    <div className="create-loan-workspace">
+      {/* 1. WORKSPACE HEADER & TELEMETRY STATUS (60% / 40%) */}
+      <section className="create-loan-hero-section">
+        <div className="create-loan-hero-left">
+          <button
+            type="button"
+            className="create-loan-top-back-btn font-mono"
+            onClick={onNavigateToDashboard}
+            aria-label="Back to Lending Desk"
+          >
+            <span className="back-arrow">&larr;</span>
+            <span>BACK TO LENDING DESK</span>
+          </button>
+          <div className="create-loan-kicker font-mono">
             <span>MIDNIGHT NETWORK</span>
             <span className="kicker-sep">//</span>
             <span>ZERO-KNOWLEDGE PROPOSAL</span>
           </div>
-          <h1 className="overview-headline">Propose Loan</h1>
-          <p className="overview-lead">
-            Initialize a peer-to-peer loan agreement. Underwriting qualifications are verified client-side using zero-knowledge proofs without exposing confidential records.
+          <h1 className="create-loan-headline">Propose a Loan</h1>
+          <p className="create-loan-lead">
+            Create a peer-to-peer loan agreement with privacy-preserving eligibility verification. Define the terms, review the public representation, and submit when ready.
           </p>
         </div>
 
-        <div className="overview-intro-right">
-          <div className="overview-protocol-meta font-mono">
-            <div className="meta-item">
-              <span className="meta-label">01 PARAMETERS</span>
-              <span className="meta-val text-accent">TERMS SPECIFIED</span>
+        <div className="create-loan-hero-right">
+          <div className="create-loan-status-enclave font-mono">
+            <div className="status-enclave-header">
+              <span className="status-enclave-title">PROPOSAL STATE</span>
+              <span className="status-enclave-indicator">
+                <span className="status-dot-sm dot-warning" />
+                <span className="status-text-live text-amber">DRAFT</span>
+              </span>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">02 ELIGIBILITY</span>
-              <span className="meta-val">CLIENT-SIDE ZK</span>
+
+            <div className="status-enclave-body">
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">EXECUTION MODE</span>
+                <span className="status-enclave-val">Local Simulation</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">PRIVACY POLICY</span>
+                <span className="status-enclave-val text-accent">Private by Default</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">ELIGIBILITY PROOF</span>
+                <span className="status-enclave-val">Client ZK Witness</span>
+              </div>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">03 REVIEW</span>
-              <span className="meta-val">DETERMINISTIC</span>
+
+            <div className="status-enclave-footer">
+              <button
+                type="button"
+                className="btn-back-desk font-mono"
+                onClick={onNavigateToDashboard}
+              >
+                &larr; Back to Lending Desk
+              </button>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">04 SUBMISSION</span>
-              <span className="meta-val text-accent">ON-CHAIN ATOMIC</span>
-            </div>
-          </div>
-          <div className="intro-actions-row">
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={onNavigateToDashboard}
-            >
-              &larr; Back to Desk
-            </button>
           </div>
         </div>
       </section>
 
-      {/* 2. Workflow Progression Strip */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '24px',
-        padding: '16px 0',
-        marginBottom: '36px',
-        borderTop: '1px solid rgba(159, 184, 216, 0.08)',
-        borderBottom: '1px solid rgba(159, 184, 216, 0.08)',
-      }} className="font-mono">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', color: 'var(--accent-primary)', fontWeight: 600 }}>01 / STAGE</span>
-          <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>PARAMETERS</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>02 / STAGE</span>
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>ELIGIBILITY</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>03 / STAGE</span>
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>REVIEW</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>04 / STAGE</span>
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>SUBMIT</span>
-        </div>
-      </div>
+      {/* 2. WORKFLOW STEPPER */}
+      <section className="create-loan-stepper-section" aria-label="Proposal Workflow Progression">
+        <div className="stepper-track font-mono">
+          <div className="stepper-stage active">
+            <div className="stage-header">
+              <span className="stage-num">01</span>
+              <span className="stage-badge">CURRENT STEP</span>
+            </div>
+            <span className="stage-label">PARAMETERS</span>
+            <span className="stage-sub">Loan terms &amp; rate</span>
+          </div>
 
+          <div className="stepper-line" aria-hidden="true" />
+
+          <div className="stepper-stage">
+            <div className="stage-header">
+              <span className="stage-num">02</span>
+              <span className="stage-badge badge-pending">PENDING</span>
+            </div>
+            <span className="stage-label">ELIGIBILITY</span>
+            <span className="stage-sub">Client-side ZK proof</span>
+          </div>
+
+          <div className="stepper-line" aria-hidden="true" />
+
+          <div className="stepper-stage">
+            <div className="stage-header">
+              <span className="stage-num">03</span>
+              <span className="stage-badge badge-pending">PENDING</span>
+            </div>
+            <span className="stage-label">REVIEW</span>
+            <span className="stage-sub">Public ledger record</span>
+          </div>
+
+          <div className="stepper-line" aria-hidden="true" />
+
+          <div className="stepper-stage">
+            <div className="stage-header">
+              <span className="stage-num">04</span>
+              <span className="stage-badge badge-pending">PENDING</span>
+            </div>
+            <span className="stage-label">SUBMIT</span>
+            <span className="stage-sub">Atomic contract commit</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. MAIN WORKSPACE / SUCCESS STATE */}
       {createdLoan ? (
-        <div style={{
-          padding: '36px',
-          backgroundColor: 'rgba(13, 17, 26, 0.6)',
-          border: '1px solid rgba(78, 135, 112, 0.3)',
-          borderRadius: '8px',
-          marginBottom: '32px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-            <span className="badge badge-success font-mono" style={{ fontSize: '12px', padding: '6px 12px' }}>
-              ✓ INITIALIZED
-            </span>
-            <h3 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-              Loan Agreement Initialized on Ledger
-            </h3>
+        <section className="create-loan-success-panel">
+          <div className="success-header">
+            <div className="success-badge-wrap font-mono">
+              <span className="success-check-icon">✓</span>
+              <span>INITIALIZED ON CANONICAL REGISTRY</span>
+            </div>
+            <h2 className="success-title">Loan Agreement Successfully Initialized</h2>
+            <p className="success-sub">
+              Your loan request has been recorded into the canonical registry with status <strong>REQUESTED</strong>. Prospective lenders can now inspect the public terms and fund the agreement once zero-knowledge eligibility is attested.
+            </p>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '20px',
-            padding: '20px',
-            backgroundColor: 'rgba(7, 10, 16, 0.8)',
-            border: '1px solid rgba(159, 184, 216, 0.1)',
-            borderRadius: '6px',
-            marginBottom: '28px',
-          }} className="font-mono">
-            <div>
-              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>PRINCIPAL</span>
-              <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{createdLoan.amount.toLocaleString()}</strong> <span className="text-xs text-muted">units</span>
+          <div className="success-metrics-grid font-mono">
+            <div className="success-metric-card">
+              <span className="metric-card-label">STATUS</span>
+              <span className="metric-card-val text-amber">{createdLoan.statusText.toUpperCase()}</span>
+              <span className="metric-card-sub">Registry State</span>
             </div>
-            <div>
-              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>INTEREST RATE</span>
-              <strong style={{ fontSize: '18px', color: 'var(--accent-primary)' }}>{(Number(createdLoan.interestRateBasisPoints) / 100).toFixed(2)}%</strong> <span className="text-xs text-muted">({createdLoan.interestRateBasisPoints.toString()} bps)</span>
+            <div className="success-metric-card">
+              <span className="metric-card-label">PRINCIPAL</span>
+              <span className="metric-card-val">{createdLoan.amount.toLocaleString()}</span>
+              <span className="metric-card-sub">MICRO-UNITS</span>
             </div>
-            <div>
-              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>DURATION</span>
-              <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{createdLoan.durationBlocks.toString()}</strong> <span className="text-xs text-muted">blocks</span>
+            <div className="success-metric-card">
+              <span className="metric-card-label">INTEREST RATE</span>
+              <span className="metric-card-val text-amber">
+                {(Number(createdLoan.interestRateBasisPoints) / 100).toFixed(2)}%
+              </span>
+              <span className="metric-card-sub">{createdLoan.interestRateBasisPoints.toString()} bps</span>
             </div>
-            <div>
-              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>ZK THRESHOLD</span>
-              <strong style={{ fontSize: '18px', color: 'var(--status-success)' }}>&ge; {createdLoan.eligibilityThreshold.toLocaleString()}</strong> <span className="text-xs text-muted">units</span>
+            <div className="success-metric-card">
+              <span className="metric-card-label">DURATION</span>
+              <span className="metric-card-val">{createdLoan.durationBlocks.toString()}</span>
+              <span className="metric-card-sub">Ledger Blocks</span>
+            </div>
+            <div className="success-metric-card">
+              <span className="metric-card-label">ZK THRESHOLD</span>
+              <span className="metric-card-val text-success">
+                &ge; {createdLoan.eligibilityThreshold.toLocaleString()}
+              </span>
+              <span className="metric-card-sub">Private Min Benchmark</span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '14px' }}>
+          <div className="success-actions-row font-mono">
             <button
               type="button"
-              className="btn btn-outline"
+              className="btn-success-outline"
               onClick={() => setCreatedLoan(null)}
             >
-              Propose Another Agreement
+              + Propose Another Agreement
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn-success-primary"
               onClick={onNavigateToDashboard}
             >
               View in Desk Overview &rarr;
             </button>
           </div>
-        </div>
+        </section>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1.2fr 1fr',
-          gap: '48px',
-          alignItems: 'start',
-        }}>
-          <div>
+        <section className="create-loan-main-grid">
+          {/* Left Column: Loan Agreement Parameters Form (54%) */}
+          <div className="create-loan-form-column">
             <LoanRequestForm
               onSubmit={handleSubmit}
               onValuesChange={handleValuesChange}
+              onBack={onNavigateToDashboard}
               isSubmitting={isSubmitting}
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{
-              padding: '24px',
-              backgroundColor: 'rgba(13, 17, 26, 0.4)',
-              border: '1px solid rgba(159, 184, 216, 0.1)',
-              borderRadius: '8px',
-            }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-primary)', marginBottom: '16px', fontFamily: 'var(--font-mono)' }}>
-                Agreement Real-Time Preview
-              </h3>
-              <LoanPreview
-                principalAmount={previewAmount}
-                interestRateBasisPoints={previewBps}
-                durationBlocks={previewDuration}
-                eligibilityThreshold={previewThreshold}
-              />
-            </div>
-
-            <div style={{
-              padding: '24px',
-              backgroundColor: 'rgba(13, 17, 26, 0.4)',
-              border: '1px solid rgba(159, 184, 216, 0.1)',
-              borderRadius: '8px',
-            }}>
-              <h4 style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent-primary)', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
-                Zero-Knowledge Privacy Guarantee
-              </h4>
-              <p style={{ fontSize: '13.5px', lineHeight: 1.65, color: 'var(--text-secondary)', margin: 0 }}>
-                Your private witness metric will be verified client-side against the public threshold (<code>&ge; {previewThreshold ? previewThreshold.toLocaleString() : 'threshold'}</code>). Confidential financial metrics are never published to the Midnight Network ledger.
-              </p>
-            </div>
+          {/* Right Column: Live Agreement Preview & Privacy Flow (46%) */}
+          <div className="create-loan-preview-column">
+            <LoanPreview
+              principalAmount={previewAmount}
+              interestRateBasisPoints={previewBps}
+              durationBlocks={previewDuration}
+              eligibilityThreshold={previewThreshold}
+            />
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

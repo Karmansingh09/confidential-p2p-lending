@@ -1,4 +1,4 @@
-import type { LoanDetailsModel } from '../types/index.js';
+import type { LoanDetailsModel } from '../types/index.ts';
 import type { LoanRegistry } from './loan-registry.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 import {

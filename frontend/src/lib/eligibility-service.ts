@@ -11,7 +11,7 @@ import type {
   EligibilityVerificationResult,
   EligibilityPrivacyAttestation,
   ProofGenerationStep,
-} from '../types/eligibility.js';
+} from '../types/eligibility.ts';
 
 export const PROOF_GENERATION_STEPS: ProofGenerationStep[] = [
   { id: 1, label: 'Preparing private witness', description: 'Binding confidential input to local prover' },

@@ -4,14 +4,14 @@ import {
   getEligibilityVerificationState,
   verifyBorrowerEligibility,
   PROOF_GENERATION_STEPS,
-} from '../lib/eligibility-service.js';
+} from '../lib/eligibility-service.ts';
 import type {
   EligibilityVerificationState,
   EligibilityVerificationResult as ResultModel,
-} from '../types/eligibility.js';
-import { PrivateEligibilityInput } from './PrivateEligibilityInput.js';
-import { EligibilityVerificationResult } from './EligibilityVerificationResult.js';
-import { formatAmount, formatBasisPoints, formatDuration } from '../lib/formatters.js';
+} from '../types/eligibility.ts';
+import { PrivateEligibilityInput } from './PrivateEligibilityInput.tsx';
+import { EligibilityVerificationResult } from './EligibilityVerificationResult.tsx';
+import { formatAmount, formatBasisPoints, formatDuration } from '../lib/formatters.ts';
 
 interface EligibilityVerificationPanelProps {
   loan: LoanDetailsModel;

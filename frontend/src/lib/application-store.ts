@@ -1,7 +1,7 @@
-import type { LoanDetailsModel } from '../types/index.js';
+import type { LoanDetailsModel, LoanStatus } from '../types/index.ts';
 import type { LoanRegistryPersistence } from '../types/application-state.ts';
 import { LoanRegistry } from './loan-registry.ts';
-import { MOCK_LOANS } from './mock-data.js';
+import { MOCK_LOANS } from './mock-data.ts';
 
 /**
  * In-memory persistence adapter. Default for testing and non-browser runtimes.
@@ -67,7 +67,7 @@ export class LocalStorageLoanRegistryPersistence implements LoanRegistryPersiste
           amount: BigInt(anyItem.amount),
           interestRateBasisPoints: BigInt(anyItem.interestRateBasisPoints),
           durationBlocks: BigInt(anyItem.durationBlocks),
-          status: Number(anyItem.status),
+          status: Number(anyItem.status) as LoanStatus,
           statusText: anyItem.statusText,
           eligibilityThreshold: BigInt(anyItem.eligibilityThreshold),
           isEligibilityVerified: Boolean(anyItem.isEligibilityVerified),

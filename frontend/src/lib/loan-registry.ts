@@ -1,7 +1,7 @@
 import {
   LoanStatus,
   type LoanDetailsModel,
-} from '../types/index.js';
+} from '../types/index.ts';
 import {
   LoanRegistryError,
   type LoanRegistryState,
@@ -15,7 +15,7 @@ import {
   canRepayLoan,
   canSettleLoan,
 } from 'contracts';
-import { MOCK_LOANS } from './mock-data.js';
+import { MOCK_LOANS } from './mock-data.ts';
 
 function bytesToHex(bytes: Uint8Array): string {
   return '0x' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');

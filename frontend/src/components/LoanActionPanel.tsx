@@ -1,9 +1,9 @@
 import React from 'react';
-import type { LoanDetailsModel } from '../types/index.js';
-import type { AccountContext, AccountRole } from '../types/account.js';
-import { LoanStatus } from '../types/index.js';
-import { getLifecycleActionDescriptor } from '../lib/marketplace.js';
-import { getAccountAuthorization } from '../lib/account-authorization.js';
+import type { LoanDetailsModel } from '../types/index.ts';
+import type { AccountContext, AccountRole } from '../types/account.ts';
+import { LoanStatus } from '../types/index.ts';
+import { getLifecycleActionDescriptor } from '../lib/marketplace.ts';
+import { getAccountAuthorization } from '../lib/account-authorization.ts';
 import type { LifecycleTransactionAction } from '../types/transaction-orchestration.ts';
 
 interface LoanActionPanelProps {

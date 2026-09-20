@@ -1,6 +1,6 @@
 import React from 'react';
-import type { RepaymentResult } from '../types/repayment.js';
-import { formatAmount, shortenAddress } from '../lib/formatters.js';
+import type { RepaymentResult } from '../types/repayment.ts';
+import { formatAmount, shortenAddress } from '../lib/formatters.ts';
 
 interface RepaymentConfirmationProps {
   result: RepaymentResult;

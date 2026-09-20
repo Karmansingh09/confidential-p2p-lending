@@ -1,7 +1,7 @@
 import React from 'react';
-import type { LoanDetailsModel } from '../types/index.js';
-import type { AccountContext, AccountRole } from '../types/account.js';
-import { getAccountAuthorization } from '../lib/account-authorization.js';
+import type { LoanDetailsModel } from '../types/index.ts';
+import type { AccountContext, AccountRole } from '../types/account.ts';
+import { getAccountAuthorization } from '../lib/account-authorization.ts';
 
 interface AccountStatusPanelProps {
   loan?: LoanDetailsModel | null;

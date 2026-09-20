@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { CreateLoanPage } from './pages/CreateLoanPage.js';
+import { LandingPage } from './pages/LandingPage.tsx';
 import {
   connectMockAccount,
   disconnectMockAccount,
@@ -14,10 +15,18 @@ import type { LoanDetailsModel } from './types/index.js';
 import type { AccountContext, AccountRole } from './types/account.js';
 import './App.css';
 
-export type AppView = 'dashboard' | 'create-loan';
+export type AppView = 'landing' | 'dashboard' | 'create-loan';
 
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<AppView>('dashboard');
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      if (viewParam === 'dashboard' || window.location.hash.includes('dashboard')) return 'dashboard';
+      if (viewParam === 'create-loan' || window.location.hash.includes('create-loan')) return 'create-loan';
+    }
+    return 'landing';
+  });
 
   // Centralized Authoritative Loan Registry (Commit #21)
   const [registry, setRegistry] = useState<LoanRegistry>(() =>
@@ -29,6 +38,13 @@ export const App: React.FC = () => {
   const [accountContext, setAccountContext] = useState<AccountContext>(() =>
     connectMockAccount('BORROWER')
   );
+
+  // Reset scroll to top on any view transition
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [currentView]);
 
   // Startup Transaction Lifecycle Recovery (Commit #30)
   useEffect(() => {
@@ -98,9 +114,15 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-root">
-      {currentView === 'dashboard' ? (
+      {currentView === 'landing' ? (
+        <LandingPage
+          onEnterDesk={() => setCurrentView('dashboard')}
+          onLaunchDesk={() => setCurrentView('dashboard')}
+        />
+      ) : currentView === 'dashboard' ? (
         <DashboardPage
           onNavigateToCreateLoan={() => setCurrentView('create-loan')}
+          onNavigateToLanding={() => setCurrentView('landing')}
           loansMap={registry.getLoans()}
           selectedLoanId={registry.getSelectedLoanId()}
           onSelectLoan={handleSelectLoan}

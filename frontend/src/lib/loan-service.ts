@@ -1,5 +1,5 @@
-import { LoanStatus, type LoanDetailsModel } from '../types/index.js';
-import type { ValidatedLoanRequestData } from './validation.js';
+import { LoanStatus, type LoanDetailsModel } from '../types/index.ts';
+import type { ValidatedLoanRequestData } from './validation.ts';
 
 // Default mock borrower identity for local simulation
 const defaultBorrowerPk = new Uint8Array(32).fill(7);

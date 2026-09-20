@@ -1,4 +1,4 @@
-import { LoanStatus, type LoanDetailsModel } from '../types/index.js';
+import { LoanStatus, type LoanDetailsModel } from '../types/index.ts';
 
 const borrowerPk1 = new Uint8Array(32).fill(1);
 const borrowerPk2 = new Uint8Array(32).fill(2);

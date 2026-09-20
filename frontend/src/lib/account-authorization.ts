@@ -1,9 +1,9 @@
-import { LoanStatus, type LoanDetailsModel } from '../types/index.js';
+import { LoanStatus, type LoanDetailsModel } from '../types/index.ts';
 import type {
   AccountIdentity,
   AccountContext,
   AccountAuthorization,
-} from '../types/account.js';
+} from '../types/account.ts';
 import {
   canVerifyEligibility,
   canFundLoan,

@@ -1,15 +1,15 @@
 import React from 'react';
-import type { LoanDetailsModel } from '../types/index.js';
+import type { LoanDetailsModel } from '../types/index.ts';
 import {
   formatAmount,
   formatBasisPoints,
   formatDuration,
   shortenAddress,
-} from '../lib/formatters.js';
+} from '../lib/formatters.ts';
 import { calculateRepaymentObligation } from 'contracts';
-import { LoanStatusBadge } from './LoanStatusBadge.js';
+import { LoanStatusBadge } from './LoanStatusBadge.tsx';
 
-import { isVerifiedLoan } from '../lib/marketplace.js';
+import { isVerifiedLoan } from '../lib/marketplace.ts';
 
 interface LoanSummaryCardProps {
   loan: LoanDetailsModel;

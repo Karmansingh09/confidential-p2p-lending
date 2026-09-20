@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AccountContext, AccountRole } from '../types/account.js';
+import type { AccountContext, AccountRole } from '../types/account.ts';
 
 interface AccountSwitcherProps {
   accountContext: AccountContext;

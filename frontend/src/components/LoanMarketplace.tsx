@@ -1,19 +1,18 @@
 import React, { useState } from 'react';
-import type { LoanDetailsModel } from '../types/index.js';
+import type { LoanDetailsModel } from '../types/index.ts';
 import {
   type LifecycleFilter,
   type SortOption,
   queryMarketplace,
   getLifecycleCounts,
   isVerifiedLoan,
-} from '../lib/marketplace.js';
+} from '../lib/marketplace.ts';
 import {
   formatAmount,
   formatBasisPoints,
   formatDuration,
-  shortenAddress,
-} from '../lib/formatters.js';
-import { LoanStatusBadge } from './LoanStatusBadge.js';
+} from '../lib/formatters.ts';
+import { LoanStatusBadge } from './LoanStatusBadge.tsx';
 
 interface LoanMarketplaceProps {
   loansMap: Record<string, LoanDetailsModel>;
@@ -42,113 +41,95 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
     { key: 'settled', label: 'Settled' },
   ];
 
-  const handleResetFilters = () => {
-    setSearchQuery('');
-    setFilter('all');
-  };
-
   return (
-    <section className="marketplace-section" aria-label="Loan Marketplace">
-      <div className="marketplace-header">
-        <div>
-          <h3>Public Loan Marketplace</h3>
-          <p className="marketplace-sub">
-            Discover, filter, and inspect confidential micro-lending agreements using transparent on-chain terms.
-          </p>
+    <div className="active-lending-workspace" aria-label="Loan Marketplace">
+      <div className="active-lending-header">
+        <div className="active-lending-title-group">
+          <h2>ORDER BOOK</h2>
+          <span className="active-lending-count font-mono">{items.length} OPPORTUNITIES</span>
         </div>
-        <div className="marketplace-stats-badge">
-          <span>{items.length} of {Object.keys(loansMap).length} Agreements</span>
+
+        <div className="editorial-text-tabs" role="tablist">
+          {filterOptions.map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              className={`editorial-tab-btn font-mono ${filter === opt.key ? 'active' : ''}`}
+              onClick={() => setFilter(opt.key)}
+              role="tab"
+            >
+              {opt.label.toUpperCase()} ({counts[opt.key]})
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="marketplace-controls">
-        <div className="search-box">
+      <div className="marketplace-controls" style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
+        <div className="search-box" style={{ flex: 1, maxWidth: '400px' }}>
           <input
             type="text"
             className="search-input"
-            placeholder="Search by Loan ID, Borrower, or Lender key..."
+            placeholder="Search by Loan ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             aria-label="Search loans"
+            style={{
+              width: '100%',
+              height: '38px',
+              backgroundColor: 'rgba(13, 17, 26, 0.5)',
+              border: '1px solid rgba(159, 184, 216, 0.12)',
+              borderRadius: '4px',
+              padding: '0 14px',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              fontFamily: 'var(--font-mono)',
+            }}
           />
-          {searchQuery && (
-            <button
-              type="button"
-              className="btn-clear-search"
-              onClick={() => setSearchQuery('')}
-              title="Clear search"
-            >
-              &times;
-            </button>
-          )}
         </div>
 
-        <div className="sort-box">
-          <label htmlFor="sort-select" className="sort-label">
-            Sort by:
-          </label>
+        <div className="sort-box" style={{ width: '240px' }}>
           <select
-            id="sort-select"
             className="sort-select"
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as SortOption)}
+            style={{
+              width: '100%',
+              height: '38px',
+              backgroundColor: 'rgba(13, 17, 26, 0.5)',
+              border: '1px solid rgba(159, 184, 216, 0.12)',
+              borderRadius: '4px',
+              padding: '0 12px',
+              color: 'var(--text-secondary)',
+              fontSize: '12px',
+              fontFamily: 'var(--font-mono)',
+            }}
           >
             <option value="amount-asc">Principal: Low → High</option>
             <option value="amount-desc">Principal: High → Low</option>
-            <option value="rate-asc">Interest Rate: Low → High</option>
-            <option value="rate-desc">Interest Rate: High → Low</option>
+            <option value="rate-asc">Interest: Low → High</option>
+            <option value="rate-desc">Interest: High → Low</option>
             <option value="duration-asc">Duration: Short → Long</option>
             <option value="duration-desc">Duration: Long → Short</option>
           </select>
         </div>
       </div>
 
-      <div className="lifecycle-filters-bar" role="tablist" aria-label="Filter by lifecycle status">
-        {filterOptions.map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            className={`filter-tab ${filter === opt.key ? 'active' : ''}`}
-            onClick={() => setFilter(opt.key)}
-            role="tab"
-            aria-selected={filter === opt.key}
-          >
-            <span className="tab-label">{opt.label}</span>
-            <span className="tab-count">{counts[opt.key]}</span>
-          </button>
-        ))}
-      </div>
-
       {items.length === 0 ? (
-        <div className="marketplace-empty-state">
-          <div className="empty-icon">🔍</div>
-          <h4>No Loan Agreements Match Criteria</h4>
-          <p>
-            {searchQuery
-              ? `No agreements found matching "${searchQuery}" in ${filter === 'all' ? 'any category' : filter + ' category'}.`
-              : `No agreements found in the "${filter}" lifecycle stage.`}
-          </p>
-          <button
-            type="button"
-            className="btn-reset-filters"
-            onClick={handleResetFilters}
-          >
-            Reset Search & Filters
-          </button>
+        <div className="table-empty">
+          <p>No loan opportunities match the selected criteria.</p>
         </div>
       ) : (
-        <div className="marketplace-table-wrapper">
-          <table className="marketplace-table">
+        <div className="table-responsive">
+          <table className="editorial-agreements-table">
             <thead>
               <tr>
                 <th>Loan ID</th>
                 <th>Principal</th>
                 <th>Interest Rate</th>
                 <th>Duration</th>
-                <th>Borrower</th>
-                <th>Lender</th>
-                <th>Status / Attestation</th>
-                <th>Action</th>
+                <th>Status</th>
+                <th>Privacy / ZK Attestation</th>
+                <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -159,56 +140,43 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
                 return (
                   <tr
                     key={id}
-                    className={`marketplace-row ${isSelected ? 'row-selected' : ''}`}
+                    className={`editorial-agreement-row ${isSelected ? 'row-selected' : ''}`}
                     onClick={() => onSelectLoan(id)}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectLoan(id);
-                      }
-                    }}
                   >
-                    <td className="cell-id">
-                      <span className="id-code">{id}</span>
+                    <td>
+                      <span className="agreement-id">{id}</span>
                     </td>
-                    <td className="cell-amount">
-                      <strong>{formatAmount(loan.amount)}</strong>
+                    <td>
+                      <span className="agreement-principal">{loan.amount.toLocaleString()}</span>
+                      <span className="agreement-unit">UNITS</span>
                     </td>
-                    <td className="cell-rate">
-                      <span>{formatBasisPoints(loan.interestRateBasisPoints)}</span>
-                      <small className="bps-subtext">({loan.interestRateBasisPoints.toString()} bps)</small>
+                    <td>
+                      <span className="font-mono text-accent font-semibold">{formatBasisPoints(loan.interestRateBasisPoints)}</span>{' '}
+                      <span className="text-muted text-xs font-mono">({loan.interestRateBasisPoints.toString()} bps)</span>
                     </td>
-                    <td className="cell-duration">
-                      {formatDuration(loan.durationBlocks)}
+                    <td>
+                      <span className="font-mono text-sm">{formatDuration(loan.durationBlocks)}</span>
                     </td>
-                    <td className="cell-address">
-                      <code title={loan.borrower}>{shortenAddress(loan.borrower)}</code>
+                    <td>
+                      <LoanStatusBadge statusText={loan.statusText} />
                     </td>
-                    <td className="cell-address">
-                      <code title={loan.lender ?? undefined}>{shortenAddress(loan.lender)}</code>
-                    </td>
-                    <td className="cell-status">
-                      <div className="status-cell-wrapper">
-                        <LoanStatusBadge statusText={loan.statusText} />
-                        {verified && (
-                          <span className="badge-verified-attestation" title="Zero-knowledge eligibility verified on-chain">
-                            ZK Verified
-                          </span>
+                    <td>
+                      <span className={`underwriting-attestation-tag font-mono ${verified ? 'attested' : 'unverified'}`}>
+                        {verified ? (
+                          <>
+                            <span className="attest-mark">✓</span> ZK PROVEN
+                          </>
+                        ) : (
+                          <>
+                            <span className="unverified-mark">—</span> PROOF PENDING
+                          </>
                         )}
-                      </div>
+                      </span>
                     </td>
-                    <td className="cell-actions">
-                      <button
-                        type="button"
-                        className={`btn-select-loan ${isSelected ? 'selected' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectLoan(id);
-                        }}
-                      >
-                        {isSelected ? 'Active' : 'Inspect'}
-                      </button>
+                    <td className="text-right">
+                      <span className="action-link font-mono">
+                        {isSelected ? 'Selected' : 'Inspect →'}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -217,6 +185,8 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
           </table>
         </div>
       )}
-    </section>
+    </div>
   );
 };
+
+export default LoanMarketplace;

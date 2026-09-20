@@ -11,7 +11,7 @@ import type {
   SettlementRequest,
   SettlementResult,
   SettlementPrivacyAttestation,
-} from '../types/settlement.js';
+} from '../types/settlement.ts';
 
 /**
  * Evaluates settlement readiness from canonical contract lifecycle guards and authorization rules.

@@ -1,4 +1,4 @@
-import type { LoanDetailsModel } from './index.js';
+import type { LoanDetailsModel } from './index.ts';
 
 /**
  * Standard error codes for loan registry operations.

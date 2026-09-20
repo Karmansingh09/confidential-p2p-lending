@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatAmount } from '../lib/formatters.js';
+import { formatAmount } from '../lib/formatters.ts';
 
 interface PrivacyIndicatorProps {
   eligibilityThreshold: bigint;

@@ -4,10 +4,10 @@ import {
   getSettlementReadiness,
   executeSettlementPrototype,
   evaluateLoanForSettlement,
-} from '../lib/settlement-service.js';
-import type { SettlementResult } from '../types/settlement.js';
-import { formatAmount, formatBasisPoints, shortenAddress } from '../lib/formatters.js';
-import { SettlementConfirmation } from './SettlementConfirmation.js';
+} from '../lib/settlement-service.ts';
+import type { SettlementResult } from '../types/settlement.ts';
+import { formatAmount, formatBasisPoints, shortenAddress } from '../lib/formatters.ts';
+import { SettlementConfirmation } from './SettlementConfirmation.tsx';
 
 interface SettlementPanelProps {
   loan: LoanDetailsModel;

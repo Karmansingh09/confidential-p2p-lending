@@ -5,8 +5,8 @@ import {
   type LoanRequestFormValues,
   type LoanRequestFormErrors,
   type ValidatedLoanRequestData,
-} from '../lib/validation.js';
-import { ValidationMessage } from './ValidationMessage.js';
+} from '../lib/validation.ts';
+import { ValidationMessage } from './ValidationMessage.tsx';
 
 interface LoanRequestFormProps {
   onSubmit: (data: ValidatedLoanRequestData) => void;

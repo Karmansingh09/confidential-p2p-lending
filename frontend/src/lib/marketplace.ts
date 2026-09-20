@@ -1,4 +1,4 @@
-import { LoanStatus, type LoanDetailsModel } from '../types/index.js';
+import { LoanStatus, type LoanDetailsModel } from '../types/index.ts';
 import {
   canVerifyEligibility,
   canFundLoan,

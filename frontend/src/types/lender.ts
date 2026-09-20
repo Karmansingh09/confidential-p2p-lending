@@ -1,4 +1,4 @@
-import type { LoanDetailsModel, LoanStatus, LoanStatusText } from './index.js';
+import type { LoanDetailsModel, LoanStatus, LoanStatusText } from './index.ts';
 
 export type FundingReadinessStatus =
   | 'READY_TO_FUND'

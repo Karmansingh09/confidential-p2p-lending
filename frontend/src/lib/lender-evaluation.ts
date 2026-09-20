@@ -1,13 +1,13 @@
 import {
   LoanStatus,
   type LoanDetailsModel,
-} from '../types/index.js';
+} from '../types/index.ts';
 import type {
   FundingReadiness,
   EvaluationWarning,
   LenderLoanEvaluation,
   FundingExecutionResult,
-} from '../types/lender.js';
+} from '../types/lender.ts';
 import {
   canFundLoan,
   calculateRepaymentObligation,

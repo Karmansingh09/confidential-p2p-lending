@@ -1,6 +1,6 @@
 import React from 'react';
-import type { FundingExecutionResult } from '../types/lender.js';
-import { formatAmount, shortenAddress } from '../lib/formatters.js';
+import type { FundingExecutionResult } from '../types/lender.ts';
+import { formatAmount, shortenAddress } from '../lib/formatters.ts';
 
 interface FundingConfirmationProps {
   result: FundingExecutionResult;

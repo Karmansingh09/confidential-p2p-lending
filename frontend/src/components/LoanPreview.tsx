@@ -1,6 +1,6 @@
 import React from 'react';
-import { formatAmount, formatDuration } from '../lib/formatters.js';
-import { basisPointsToPercentage } from '../lib/validation.js';
+import { formatAmount, formatDuration } from '../lib/formatters.ts';
+import { basisPointsToPercentage } from '../lib/validation.ts';
 
 interface LoanPreviewProps {
   principalAmount: bigint | null;

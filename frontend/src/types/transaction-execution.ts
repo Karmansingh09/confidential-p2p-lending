@@ -1,4 +1,4 @@
-import type { LoanDetailsModel } from './index.js';
+import type { LoanDetailsModel } from './index.ts';
 import type { AccountContext, AccountIdentity } from './account.ts';
 import type { LifecycleTransactionAction } from './transaction-orchestration.ts';
 import type { WalletProviderKind } from './wallet-adapter.ts';

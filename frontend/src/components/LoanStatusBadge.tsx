@@ -1,5 +1,5 @@
 import React from 'react';
-import type { LoanStatusText } from '../types/index.js';
+import type { LoanStatusText } from '../types/index.ts';
 
 interface LoanStatusBadgeProps {
   statusText: LoanStatusText;

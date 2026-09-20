@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
-import type { LoanDetailsModel } from '../types/index.js';
-import type { FundingExecutionResult } from '../types/lender.js';
+import type { LoanDetailsModel } from '../types/index.ts';
+import type { FundingExecutionResult } from '../types/lender.ts';
 import {
   evaluateLoanForLender,
   executeLocalFunding,
   DEFAULT_LENDER_PK_HEX,
   ALTERNATIVE_LENDER_PK_HEX,
-} from '../lib/lender-evaluation.js';
+} from '../lib/lender-evaluation.ts';
 import {
   formatAmount,
   formatBasisPoints,
   formatDuration,
   shortenAddress,
-} from '../lib/formatters.js';
-import { FundingConfirmation } from './FundingConfirmation.js';
+} from '../lib/formatters.ts';
+import { FundingConfirmation } from './FundingConfirmation.tsx';
 
 interface LenderEvaluationPanelProps {
   loan: LoanDetailsModel;

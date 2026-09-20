@@ -2762,7 +2762,7 @@ describe('Frontend Foundation & UI Architecture Tests', () => {
   it('Test 149 (Commit #22): Existing loan registry workflows continue to work seamlessly with provider abstraction', () => {
     const registry = createDefaultLoanRegistry();
     const allLoans = registry.getOrderedLoans();
-    assert.equal(allLoans.length, 5);
+    assert.equal(allLoans.length, Object.keys(MOCK_LOANS).length);
 
     const verified = registry.verifyLoanEligibility('loan-001', PROTOTYPE_BORROWER_PK);
     assert.equal(verified.getLoan('loan-001').isEligibilityVerified, true);

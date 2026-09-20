@@ -1,6 +1,6 @@
 import React from 'react';
-import type { SettlementResult } from '../types/settlement.js';
-import { formatAmount, shortenAddress } from '../lib/formatters.js';
+import type { SettlementResult } from '../types/settlement.ts';
+import { formatAmount, shortenAddress } from '../lib/formatters.ts';
 
 interface SettlementConfirmationProps {
   result: SettlementResult;

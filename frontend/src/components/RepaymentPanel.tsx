@@ -4,10 +4,10 @@ import {
   calculateRepaymentPreview,
   getRepaymentReadiness,
   executeRepaymentPrototype,
-} from '../lib/repayment-service.js';
-import type { RepaymentResult } from '../types/repayment.js';
-import { formatAmount, formatBasisPoints, shortenAddress } from '../lib/formatters.js';
-import { RepaymentConfirmation } from './RepaymentConfirmation.js';
+} from '../lib/repayment-service.ts';
+import type { RepaymentResult } from '../types/repayment.ts';
+import { formatAmount, formatBasisPoints, shortenAddress } from '../lib/formatters.ts';
+import { RepaymentConfirmation } from './RepaymentConfirmation.tsx';
 
 interface RepaymentPanelProps {
   loan: LoanDetailsModel;

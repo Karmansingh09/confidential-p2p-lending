@@ -1,5 +1,5 @@
 import React from 'react';
-import type { EligibilityVerificationResult as ResultModel } from '../types/eligibility.js';
+import type { EligibilityVerificationResult as ResultModel } from '../types/eligibility.ts';
 
 interface EligibilityVerificationResultProps {
   result: ResultModel;

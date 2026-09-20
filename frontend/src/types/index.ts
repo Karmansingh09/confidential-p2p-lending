@@ -1,19 +1,45 @@
-import type {
-  LoanDetailsModel,
-  LoanStatusText,
-} from '@contracts';
-
 /**
  * Compact contract enum matching contracts/managed/contract/index.d.ts
  */
-export enum LoanStatus {
-  requested = 0,
-  funded = 1,
-  repaid = 2,
-  settled = 3,
-}
+export const LoanStatus = {
+  requested: 0,
+  funded: 1,
+  repaid: 2,
+  settled: 3,
+} as const;
 
-export type { LoanDetailsModel, LoanStatusText };
+export type LoanStatus = (typeof LoanStatus)[keyof typeof LoanStatus];
+
+export type LoanStatusText = 'requested' | 'funded' | 'repaid' | 'settled';
+
+/**
+ * Safe, public frontend representation of on-chain loan details.
+ * Contains ZERO private witness data or secrets.
+ */
+export interface LoanDetailsModel {
+  /** Hex-encoded borrower public key ("0x...") */
+  borrower: string;
+  /** Raw 32-byte borrower public key */
+  borrowerBytes: Uint8Array;
+  /** Hex-encoded lender public key ("0x...") or null if unassigned */
+  lender: string | null;
+  /** Raw 32-byte lender public key or null */
+  lenderBytes: Uint8Array | null;
+  /** Principal amount */
+  amount: bigint;
+  /** Interest rate in basis points (100 bps = 1%) */
+  interestRateBasisPoints: bigint;
+  /** Loan duration in blocks */
+  durationBlocks: bigint;
+  /** Compact enum status (0: requested, 1: funded, 2: repaid, 3: settled) */
+  status: LoanStatus;
+  /** Human-readable status string */
+  statusText: LoanStatusText;
+  /** Required eligibility threshold */
+  eligibilityThreshold: bigint;
+  /** Whether zero-knowledge proof has been verified */
+  isEligibilityVerified: boolean;
+}
 
 /**
  * Protocol lifecycle stages reflecting the 5 sequential transitions.
@@ -45,7 +71,7 @@ export type {
   SortOption,
   MarketplaceLoanItem,
   LifecycleActionDescriptor,
-} from '../lib/marketplace.js';
+} from '../lib/marketplace.ts';
 
 export type {
   EligibilityVerificationState,
@@ -54,7 +80,7 @@ export type {
   EligibilityPrivacyAttestation,
   EligibilityVerificationResult,
   ProofGenerationStep,
-} from './eligibility.js';
+} from './eligibility.ts';
 
 export type {
   FundingReadinessStatus,
@@ -64,7 +90,7 @@ export type {
   PrivacyAttestation,
   LenderLoanEvaluation,
   FundingExecutionResult,
-} from './lender.js';
+} from './lender.ts';
 
 export type {
   RepaymentState,
@@ -75,7 +101,7 @@ export type {
   RepaymentPrivacyAttestation,
   RepaymentResult,
   RepaymentFailureReason,
-} from './repayment.js';
+} from './repayment.ts';
 
 export type {
   SettlementReadinessStatus,
@@ -84,7 +110,7 @@ export type {
   SettlementRequest,
   SettlementPrivacyAttestation,
   SettlementResult,
-} from './settlement.js';
+} from './settlement.ts';
 
 export type {
   AccountConnectionStatus,
@@ -92,7 +118,7 @@ export type {
   AccountIdentity,
   AccountContext,
   AccountAuthorization,
-} from './account.js';
+} from './account.ts';
 
 export {
   LoanRegistryError,

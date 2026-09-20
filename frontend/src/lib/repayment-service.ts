@@ -11,7 +11,7 @@ import type {
   RepaymentRequest,
   RepaymentResult,
   RepaymentPrivacyAttestation,
-} from '../types/repayment.js';
+} from '../types/repayment.ts';
 
 /**
  * Calculates repayment breakdown and total obligation using canonical contract arithmetic.

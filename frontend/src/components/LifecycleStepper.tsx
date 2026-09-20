@@ -1,12 +1,13 @@
 import React from 'react';
-import type { LoanDetailsModel, ProtocolPhase, LifecycleStepInfo } from '../types/index.js';
-import { getLifecyclePhase } from '../lib/formatters.js';
+import type { LoanDetailsModel, ProtocolPhase, LifecycleStepInfo } from '../types/index.ts';
+import { getLifecyclePhase } from '../lib/formatters.ts';
 
 interface LifecycleStepperProps {
   loan: LoanDetailsModel;
+  compact?: boolean;
 }
 
-export const LifecycleStepper: React.FC<LifecycleStepperProps> = ({ loan }) => {
+export const LifecycleStepper: React.FC<LifecycleStepperProps> = ({ loan, compact = false }) => {
   const currentPhase = getLifecyclePhase(loan);
 
   const steps: LifecycleStepInfo[] = [
@@ -14,7 +15,7 @@ export const LifecycleStepper: React.FC<LifecycleStepperProps> = ({ loan }) => {
       phase: 'REQUESTED',
       title: '1. Requested',
       description: 'Terms initialized on-chain',
-      isComplete: true, // Always completed once loan exists
+      isComplete: true,
       isCurrent: currentPhase === 'REQUESTED',
     },
     {
@@ -48,6 +49,27 @@ export const LifecycleStepper: React.FC<LifecycleStepperProps> = ({ loan }) => {
       isCurrent: currentPhase === 'SETTLED',
     },
   ];
+
+  if (compact) {
+    return (
+      <div className="compact-stepper" title={`Current Phase: ${currentPhase}`}>
+        {steps.map((step, idx) => (
+          <React.Fragment key={step.phase}>
+            <div
+              className={`compact-step-dot ${step.isComplete ? 'complete' : ''} ${step.isCurrent ? 'current' : ''}`}
+              title={step.title}
+            />
+            {idx < steps.length - 1 && (
+              <div className={`compact-step-line ${step.isComplete && !step.isCurrent ? 'complete' : ''}`} />
+            )}
+          </React.Fragment>
+        ))}
+        <span className="compact-step-label font-mono">
+          {currentPhase}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="lifecycle-stepper-container">

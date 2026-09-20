@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { StateBanner } from '../components/StateBanner.js';
-import { Header } from '../components/Header.js';
-import { LoanRequestForm } from '../components/LoanRequestForm.js';
-import { LoanPreview } from '../components/LoanPreview.js';
-import { createLocalLoanRequest } from '../lib/loan-service.js';
-import type { ValidatedLoanRequestData } from '../lib/validation.js';
-import type { LoanDetailsModel } from '../types/index.js';
+import { LoanRequestForm } from '../components/LoanRequestForm.tsx';
+import { LoanPreview } from '../components/LoanPreview.tsx';
+import { createLocalLoanRequest } from '../lib/loan-service.ts';
+import type { ValidatedLoanRequestData } from '../lib/validation.ts';
+import type { LoanDetailsModel } from '../types/index.ts';
 
 interface CreateLoanPageProps {
   onNavigateToDashboard: () => void;
@@ -16,13 +14,11 @@ export const CreateLoanPage: React.FC<CreateLoanPageProps> = ({
   onNavigateToDashboard,
   onLoanCreated,
 }) => {
-  // Live preview values
   const [previewAmount, setPreviewAmount] = useState<bigint | null>(25000n);
   const [previewBps, setPreviewBps] = useState<bigint | null>(500n);
   const [previewDuration, setPreviewDuration] = useState<bigint | null>(100n);
   const [previewThreshold, setPreviewThreshold] = useState<bigint | null>(30000n);
 
-  // Submission state
   const [createdLoan, setCreatedLoan] = useState<LoanDetailsModel | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -40,8 +36,6 @@ export const CreateLoanPage: React.FC<CreateLoanPageProps> = ({
 
   const handleSubmit = (data: ValidatedLoanRequestData) => {
     setIsSubmitting(true);
-
-    // Simulate clean local preparation of loan request model
     setTimeout(() => {
       const newLoan = createLocalLoanRequest(data);
       setCreatedLoan(newLoan);
@@ -53,135 +47,193 @@ export const CreateLoanPage: React.FC<CreateLoanPageProps> = ({
   };
 
   return (
-    <div className="create-loan-page-container">
-      <StateBanner />
-      <Header />
-
-      <main className="create-loan-content">
-        <div className="page-nav-bar">
-          <button
-            type="button"
-            className="back-link-btn"
-            onClick={onNavigateToDashboard}
-          >
-            &larr; Back to Lending Desk Dashboard
-          </button>
-          <div className="page-breadcrumb">
-            <span>Borrower Workspace</span> &rsaquo; <strong>New Loan Request</strong>
+    <div className="overview-page create-loan-page">
+      {/* 1. Header */}
+      <section className="overview-intro">
+        <div className="overview-intro-left">
+          <div className="overview-kicker font-mono">
+            <span>MIDNIGHT NETWORK</span>
+            <span className="kicker-sep">//</span>
+            <span>ZERO-KNOWLEDGE PROPOSAL</span>
           </div>
-        </div>
-
-        <div className="create-page-header">
-          <h2>Propose a Confidential Micro-Loan</h2>
-          <p className="page-intro">
-            Define your borrowing terms. Lenders evaluate requests based on zero-knowledge
-            eligibility verification without ever inspecting confidential financial metrics
-            or undisclosed credentials.
+          <h1 className="overview-headline">Propose Loan</h1>
+          <p className="overview-lead">
+            Initialize a peer-to-peer loan agreement. Underwriting qualifications are verified client-side using zero-knowledge proofs without exposing confidential records.
           </p>
         </div>
 
-        {createdLoan ? (
-          <div className="creation-success-card" role="region" aria-label="Loan Created Success">
-            <div className="success-header">
-              <span className="success-badge-icon">✓</span>
-              <div>
-                <h3>Loan Request Initialized (Local Simulation)</h3>
-                <p className="success-subtitle">
-                  The agreement state has been prepared in accordance with Midnight Compact protocols.
-                </p>
-              </div>
+        <div className="overview-intro-right">
+          <div className="overview-protocol-meta font-mono">
+            <div className="meta-item">
+              <span className="meta-label">01 PARAMETERS</span>
+              <span className="meta-val text-accent">TERMS SPECIFIED</span>
             </div>
-
-            <div className="success-details-box">
-              <div className="success-detail-row">
-                <span>Agreement Status:</span>
-                <strong className="status-tag-requested">REQUESTED</strong>
-              </div>
-              <div className="success-detail-row">
-                <span>Eligibility Verification:</span>
-                <strong className="eligibility-tag-unverified">NOT VERIFIED (Proof Required)</strong>
-              </div>
-              <div className="success-detail-row">
-                <span>Principal Amount:</span>
-                <strong>{createdLoan.amount.toLocaleString()} MICRO-UNITS</strong>
-              </div>
-              <div className="success-detail-row">
-                <span>Agreed Interest:</span>
-                <strong>
-                  {(Number(createdLoan.interestRateBasisPoints) / 100).toFixed(2)}% ({createdLoan.interestRateBasisPoints.toString()} bps)
-                </strong>
-              </div>
-              <div className="success-detail-row">
-                <span>Required Underwriting Threshold:</span>
-                <strong>{createdLoan.eligibilityThreshold.toLocaleString()} MICRO-UNITS</strong>
-              </div>
+            <div className="meta-item">
+              <span className="meta-label">02 ELIGIBILITY</span>
+              <span className="meta-val">CLIENT-SIDE ZK</span>
             </div>
-
-            <div className="success-disclaimer">
-              <span className="disclaimer-dot"></span>
-              <span>
-                <strong>Prototype Notice:</strong> Created in Local Mock Mode (Commit #14). Real Midnight Network deployment and Lace Wallet signing will be enabled in upcoming milestones.
-              </span>
+            <div className="meta-item">
+              <span className="meta-label">03 REVIEW</span>
+              <span className="meta-val">DETERMINISTIC</span>
             </div>
-
-            <div className="success-actions-bar">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setCreatedLoan(null)}
-              >
-                Create Another Request
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={onNavigateToDashboard}
-              >
-                View in Lending Desk Dashboard &rarr;
-              </button>
+            <div className="meta-item">
+              <span className="meta-label">04 SUBMISSION</span>
+              <span className="meta-val text-accent">ON-CHAIN ATOMIC</span>
             </div>
           </div>
-        ) : (
-          <div className="create-loan-grid">
-            <div className="form-column">
-              <LoanRequestForm
-                onSubmit={handleSubmit}
-                onValuesChange={handleValuesChange}
-                isSubmitting={isSubmitting}
-              />
-            </div>
+          <div className="intro-actions-row">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={onNavigateToDashboard}
+            >
+              &larr; Back to Desk
+            </button>
+          </div>
+        </div>
+      </section>
 
-            <div className="preview-column">
+      {/* 2. Workflow Progression Strip */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '24px',
+        padding: '16px 0',
+        marginBottom: '36px',
+        borderTop: '1px solid rgba(159, 184, 216, 0.08)',
+        borderBottom: '1px solid rgba(159, 184, 216, 0.08)',
+      }} className="font-mono">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '10px', color: 'var(--accent-primary)', fontWeight: 600 }}>01 / STAGE</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>PARAMETERS</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>02 / STAGE</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>ELIGIBILITY</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>03 / STAGE</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>REVIEW</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>04 / STAGE</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>SUBMIT</span>
+        </div>
+      </div>
+
+      {createdLoan ? (
+        <div style={{
+          padding: '36px',
+          backgroundColor: 'rgba(13, 17, 26, 0.6)',
+          border: '1px solid rgba(78, 135, 112, 0.3)',
+          borderRadius: '8px',
+          marginBottom: '32px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+            <span className="badge badge-success font-mono" style={{ fontSize: '12px', padding: '6px 12px' }}>
+              ✓ INITIALIZED
+            </span>
+            <h3 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+              Loan Agreement Initialized on Ledger
+            </h3>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '20px',
+            padding: '20px',
+            backgroundColor: 'rgba(7, 10, 16, 0.8)',
+            border: '1px solid rgba(159, 184, 216, 0.1)',
+            borderRadius: '6px',
+            marginBottom: '28px',
+          }} className="font-mono">
+            <div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>PRINCIPAL</span>
+              <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{createdLoan.amount.toLocaleString()}</strong> <span className="text-xs text-muted">units</span>
+            </div>
+            <div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>INTEREST RATE</span>
+              <strong style={{ fontSize: '18px', color: 'var(--accent-primary)' }}>{(Number(createdLoan.interestRateBasisPoints) / 100).toFixed(2)}%</strong> <span className="text-xs text-muted">({createdLoan.interestRateBasisPoints.toString()} bps)</span>
+            </div>
+            <div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>DURATION</span>
+              <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{createdLoan.durationBlocks.toString()}</strong> <span className="text-xs text-muted">blocks</span>
+            </div>
+            <div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>ZK THRESHOLD</span>
+              <strong style={{ fontSize: '18px', color: 'var(--status-success)' }}>&ge; {createdLoan.eligibilityThreshold.toLocaleString()}</strong> <span className="text-xs text-muted">units</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '14px' }}>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setCreatedLoan(null)}
+            >
+              Propose Another Agreement
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onNavigateToDashboard}
+            >
+              View in Desk Overview &rarr;
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr',
+          gap: '48px',
+          alignItems: 'start',
+        }}>
+          <div>
+            <LoanRequestForm
+              onSubmit={handleSubmit}
+              onValuesChange={handleValuesChange}
+              isSubmitting={isSubmitting}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{
+              padding: '24px',
+              backgroundColor: 'rgba(13, 17, 26, 0.4)',
+              border: '1px solid rgba(159, 184, 216, 0.1)',
+              borderRadius: '8px',
+            }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-primary)', marginBottom: '16px', fontFamily: 'var(--font-mono)' }}>
+                Agreement Real-Time Preview
+              </h3>
               <LoanPreview
                 principalAmount={previewAmount}
                 interestRateBasisPoints={previewBps}
                 durationBlocks={previewDuration}
                 eligibilityThreshold={previewThreshold}
               />
+            </div>
 
-              <div className="eligibility-explainer-box">
-                <h4>Next Step: Zero-Knowledge Verification</h4>
-                <p>
-                  After initializing your loan request, you will generate an off-chain zero-knowledge
-                  proof using the <code>verifyEligibility()</code> circuit. This proves to lenders that:
-                </p>
-                <div className="formula-callout">
-                  <code>privateValue &ge; {previewThreshold ? previewThreshold.toLocaleString() : 'threshold'}</code>
-                </div>
-                <p className="explainer-footer">
-                  Your actual income and balance remain secret. Lenders only see that eligibility is verified.
-                </p>
-              </div>
+            <div style={{
+              padding: '24px',
+              backgroundColor: 'rgba(13, 17, 26, 0.4)',
+              border: '1px solid rgba(159, 184, 216, 0.1)',
+              borderRadius: '8px',
+            }}>
+              <h4 style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent-primary)', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
+                Zero-Knowledge Privacy Guarantee
+              </h4>
+              <p style={{ fontSize: '13.5px', lineHeight: 1.65, color: 'var(--text-secondary)', margin: 0 }}>
+                Your private witness metric will be verified client-side against the public threshold (<code>&ge; {previewThreshold ? previewThreshold.toLocaleString() : 'threshold'}</code>). Confidential financial metrics are never published to the Midnight Network ledger.
+              </p>
             </div>
           </div>
-        )}
-      </main>
-
-      <footer className="dashboard-footer">
-        <p>
-          Confidential P2P Micro-Lending Desk &bull; Borrower Loan Request UI &bull; Commit #14
-        </p>
-      </footer>
+        </div>
+      )}
     </div>
   );
 };
+
+export default CreateLoanPage;

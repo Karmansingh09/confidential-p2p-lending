@@ -1,4 +1,4 @@
-import { LoanStatus, type LoanDetailsModel, type ProtocolPhase } from '../types/index.js';
+import { LoanStatus, type LoanDetailsModel, type ProtocolPhase } from '../types/index.ts';
 
 /**
  * Formats a raw bigint amount with comma grouping.

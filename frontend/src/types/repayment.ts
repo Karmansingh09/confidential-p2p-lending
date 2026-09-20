@@ -1,4 +1,4 @@
-import type { LoanDetailsModel, LoanStatus, LoanStatusText } from './index.js';
+import type { LoanDetailsModel, LoanStatus, LoanStatusText } from './index.ts';
 
 /**
  * UI interaction states during borrower repayment.

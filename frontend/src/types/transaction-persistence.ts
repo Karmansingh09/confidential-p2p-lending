@@ -3,7 +3,7 @@ import type {
   TransactionRequestStatus,
   TransactionRequestErrorCode,
 } from './transaction-request.ts';
-import type { LoanRegistry } from '../lib/loan-registry.js';
+import type { LoanRegistry } from '../lib/loan-registry.ts';
 
 /**
  * High-level recovery status for transactions evaluated during application startup

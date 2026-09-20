@@ -6,7 +6,7 @@ import type {
 import type { PersistedTransaction } from '../types/transaction-persistence.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 import type { LoanRegistry } from './loan-registry.ts';
-import { LoanStatus } from '../types/index.js';
+import { LoanStatus } from '../types/index.ts';
 import {
   TransactionPersistenceService,
   getTransactionPersistenceService,

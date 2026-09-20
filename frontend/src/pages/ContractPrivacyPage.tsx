@@ -1,12 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { NavigationTab } from '../types/navigation.ts';
 
 export interface ContractPrivacyPageProps {
   onNavigate: (tab: NavigationTab) => void;
 }
 
+interface CircuitItem {
+  name: string;
+  classification: string;
+  mode: string;
+  walletRequired: boolean;
+  proofRequired: boolean;
+  signatureRequired: boolean;
+  submissionRequired: boolean;
+  purpose: string;
+  description: string;
+}
+
 export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavigate }) => {
-  const circuits = [
+  const [expandedCircuit, setExpandedCircuit] = useState<string | null>('verifyEligibility');
+
+  const circuits: CircuitItem[] = [
     {
       name: 'verifyEligibility',
       classification: 'LOCAL_PROOF',
@@ -15,7 +29,8 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: true,
       signatureRequired: false,
       submissionRequired: false,
-      description: 'Generates client-side zero-knowledge proof that qualificationMetric >= threshold without disclosing private financial witness.',
+      purpose: 'Proves qualificationMetric >= threshold without disclosing private financial witness data.',
+      description: 'Executes client-side zero-knowledge proof generation on the user device. The private financial value never leaves the client boundary.',
     },
     {
       name: 'fundLoan',
@@ -25,7 +40,8 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: false,
       signatureRequired: true,
       submissionRequired: true,
-      description: 'Binds lender commitment to verified loan, transitions status to FUNDED, and locks loan parameters on-chain.',
+      purpose: 'Binds lender commitment to verified loan, transitions status to FUNDED, and locks parameters on-chain.',
+      description: 'Atomic on-chain state transition requiring verified qualification status and authorized lender signature before escrow commitment.',
     },
     {
       name: 'repayLoan',
@@ -35,7 +51,8 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: false,
       signatureRequired: true,
       submissionRequired: true,
-      description: 'Validates borrower repayment of principal plus simple interest, transitioning agreement to REPAID.',
+      purpose: 'Validates borrower repayment of principal plus simple interest, transitioning agreement to REPAID.',
+      description: 'Enforces exact mathematical repayment calculation on-chain, preventing underpayment or overpayment before block deadline.',
     },
     {
       name: 'settleLoan',
@@ -45,7 +62,8 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: false,
       signatureRequired: true,
       submissionRequired: true,
-      description: 'Concludes agreement lifecycle into terminal SETTLED state; unlocks collateral and closes positions.',
+      purpose: 'Concludes agreement lifecycle into terminal SETTLED state; unlocks collateral and closes positions.',
+      description: 'Terminal lifecycle state transition. Either party can trigger final settlement once full obligation has been confirmed.',
     },
     {
       name: 'getLoanStatus',
@@ -55,7 +73,8 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: false,
       signatureRequired: false,
       submissionRequired: false,
-      description: 'Queries current lifecycle state enum (REQUESTED, FUNDED, REPAID, SETTLED) directly from Midnight ledger state.',
+      purpose: 'Queries current lifecycle state enum (REQUESTED, FUNDED, REPAID, SETTLED) directly from ledger.',
+      description: 'Public read-only inspection circuit. Queries on-chain consensus state without requiring wallet connection or cryptographic proofs.',
     },
     {
       name: 'getLoanDetails',
@@ -65,260 +84,420 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
       proofRequired: false,
       signatureRequired: false,
       submissionRequired: false,
-      description: 'Retrieves public loan terms (amount, interest rate, duration blocks, threshold, borrower, lender) from ledger.',
+      purpose: 'Retrieves public loan terms (amount, interest rate, duration blocks, threshold, borrower, lender).',
+      description: 'Inspects immutable agreement terms agreed upon by borrower and lender, stored publicly in Midnight ledger consensus.',
     },
   ];
 
-  return (
-    <div className="overview-page contract-privacy-page">
-      {/* 1. Header */}
-      <section className="overview-intro">
-        <div className="overview-intro-left">
-          <div className="overview-kicker font-mono">
-            <span>MIDNIGHT NETWORK</span>
-            <span className="kicker-sep">//</span>
-            <span>ZERO-KNOWLEDGE PROOF SYSTEM</span>
-          </div>
-          <h1 className="overview-headline">Contract &amp; Privacy</h1>
-          <p className="overview-lead">
-            Canonical 6-circuit Midnight Compact smart contract architecture and client-side zero-knowledge privacy boundaries.
-          </p>
-        </div>
+  const toggleCircuit = (name: string) => {
+    setExpandedCircuit((prev) => (prev === name ? null : name));
+  };
 
-        <div className="overview-intro-right">
-          <div className="overview-protocol-meta font-mono">
-            <div className="meta-item">
-              <span className="meta-label">CIRCUITS</span>
-              <span className="meta-val text-accent">6 CANONICAL</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">LANGUAGE</span>
-              <span className="meta-val">COMPACT v0.2</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">PROOF ENGINE</span>
-              <span className="meta-val text-accent">ZK-SNARK / OFF-CHAIN</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">LEDGER STATE</span>
-              <span className="meta-val">ON-CHAIN ENFORCED</span>
-            </div>
-          </div>
-          <div className="intro-actions-row">
+  return (
+    <div className="privacy-workspace" data-testid="contract-privacy-page">
+      {/* 1. EDITORIAL HERO SECTION (58% / 42%) */}
+      <section className="privacy-hero-section">
+        <div className="privacy-hero-left">
+          <span className="privacy-hero-eyebrow font-mono">MIDNIGHT NETWORK / ZERO-KNOWLEDGE</span>
+          <h1 className="privacy-hero-title">Contract &amp; Privacy</h1>
+          <p className="privacy-hero-lead">
+            Verify lending eligibility without exposing the financial information behind the proof.
+          </p>
+          <div className="privacy-hero-actions">
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="btn-privacy-nav font-mono"
               onClick={() => onNavigate('overview')}
             >
               Desk Overview &rarr;
             </button>
+            <button
+              type="button"
+              className="btn-privacy-secondary font-mono"
+              onClick={() => onNavigate('create-loan')}
+            >
+              Propose Loan &rarr;
+            </button>
+          </div>
+        </div>
+
+        {/* 2. RIGHT HERO: AMBIENT PRIVACY VISUAL */}
+        <div className="privacy-hero-right">
+          <div className="privacy-visual-card">
+            <div className="visual-header">
+              <span className="visual-tag font-mono">CRYPTOGRAPHIC PROOF PIPELINE</span>
+              <span className="visual-status-pill font-mono">SHIELDED</span>
+            </div>
+
+            <div className="privacy-flow-graphic">
+              {/* Private Input Block */}
+              <div className="graphic-block private-block">
+                <span className="block-label font-mono">PRIVATE INPUT</span>
+                <div className="masked-data-display font-mono">
+                  <span className="mask-dot">&bull;</span>
+                  <span className="mask-dot">&bull;</span>
+                  <span className="mask-dot">&bull;</span>
+                  <span className="mask-dot">&bull;</span>
+                </div>
+                <span className="block-sub font-mono">Client Off-Chain</span>
+              </div>
+
+              {/* Animated Proof Path */}
+              <div className="graphic-proof-path" aria-hidden="true">
+                <div className="proof-wave-pulse" />
+                <span className="proof-path-label font-mono">ZK PROOF</span>
+                <div className="proof-path-line" />
+              </div>
+
+              {/* Public Result Block */}
+              <div className="graphic-block public-block">
+                <span className="block-label font-mono">PUBLIC OUTCOME</span>
+                <div className="verified-badge-display font-mono">
+                  <span className="badge-check">&bull;</span>
+                  <span>ELIGIBILITY VERIFIED</span>
+                </div>
+                <span className="block-sub font-mono">On-Chain Consensus</span>
+              </div>
+            </div>
+
+            <div className="visual-footer">
+              <span className="visual-caption font-mono">
+                Mathematical certainty with zero exposure of underlying financial parameters.
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 2. Cryptographic Execution Model Strip */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '28px',
-        padding: '24px 0',
-        marginBottom: '40px',
-        borderTop: '1px solid rgba(159, 184, 216, 0.08)',
-        borderBottom: '1px solid rgba(159, 184, 216, 0.08)',
-      }} className="font-mono">
-        <div>
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', letterSpacing: '0.06em' }}>01 / CLIENT-SIDE WITNESS</div>
-          <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Off-Chain ZK Prover</strong>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Mathematical proofs generated locally on client device &bull; <span className="text-success">Zero Financial Leakage</span>
-          </p>
+      {/* 3. HOW PRIVACY WORKS (3 LARGE STEPS) */}
+      <section className="privacy-section how-privacy-works-section" aria-label="How privacy works">
+        <div className="section-header-clean">
+          <span className="section-eyebrow font-mono">ARCHITECTURE</span>
+          <h2 className="section-heading">How privacy works</h2>
         </div>
 
-        <div>
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', letterSpacing: '0.06em' }}>02 / DUAL STATE ARCHITECTURE</div>
-          <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Midnight Ledger Consensus</strong>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Off-chain private state strictly separated from on-chain public state &bull; <span className="text-accent">Isolated Domains</span>
-          </p>
+        <div className="privacy-steps-flow">
+          {/* Step 1 */}
+          <div className="privacy-step-item">
+            <span className="step-num font-mono">01</span>
+            <div className="step-content">
+              <h3 className="step-title">Private Input</h3>
+              <p className="step-desc">
+                Your financial value stays private on your local client device. It is never transmitted across the network, stored on servers, or revealed to counterparties.
+              </p>
+            </div>
+          </div>
+
+          <div className="step-connector" aria-hidden="true" />
+
+          {/* Step 2 */}
+          <div className="privacy-step-item">
+            <span className="step-num font-mono">02</span>
+            <div className="step-content">
+              <h3 className="step-title">Zero-Knowledge Proof</h3>
+              <p className="step-desc">
+                Eligibility is proven mathematically without revealing the underlying value. The prover verifies that your qualification metric meets or exceeds the required threshold.
+              </p>
+            </div>
+          </div>
+
+          <div className="step-connector" aria-hidden="true" />
+
+          {/* Step 3 */}
+          <div className="privacy-step-item">
+            <span className="step-num font-mono">03</span>
+            <div className="step-content">
+              <h3 className="step-title">Public Outcome</h3>
+              <p className="step-desc">
+                Only the verification result becomes available to the lending workflow. Lenders commit capital based on verified cryptographic truth enforced by the smart contract.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. PRIVACY BOUNDARY (VISUAL SPLIT) */}
+      <section className="privacy-section privacy-boundary-section" aria-label="Privacy boundary">
+        <div className="section-header-clean">
+          <span className="section-eyebrow font-mono">DATA DOMAINS</span>
+          <h2 className="section-heading">Privacy boundary</h2>
         </div>
 
-        <div>
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', letterSpacing: '0.06em' }}>03 / CANONICAL COMPACT CONTRACT</div>
-          <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>index.compact</strong>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Self-enforcing lending lifecycle guards &bull; <span className="text-accent">Deterministic Verification</span>
-          </p>
-        </div>
-      </div>
+        <div className="privacy-boundary-card">
+          {/* Left Domain: Private Off-Chain */}
+          <div className="boundary-domain domain-private">
+            <div className="domain-header">
+              <span className="domain-kicker font-mono text-success">CLIENT OFF-CHAIN</span>
+              <h3 className="domain-title">Private Domain</h3>
+            </div>
+            <p className="domain-intro">
+              Never collected, broadcast, or exposed to counterparties:
+            </p>
+            <ul className="domain-list font-mono">
+              <li>&bull; Financial value</li>
+              <li>&bull; Private witness</li>
+              <li>&bull; Eligibility inputs</li>
+              <li>&bull; Personal financial information</li>
+            </ul>
+          </div>
 
-      {/* 3. Canonical Compact Circuits Table */}
-      <section className="overview-agreements" style={{ marginBottom: '48px' }}>
-        <div className="overview-section-header">
+          {/* Central Proof Divider */}
+          <div className="boundary-divider-col">
+            <div className="divider-line-vert" />
+            <div className="divider-shield-badge font-mono">
+              <span>ZERO-KNOWLEDGE PROOF</span>
+            </div>
+            <div className="divider-line-vert" />
+          </div>
+
+          {/* Right Domain: Public On-Chain */}
+          <div className="boundary-domain domain-public">
+            <div className="domain-header">
+              <span className="domain-kicker font-mono text-accent">LEDGER ON-CHAIN</span>
+              <h3 className="domain-title">Public Domain</h3>
+            </div>
+            <p className="domain-intro">
+              Recorded transparently in Midnight ledger consensus:
+            </p>
+            <ul className="domain-list font-mono">
+              <li>&bull; Eligibility result</li>
+              <li>&bull; Loan lifecycle state</li>
+              <li>&bull; Settlement state</li>
+              <li>&bull; Public threshold mark</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. CONTRACT ARCHITECTURE FLOW */}
+      <section className="privacy-section contract-arch-section" aria-label="Contract architecture">
+        <div className="section-header-clean">
+          <span className="section-eyebrow font-mono">LIFECYCLE PIPELINE</span>
+          <h2 className="section-heading">Contract architecture</h2>
+        </div>
+
+        <div className="architecture-flow-container">
+          <div className="arch-flow-track font-mono">
+            <div className="arch-node">
+              <span className="arch-node-step">01</span>
+              <span className="arch-node-label">Borrower</span>
+              <span className="arch-node-sub">Intent Created</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node">
+              <span className="arch-node-step">02</span>
+              <span className="arch-node-label">Private Proof</span>
+              <span className="arch-node-sub">Client Prover</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node node-highlight">
+              <span className="arch-node-step">03</span>
+              <span className="arch-node-label">verifyEligibility()</span>
+              <span className="arch-node-sub">ZK Gatekeeper</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node">
+              <span className="arch-node-step">04</span>
+              <span className="arch-node-label">Loan Lifecycle</span>
+              <span className="arch-node-sub">Status: REQUESTED</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node">
+              <span className="arch-node-step">05</span>
+              <span className="arch-node-label">fundLoan()</span>
+              <span className="arch-node-sub">Status: FUNDED</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node">
+              <span className="arch-node-step">06</span>
+              <span className="arch-node-label">repayLoan()</span>
+              <span className="arch-node-sub">Status: REPAID</span>
+            </div>
+
+            <div className="arch-connector">&rarr;</div>
+
+            <div className="arch-node">
+              <span className="arch-node-step">07</span>
+              <span className="arch-node-label">settleLoan()</span>
+              <span className="arch-node-sub">Status: SETTLED</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. COMPACT CIRCUITS (EXPANDABLE TECHNICAL ACCORDION) */}
+      <section className="privacy-section compact-circuits-section" aria-label="Compact circuits">
+        <div className="section-header-clean">
           <div>
-            <span className="section-kicker font-mono">SPECIFICATION // COMPACT CIRCUITS</span>
-            <h2 className="section-title">Compact Smart Contract Circuits</h2>
+            <span className="section-eyebrow font-mono">SPECIFICATION</span>
+            <h2 className="section-heading">Compact circuits</h2>
           </div>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }} className="font-mono">
-            6 of 6 CIRCUITS VERIFIED
-          </div>
+          <span className="section-meta-pill font-mono">6 CANONICAL CIRCUITS</span>
         </div>
 
-        <div className="table-responsive">
-          <table className="editorial-agreements-table">
-            <thead>
-              <tr>
-                <th style={{ width: '22%' }}>Circuit Identifier</th>
-                <th style={{ width: '18%' }}>Classification</th>
-                <th style={{ width: '15%' }}>Execution Mode</th>
-                <th style={{ width: '11%', textAlign: 'center' }}>Wallet</th>
-                <th style={{ width: '11%', textAlign: 'center' }}>ZK Proof</th>
-                <th style={{ width: '11%', textAlign: 'center' }}>Signature</th>
-                <th style={{ width: '12%', textAlign: 'center' }}>Submission</th>
-              </tr>
-            </thead>
-            <tbody>
-              {circuits.map((c) => (
-                <tr key={c.name} className="editorial-agreement-row" style={{ height: '64px' }}>
-                  <td>
-                    <code style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--accent-primary)' }}>
-                      {c.name}()
-                    </code>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.3 }}>
-                      {c.description}
+        <div className="circuits-accordion">
+          {circuits.map((circuit) => {
+            const isExpanded = expandedCircuit === circuit.name;
+            return (
+              <div
+                key={circuit.name}
+                className={`circuit-accordion-item ${isExpanded ? 'is-expanded' : ''}`}
+              >
+                <button
+                  type="button"
+                  className="circuit-summary-btn"
+                  onClick={() => toggleCircuit(circuit.name)}
+                  aria-expanded={isExpanded}
+                >
+                  <div className="summary-left">
+                    <span className="circuit-name font-mono">{circuit.name}()</span>
+                    <span className="circuit-purpose">{circuit.purpose}</span>
+                  </div>
+
+                  <div className="summary-right">
+                    <span className="circuit-mode-pill font-mono">{circuit.mode}</span>
+                    <span className={`circuit-proof-tag font-mono ${circuit.proofRequired ? 'tag-proof-required' : ''}`}>
+                      {circuit.proofRequired ? 'ZK PROOF' : 'READ'}
+                    </span>
+                    <span className="accordion-toggle-icon font-mono">{isExpanded ? '−' : '+'}</span>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="circuit-expanded-details">
+                    <p className="circuit-full-desc">{circuit.description}</p>
+                    <div className="circuit-metadata-grid font-mono">
+                      <div className="meta-field">
+                        <span className="field-label">CLASSIFICATION</span>
+                        <span className="field-val text-accent">{circuit.classification}</span>
+                      </div>
+                      <div className="meta-field">
+                        <span className="field-label">EXECUTION MODE</span>
+                        <span className="field-val">{circuit.mode}</span>
+                      </div>
+                      <div className="meta-field">
+                        <span className="field-label">WALLET REQUIRED</span>
+                        <span className={`field-val ${circuit.walletRequired ? 'text-accent' : 'text-muted'}`}>
+                          {circuit.walletRequired ? 'YES' : 'NO'}
+                        </span>
+                      </div>
+                      <div className="meta-field">
+                        <span className="field-label">ZK PROOF</span>
+                        <span className={`field-val ${circuit.proofRequired ? 'text-success' : 'text-muted'}`}>
+                          {circuit.proofRequired ? 'REQUIRED' : 'NONE'}
+                        </span>
+                      </div>
+                      <div className="meta-field">
+                        <span className="field-label">SIGNATURE</span>
+                        <span className={`field-val ${circuit.signatureRequired ? 'text-accent' : 'text-muted'}`}>
+                          {circuit.signatureRequired ? 'REQUIRED' : 'NONE'}
+                        </span>
+                      </div>
+                      <div className="meta-field">
+                        <span className="field-label">SUBMISSION</span>
+                        <span className={`field-val ${circuit.submissionRequired ? 'text-warning' : 'text-muted'}`}>
+                          {circuit.submissionRequired ? 'ON-CHAIN' : 'OFF-CHAIN'}
+                        </span>
+                      </div>
                     </div>
-                  </td>
-                  <td>
-                    <span className="badge badge-neutral font-mono" style={{ fontSize: '10px', letterSpacing: '0.04em' }}>
-                      {c.classification}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${c.mode.includes('Write') ? 'badge-warning' : 'badge-info'} font-mono`} style={{ fontSize: '10px' }}>
-                      {c.mode}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`font-mono ${c.walletRequired ? 'text-accent' : 'text-muted'}`} style={{ fontSize: '11.5px', fontWeight: 600 }}>
-                      {c.walletRequired ? 'YES' : '—'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`font-mono ${c.proofRequired ? 'text-success' : 'text-muted'}`} style={{ fontSize: '11.5px', fontWeight: 600 }}>
-                      {c.proofRequired ? 'REQUIRED' : '—'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`font-mono ${c.signatureRequired ? 'text-accent' : 'text-muted'}`} style={{ fontSize: '11.5px', fontWeight: 600 }}>
-                      {c.signatureRequired ? 'REQUIRED' : '—'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`font-mono ${c.submissionRequired ? 'text-warning' : 'text-muted'}`} style={{ fontSize: '11.5px', fontWeight: 600 }}>
-                      {c.submissionRequired ? 'ON-CHAIN' : 'OFF-CHAIN'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
-      {/* 4. Privacy Boundary Architecture Module */}
-      <section style={{
-        paddingTop: '32px',
-        borderTop: '1px solid rgba(159, 184, 216, 0.08)',
-        marginBottom: '48px',
-      }}>
-        <div className="overview-section-header" style={{ marginBottom: '24px' }}>
-          <div>
-            <span className="section-kicker font-mono">CRYPTOGRAPHIC PRIVACY // BOUNDARY ARCHITECTURE</span>
-            <h2 className="section-title">Privacy Model &amp; Financial Data Protection</h2>
-          </div>
+      {/* 7. WHAT STAYS PRIVATE? (ON-CHAIN VS OFF-CHAIN COMPARISON) */}
+      <section className="privacy-section what-stays-private-section" aria-label="What stays private?">
+        <div className="section-header-clean">
+          <span className="section-eyebrow font-mono">TRANSPARENCY AUDIT</span>
+          <h2 className="section-heading">What stays private?</h2>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '24px',
-        }}>
-          {/* Column 1: Strictly Protected */}
-          <div style={{
-            padding: '24px',
-            background: 'rgba(159, 184, 216, 0.02)',
-            border: '1px solid rgba(159, 184, 216, 0.08)',
-            borderRadius: '4px',
-          }}>
-            <div className="font-mono" style={{ fontSize: '10.5px', color: 'var(--status-success)', letterSpacing: '0.08em', marginBottom: '12px' }}>
-              ● STRICTLY PROTECTED (CLIENT OFF-CHAIN)
+        <div className="comparison-table-card">
+          <div className="comparison-col col-private">
+            <div className="comparison-col-header">
+              <span className="col-status-dot dot-success" />
+              <h3 className="col-title font-mono">PRIVATE / OFF-CHAIN</h3>
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '16px' }}>
-              Sensitive underlying financial information is never collected, stored, or revealed to the ledger or counterparty:
-            </p>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '12px', lineHeight: 2, color: 'var(--text-primary)' }} className="font-mono">
-              <li>&bull; Confidential Financial Records</li>
-              <li>&bull; Private Qualification Witness</li>
-              <li>&bull; Off-Chain Financial State</li>
-              <li>&bull; Private Collateral Assets</li>
-              <li>&bull; Cryptographic Secrets &amp; Salts</li>
-              <li>&bull; Personal Identity Metadata</li>
-            </ul>
+            <div className="comparison-rows font-mono">
+              <div className="comparison-row">
+                <span className="item-name">Financial value</span>
+                <span className="item-desc">Stored exclusively on user client device</span>
+              </div>
+              <div className="comparison-row">
+                <span className="item-name">Private witness</span>
+                <span className="item-desc">Never revealed to ledger or counterparty</span>
+              </div>
+              <div className="comparison-row">
+                <span className="item-name">Eligibility inputs</span>
+                <span className="item-desc">Inputs used in local qualification calculation</span>
+              </div>
+            </div>
           </div>
 
-          {/* Column 2: Zero Knowledge Attestation */}
-          <div style={{
-            padding: '24px',
-            background: 'rgba(159, 184, 216, 0.02)',
-            border: '1px solid rgba(159, 184, 216, 0.08)',
-            borderRadius: '4px',
-          }}>
-            <div className="font-mono" style={{ fontSize: '10.5px', color: 'var(--accent-primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>
-              ● ZERO-KNOWLEDGE PROOF ATTESTATION
+          <div className="comparison-col col-public">
+            <div className="comparison-col-header">
+              <span className="col-status-dot dot-accent" />
+              <h3 className="col-title font-mono">PUBLIC / ON-CHAIN</h3>
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '16px' }}>
-              The borrower executes a local prover circuit that verifies mathematical compliance without disclosing values:
-            </p>
-            <div style={{
-              padding: '12px',
-              background: 'rgba(7, 10, 16, 0.6)',
-              border: '1px solid rgba(159, 184, 216, 0.1)',
-              borderRadius: '3px',
-              fontSize: '12px',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--accent-primary)',
-              marginBottom: '16px',
-            }}>
-              qualificationMetric &ge; threshold
+            <div className="comparison-rows font-mono">
+              <div className="comparison-row">
+                <span className="item-name">Eligibility result</span>
+                <span className="item-desc">Boolean attestation from ZK verification</span>
+              </div>
+              <div className="comparison-row">
+                <span className="item-name">Loan state</span>
+                <span className="item-desc">Lifecycle status (Requested, Funded, Repaid)</span>
+              </div>
+              <div className="comparison-row">
+                <span className="item-name">Settlement state</span>
+                <span className="item-desc">On-chain atomic settlement finalization</span>
+              </div>
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              Lenders commit capital based on cryptographic proof validity accepted by the Midnight consensus engine.
-            </p>
           </div>
+        </div>
+      </section>
 
-          {/* Column 3: Public Ledger State */}
-          <div style={{
-            padding: '24px',
-            background: 'rgba(159, 184, 216, 0.02)',
-            border: '1px solid rgba(159, 184, 216, 0.08)',
-            borderRadius: '4px',
-          }}>
-            <div className="font-mono" style={{ fontSize: '10.5px', color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: '12px' }}>
-              ● PUBLIC LEDGER STATE (ON-CHAIN)
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '16px' }}>
-              Only non-sensitive contract parameters are recorded transparently on the Midnight Network:
-            </p>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '12px', lineHeight: 2, color: 'var(--text-primary)' }} className="font-mono">
-              <li>&bull; Agreement Identifier (e.g. loan-001)</li>
-              <li>&bull; Principal Amount &amp; Currency</li>
-              <li>&bull; Simple Interest Rate (Basis Points)</li>
-              <li>&bull; Consensus Duration (Blocks)</li>
-              <li>&bull; Public Eligibility Threshold Mark</li>
-              <li>&bull; Lifecycle Status Enum</li>
-            </ul>
+      {/* 8. CONTRACT STATUS (CLEAN 4-ITEM METRIC BAR) */}
+      <section className="privacy-section contract-status-section" aria-label="Contract status">
+        <div className="section-header-clean">
+          <span className="section-eyebrow font-mono">RUNTIME PROFILE</span>
+          <h2 className="section-heading">Contract status</h2>
+        </div>
+
+        <div className="contract-status-bar font-mono">
+          <div className="status-bar-item">
+            <span className="status-item-label">CIRCUIT COUNT</span>
+            <span className="status-item-val text-accent">6 Canonical</span>
+          </div>
+          <div className="status-bar-item">
+            <span className="status-item-label">LANGUAGE</span>
+            <span className="status-item-val">Compact v0.2</span>
+          </div>
+          <div className="status-bar-item">
+            <span className="status-item-label">PROOF SYSTEM</span>
+            <span className="status-item-val text-accent">ZK-SNARK / Off-Chain</span>
+          </div>
+          <div className="status-bar-item">
+            <span className="status-item-label">STATE ENFORCED</span>
+            <span className="status-item-val">On-Chain Ledger</span>
           </div>
         </div>
       </section>
     </div>
   );
 };
+
+export default ContractPrivacyPage;

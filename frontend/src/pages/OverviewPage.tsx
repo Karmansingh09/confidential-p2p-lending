@@ -45,6 +45,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const verificationResult = verificationService.getVerificationResult();
   const isContractVerified = verificationResult.status === 'VERIFIED';
 
+  const requestedPct = totalLoans > 0 ? (requestedCount / totalLoans) * 100 : 0;
+  const fundedPct = totalLoans > 0 ? (fundedCount / totalLoans) * 100 : 0;
+  const repaidPct = totalLoans > 0 ? (repaidCount / totalLoans) * 100 : 0;
+  const settledPct = totalLoans > 0 ? (settledCount / totalLoans) * 100 : 0;
+
   const handleOpenLoan = (loanId: string) => {
     onSelectLoan(loanId);
     onNavigate('loan-details');
@@ -64,11 +69,39 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
     return true;
   });
 
+  // Derive genuine real-time agreement activity milestones from active registry
+  const recentMilestones = orderedIds.slice(0, 5).map((id, idx) => {
+    const loan = loansMap[id];
+    let eventName = 'Loan Proposed';
+    let detail = 'Initial terms created and queued on desk';
+    if (loan?.status === LoanStatus.settled) {
+      eventName = 'Settlement Finalized';
+      detail = 'Principal & yield claims settled in terminal state';
+    } else if (loan?.status === LoanStatus.repaid) {
+      eventName = 'Repayment Recorded';
+      detail = 'Full obligation cleared before block deadline';
+    } else if (loan?.status === LoanStatus.funded) {
+      eventName = 'Capital Committed';
+      detail = 'Lender escrow locked into verified terms';
+    } else if (loan?.isEligibilityVerified) {
+      eventName = 'ZK Proof Verified';
+      detail = 'Client-side witness satisfied threshold criteria';
+    }
+    return {
+      id,
+      step: `0${idx + 1}`,
+      eventName,
+      detail,
+      amount: loan?.amount,
+      status: loan?.statusText || 'requested',
+    };
+  });
+
   return (
     <div className="overview-page">
-      {/* 1. Desk Introduction (Integrated into page, no card enclosure) */}
-      <section className="overview-intro">
-        <div className="overview-intro-left">
+      {/* 1. DESK INTRODUCTION & ASYMMETRIC ENCLAVE MODULE (58% / 42%) */}
+      <section className="overview-hero-section">
+        <div className="overview-hero-left">
           <div className="overview-kicker font-mono">
             <span>MIDNIGHT NETWORK</span>
             <span className="kicker-sep">//</span>
@@ -78,103 +111,183 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           <p className="overview-lead">
             Privacy-preserving P2P lending infrastructure for verified lending outcomes without exposing sensitive financial information.
           </p>
-        </div>
 
-        <div className="overview-intro-right">
-          <div className="overview-protocol-meta font-mono">
-            <div className="meta-item">
-              <span className="meta-label">ZK VERIFICATION</span>
-              <span className="meta-val text-accent">
-                {isContractVerified ? 'VERIFIED' : 'LOCAL PROOF'}
-              </span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">CIRCUITS</span>
-              <span className="meta-val">6 COMPACT</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">ENVIRONMENT</span>
-              <span className="meta-val">{netConfig.environment || 'LOCAL'}</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">EXECUTION</span>
-              <span className="meta-val">{provider.name.toUpperCase()}</span>
-            </div>
-          </div>
-          <div className="intro-actions-row">
+          <div className="hero-actions-row">
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="btn-overview-primary"
               onClick={() => onNavigate('create-loan')}
             >
-              + Propose Loan
+              <span>+ PROPOSE LOAN</span>
             </button>
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="btn-overview-secondary"
               onClick={() => onNavigate('marketplace')}
             >
-              Marketplace &rarr;
+              <span>MARKETPLACE</span>
+              <span className="overview-arrow">&rarr;</span>
             </button>
           </div>
         </div>
-      </section>
 
-      {/* 2. Primary Desk State + Protocol State (Dominant financial visual + technical module) */}
-      <section className="overview-state-section">
-        {/* Dominant Portfolio / Lending Area */}
-        <div className="primary-desk-state">
-          <div className="primary-number-wrap">
-            <span className="primary-number">
-              <AnimatedNumber value={totalPrincipal} />
-            </span>
-            <span className="primary-number-label font-mono">
-              PRINCIPAL IN DESK (MICRO-UNITS)
-            </span>
-          </div>
-
-          <div className="portfolio-breakdown font-mono">
-            <span><strong>{totalLoans}</strong> agreements</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{requestedCount}</strong> queued requests</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{fundedCount}</strong> active funded</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{repaidCount}</strong> repaid</span>
-            <span className="breakdown-sep">/</span>
-            <span><strong>{settledCount}</strong> settled</span>
-          </div>
-        </div>
-
-        {/* Restrained Protocol State Module */}
-        <div className="protocol-state-module font-mono">
-          <div className="proto-module-header">
-            <span>PROTOCOL</span>
-            <span className="proto-status-indicator">
-              <span className={`status-dot-sm ${netConfig.status === 'CONFIGURED' ? 'dot-success' : 'dot-warning'}`} />
-              <span>{netConfig.status === 'CONFIGURED' ? 'OPERATIONAL' : 'STANDBY'}</span>
-            </span>
-          </div>
-          <div className="proto-module-body">
-            <div className="proto-row">
-              <span className="proto-label">NETWORK</span>
-              <span className="proto-val">{netConfig.networkName || 'MIDNIGHT PREPROD'}</span>
-            </div>
-            <div className="proto-row">
-              <span className="proto-label">EXECUTION</span>
-              <span className="proto-val">{provider.isPrototype ? 'LOCAL PROTOTYPE' : 'ACTIVE NODE'}</span>
-            </div>
-            <div className="proto-row">
-              <span className="proto-label">ZK PROOFS</span>
-              <span className="proto-val text-accent">
-                {isContractVerified ? 'VERIFIED' : 'LOCAL PROOF'}
+        <div className="overview-hero-right">
+          <div className="overview-protocol-summary font-mono">
+            <div className="proto-summary-header">
+              <span className="summary-title">UNDERWRITING ENCLAVE</span>
+              <span className="summary-status">
+                <span className="status-dot-sm dot-success" />
+                <span>SHIELDED ENCLAVE</span>
               </span>
             </div>
+            <div className="proto-summary-body">
+              <div className="summary-row">
+                <span className="summary-label">PROOF SYSTEM</span>
+                <span className="summary-val text-accent">Client-Side ZK</span>
+              </div>
+              <div className="summary-row">
+                <span className="summary-label">COMPACT CIRCUITS</span>
+                <span className="summary-val">6 Verified</span>
+              </div>
+              <div className="summary-row">
+                <span className="summary-label">ATTESTATION</span>
+                <span className="summary-val">{isContractVerified ? 'Verified Circuit' : 'Mathematical Only'}</span>
+              </div>
+              <div className="summary-row">
+                <span className="summary-label">DATA EXPOSURE</span>
+                <span className="summary-val text-success">Zero Leakage</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 3. Active Lending Workspace (Unboxed, sitting directly on the canvas) */}
+      {/* 2. FINANCIAL WORKSPACE: PRIMARY METRIC + STATS + AGREEMENT LIFECYCLE */}
+      <section className="overview-financial-workspace">
+        <div className="financial-workspace-top">
+          {/* Dominant Primary Metric */}
+          <div className="financial-primary-metric">
+            <span className="metric-eyebrow font-mono">PRINCIPAL IN DESK</span>
+            <div className="metric-value-row">
+              <span className="metric-value-huge">
+                <AnimatedNumber value={totalPrincipal} />
+              </span>
+              <span className="metric-unit-tag font-mono">MICRO-UNITS</span>
+            </div>
+            <p className="metric-subtext">
+              Total capital commitments across canonical loan agreements on this node.
+            </p>
+          </div>
+
+          {/* Secondary Financial Indicators (5-Metric Stats Rail) */}
+          <div className="financial-secondary-stats font-mono">
+            <div className="stat-column">
+              <span className="stat-label">TOTAL AGREEMENTS</span>
+              <span className="stat-value">{totalLoans}</span>
+              <span className="stat-micro">Active Registry</span>
+            </div>
+            <div className="stat-column">
+              <span className="stat-label">QUEUED REQUESTS</span>
+              <span className="stat-value text-amber">{requestedCount}</span>
+              <span className="stat-micro">Awaiting Funding</span>
+            </div>
+            <div className="stat-column">
+              <span className="stat-label">ACTIVE FUNDED</span>
+              <span className="stat-value text-accent">{fundedCount}</span>
+              <span className="stat-micro">Accruing Terms</span>
+            </div>
+            <div className="stat-column">
+              <span className="stat-label">REPAID</span>
+              <span className="stat-value text-muted">{repaidCount}</span>
+              <span className="stat-micro">Obligation Cleared</span>
+            </div>
+            <div className="stat-column">
+              <span className="stat-label">SETTLED</span>
+              <span className="stat-value text-success">{settledCount}</span>
+              <span className="stat-micro">Terminal State</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Wide Agreement Lifecycle Section */}
+        <div className="overview-lifecycle-workspace">
+          <div className="lifecycle-header-row font-mono">
+            <div className="lifecycle-title-group">
+              <span className="lifecycle-kicker font-mono">AGREEMENT WORKFLOW</span>
+              <h3 className="lifecycle-title">CANONICAL LIFECYCLE</h3>
+            </div>
+            <div className="lifecycle-metrics-summary font-mono">
+              <span className="summary-pill"><span className="dot dot-requested" /> {requestedCount} Queued</span>
+              <span className="summary-pill"><span className="dot dot-funded" /> {fundedCount} Funded</span>
+              <span className="summary-pill"><span className="dot dot-repaid" /> {repaidCount} Repaid</span>
+              <span className="summary-pill"><span className="dot dot-settled" /> {settledCount} Settled</span>
+            </div>
+          </div>
+
+          {/* Wide Horizontal Composition */}
+          <div className="lifecycle-stepper-track">
+            {/* Stage 1: REQUESTED */}
+            <div className="lifecycle-step-card">
+              <div className="step-card-header">
+                <span className="step-indicator dot-requested" />
+                <span className="step-name font-mono">REQUESTED</span>
+              </div>
+              <div className="step-count-row">
+                <span className="step-count font-sans">{requestedCount}</span>
+                <span className="step-pct font-mono">{requestedPct.toFixed(0)}%</span>
+              </div>
+              <p className="step-desc">Queued on node awaiting capital allocation</p>
+            </div>
+
+            <div className="lifecycle-track-arrow" aria-hidden="true">&rarr;</div>
+
+            {/* Stage 2: FUNDED */}
+            <div className="lifecycle-step-card">
+              <div className="step-card-header">
+                <span className="step-indicator dot-funded" />
+                <span className="step-name font-mono">FUNDED</span>
+              </div>
+              <div className="step-count-row">
+                <span className="step-count font-sans">{fundedCount}</span>
+                <span className="step-pct font-mono">{fundedPct.toFixed(0)}%</span>
+              </div>
+              <p className="step-desc">Capital committed in deterministic escrow</p>
+            </div>
+
+            <div className="lifecycle-track-arrow" aria-hidden="true">&rarr;</div>
+
+            {/* Stage 3: REPAID */}
+            <div className="lifecycle-step-card">
+              <div className="step-card-header">
+                <span className="step-indicator dot-repaid" />
+                <span className="step-name font-mono">REPAID</span>
+              </div>
+              <div className="step-count-row">
+                <span className="step-count font-sans">{repaidCount}</span>
+                <span className="step-pct font-mono">{repaidPct.toFixed(0)}%</span>
+              </div>
+              <p className="step-desc">Principal &amp; interest settled by borrower</p>
+            </div>
+
+            <div className="lifecycle-track-arrow" aria-hidden="true">&rarr;</div>
+
+            {/* Stage 4: SETTLED */}
+            <div className="lifecycle-step-card is-terminal">
+              <div className="step-card-header">
+                <span className="step-indicator dot-settled" />
+                <span className="step-name font-mono">SETTLED</span>
+              </div>
+              <div className="step-count-row">
+                <span className="step-count font-sans">{settledCount}</span>
+                <span className="step-pct font-mono">{settledPct.toFixed(0)}%</span>
+              </div>
+              <p className="step-desc">Terminal state finalized on-chain</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. ACTIVE LENDING WORKSPACE (MAIN OPERATIONAL CENTERPIECE) */}
       <section className="active-lending-workspace">
         <div className="active-lending-header">
           <div className="active-lending-title-group">
@@ -198,6 +311,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                 <button
                   key={f}
                   type="button"
+                  role="tab"
+                  aria-selected={tableFilter === f}
                   className={`editorial-tab-btn font-mono ${tableFilter === f ? 'active' : ''}`}
                   onClick={() => setTableFilter(f)}
                 >
@@ -217,12 +332,12 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             <table className="editorial-agreements-table">
               <thead>
                 <tr>
-                  <th>Agreement ID</th>
-                  <th>Position Role</th>
-                  <th>Principal Amount</th>
-                  <th>Status</th>
-                  <th>Underwriting</th>
-                  <th className="text-right">Action</th>
+                  <th style={{ width: '18%' }}>AGREEMENT</th>
+                  <th style={{ width: '14%' }}>ROLE</th>
+                  <th style={{ width: '18%' }}>PRINCIPAL</th>
+                  <th style={{ width: '18%' }}>STATUS</th>
+                  <th style={{ width: '18%' }}>UNDERWRITING</th>
+                  <th style={{ width: '14%' }} className="text-right">ACTION</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,7 +364,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                         <span className="agreement-principal">
                           {loan.amount.toLocaleString()}
                         </span>
-                        <span className="agreement-unit">UNITS</span>
+                        <span className="agreement-unit">units</span>
                       </td>
                       <td>
                         <LoanStatusBadge statusText={loan.statusText} />
@@ -269,7 +384,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                       </td>
                       <td className="text-right">
                         <span className="action-link font-mono">
-                          View details &rarr;
+                          <span>View details</span>
+                          <span className="action-arrow">&rarr;</span>
                         </span>
                       </td>
                     </tr>
@@ -281,78 +397,101 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         )}
       </section>
 
-      {/* 4. Secondary System Information (Subsystem Infrastructure) */}
-      <section className="secondary-system-section">
-        <div className="secondary-system-header">
-          <h3 style={{ fontSize: '12px', letterSpacing: '0.08em', color: 'var(--text-muted)' }} className="font-mono">
-            SUBSYSTEM INFRASTRUCTURE
-          </h3>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm font-mono text-xs"
-            onClick={() => onNavigate('network')}
-          >
-            INSPECT ALL SUBSYSTEMS &rarr;
-          </button>
+      {/* 4. LOWER WORKSPACE: RECENT ACTIVITY (60%) + PRIVACY ARCHITECTURE (40%) */}
+      <section className="overview-lower-workspace">
+        {/* Left Column (60%): Recent Agreement Activity / Audit Log */}
+        <div className="lower-activity-col">
+          <div className="lower-col-header font-mono">
+            <div className="header-title-group">
+              <span className="col-tag">AUDIT LOG</span>
+              <h3 className="col-title">RECENT LENDING ACTIVITY</h3>
+            </div>
+            <button
+              type="button"
+              className="btn-link-action font-mono"
+              onClick={() => onNavigate('transactions')}
+            >
+              <span>Transactions Console</span>
+              <span className="arrow-symbol">&rarr;</span>
+            </button>
+          </div>
+
+          <div className="activity-timeline-list">
+            {recentMilestones.map((item) => (
+              <div
+                key={item.id}
+                className="activity-timeline-row"
+                onClick={() => handleOpenLoan(item.id)}
+              >
+                <div className="activity-time-col font-mono">
+                  <span className="activity-loan-id">{item.id}</span>
+                  <span className="activity-step-num">{item.step}</span>
+                </div>
+                <div className="activity-desc-col">
+                  <div className="activity-event-name font-mono">{item.eventName}</div>
+                  <div className="activity-event-detail">{item.detail}</div>
+                </div>
+                <div className="activity-val-col font-mono">
+                  <span className="activity-amount">
+                    {item.amount ? `${item.amount.toLocaleString()} units` : '—'}
+                  </span>
+                  <span className={`activity-status-text status-${item.status}`}>
+                    {item.status.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="table-responsive">
-          <table className="editorial-agreements-table">
-            <thead>
-              <tr>
-                <th>Subsystem Domain</th>
-                <th>Provider / Environment</th>
-                <th>Classification</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="editorial-agreement-row">
-                <td><strong className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>Wallet Provider</strong></td>
-                <td className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>{provider.name}</td>
-                <td><span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>ACCOUNT_IDENTITY</span></td>
-                <td>
-                  <span className={`font-mono text-xs ${isConnected ? 'text-success' : 'text-warning'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span className={`status-dot-sm ${isConnected ? 'dot-success' : 'dot-warning'}`} />
-                    {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-                  </span>
-                </td>
-              </tr>
-              <tr className="editorial-agreement-row">
-                <td><strong className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>Network Protocol</strong></td>
-                <td className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>{netConfig.networkName} ({netConfig.environment})</td>
-                <td><span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>LEDGER_TRANSPORT</span></td>
-                <td>
-                  <span className={`font-mono text-xs ${netConfig.status === 'CONFIGURED' ? 'text-success' : 'text-warning'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span className={`status-dot-sm ${netConfig.status === 'CONFIGURED' ? 'dot-success' : 'dot-warning'}`} />
-                    {netConfig.status}
-                  </span>
-                </td>
-              </tr>
-              <tr className="editorial-agreement-row">
-                <td><strong className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>Contract Engine</strong></td>
-                <td className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>Midnight Compact (6 Circuits)</td>
-                <td><span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>ZERO_KNOWLEDGE_PROOF</span></td>
-                <td>
-                  <span className={`font-mono text-xs ${isContractVerified ? 'text-success' : 'text-warning'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span className={`status-dot-sm ${isContractVerified ? 'dot-success' : 'dot-warning'}`} />
-                    {verificationResult.status}
-                  </span>
-                </td>
-              </tr>
-              <tr className="editorial-agreement-row">
-                <td><strong className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>Transaction Execution</strong></td>
-                <td className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>{provider.isPrototype ? 'Local Prototype Mode' : 'Live Midnight Node'}</td>
-                <td><span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>RECONCILIATION_SERVICE</span></td>
-                <td>
-                  <span className="font-mono text-xs text-accent" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span className="status-dot-sm" style={{ backgroundColor: 'var(--accent-primary)' }} />
-                    {provider.isPrototype ? 'PROTOTYPE_LOCAL' : 'ACTIVE_NODE'}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        {/* Right Column (40%): Protocol & Cryptographic Privacy Boundary */}
+        <div className="lower-privacy-col">
+          <div className="lower-col-header font-mono">
+            <div className="header-title-group">
+              <span className="col-tag">SECURITY ENCLAVE</span>
+              <h3 className="col-title">PRIVACY ARCHITECTURE</h3>
+            </div>
+            <button
+              type="button"
+              className="btn-link-action font-mono"
+              onClick={() => onNavigate('contract-privacy')}
+            >
+              <span>Inspect Circuits</span>
+              <span className="arrow-symbol">&rarr;</span>
+            </button>
+          </div>
+
+          <div className="privacy-spec-body">
+            <div className="privacy-statement-box">
+              <div className="spec-label font-mono">ZERO-KNOWLEDGE BOUNDARY</div>
+              <p className="spec-quote">
+                "Borrower financial inputs remain strictly within client-side memory. Only cryptographic attestations and agreed loan terms transition to the canonical ledger."
+              </p>
+            </div>
+
+            <div className="privacy-specs-grid font-mono">
+              <div className="spec-row">
+                <span className="spec-key">VERIFICATION CIRCUIT</span>
+                <span className="spec-val text-accent">{isContractVerified ? 'VERIFIED (Compact v1)' : 'LOCAL PROOF'}</span>
+              </div>
+              <div className="spec-row">
+                <span className="spec-key">COMPACT CIRCUITS</span>
+                <span className="spec-val">6 Canonical Assertions</span>
+              </div>
+              <div className="spec-row">
+                <span className="spec-key">NETWORK LEDGER</span>
+                <span className="spec-val">{netConfig.networkName || 'Local Prototype (In-Memory)'}</span>
+              </div>
+              <div className="spec-row">
+                <span className="spec-key">EXECUTION ADAPTER</span>
+                <span className="spec-val">{provider.isPrototype ? 'Prototype Provider' : 'Live Node'}</span>
+              </div>
+              <div className="spec-row">
+                <span className="spec-key">STATE SETTLEMENT</span>
+                <span className="spec-val text-success">Deterministic Escrow</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

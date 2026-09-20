@@ -95,7 +95,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'overview',
       label: 'Overview',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="7" height="9" rx="1" />
           <rect x="14" y="3" width="7" height="5" rx="1" />
           <rect x="14" y="12" width="7" height="9" rx="1" />
@@ -108,7 +108,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       label: 'Marketplace',
       badge: totalLoans > 0 ? totalLoans : undefined,
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <line x1="18" y1="20" x2="18" y2="10" />
           <line x1="12" y1="20" x2="12" y2="4" />
           <line x1="6" y1="20" x2="6" y2="14" />
@@ -119,7 +119,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'my-loans',
       label: 'My Loans',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
@@ -131,7 +131,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'create-loan',
       label: 'Create Loan',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" />
           <line x1="12" y1="8" x2="12" y2="16" />
           <line x1="8" y1="12" x2="16" y2="12" />
@@ -145,7 +145,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'transactions',
       label: 'Transactions',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
         </svg>
       ),
@@ -154,7 +154,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'wallet',
       label: 'Wallet',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="2" y="5" width="20" height="14" rx="2" />
           <line x1="2" y1="10" x2="22" y2="10" />
         </svg>
@@ -164,7 +164,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'network',
       label: 'Network',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" />
           <line x1="2" y1="12" x2="22" y2="12" />
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -175,7 +175,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
       id: 'contract-privacy',
       label: 'Contract & Privacy',
       icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 2L3 6V11.5C3 16.5 6.8 21.1 12 22C17.2 21.1 21 16.5 21 11.5V6L12 2Z" />
           <path d="M9 12L11 14L15 9.5" />
         </svg>
@@ -222,7 +222,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
             title="Return to Protocol Overview"
           >
             <div className="sidebar-brand-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 2L3 6V11.5C3 16.5 6.8 21.1 12 22C17.2 21.1 21 16.5 21 11.5V6L12 2Z" stroke="var(--accent-primary)" />
                 <path d="M9 12L11 14L15 9.5" stroke="var(--status-success)" />
               </svg>
@@ -230,7 +230,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
             {!sidebarCollapsed && (
               <div className="sidebar-brand-text">
                 <span className="brand-title">CONFIDENTIAL</span>
-                <span className="brand-sub">P2P Lending Desk</span>
+                <span className="brand-sub">P2P LENDING DESK</span>
               </div>
             )}
           </div>
@@ -305,7 +305,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
                 title={sidebarCollapsed ? 'Protocol Architecture' : undefined}
               >
                 <span className="nav-item-icon">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="16" x2="12" y2="12" />
                     <line x1="12" y1="8" x2="12.01" y2="8" />
@@ -315,6 +315,37 @@ const AppShellInner: React.FC<AppShellProps> = ({
               </button>
             </nav>
           </div>
+
+          {/* Section: Shielded Enclave Telemetry Card */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-enclave-card font-mono">
+              <div className="enclave-card-header">
+                <span className="enclave-card-title">SHIELDED ENCLAVE</span>
+                <span className="status-dot-sm dot-success" />
+              </div>
+              <div className="enclave-card-body">
+                <div className="enclave-card-row">
+                  <span className="enclave-key">NETWORK</span>
+                  <span className="enclave-val text-accent">{netConfig.environment || 'LOCAL'}</span>
+                </div>
+                <div className="enclave-card-row">
+                  <span className="enclave-key">CIRCUITS</span>
+                  <span className="enclave-val">6 Compact</span>
+                </div>
+                <div className="enclave-card-row">
+                  <span className="enclave-key">PROOFS</span>
+                  <span className="enclave-val">Client ZK</span>
+                </div>
+                <div className="enclave-card-row">
+                  <span className="enclave-key">ROLE</span>
+                  <span className="enclave-val text-muted">{role}</span>
+                </div>
+              </div>
+              <div className="enclave-card-footer">
+                <span className="enclave-badge">ZERO DATA LEAKAGE</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar Footer */}
@@ -341,7 +372,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
             title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               {sidebarCollapsed ? (
                 <polyline points="9 18 15 12 9 6" />
               ) : (
@@ -387,7 +418,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
               onClick={() => setCmdPaletteOpen(true)}
               aria-label="Open Command Palette"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>

@@ -13453,5 +13453,784 @@
   }
 }
 
+/* =============================================================================
+   CONFIDENTIAL LENDING DESK — NETWORK INFRASTRUCTURE WORKSPACE
+   Institutional Network Infrastructure Console (1440x900)
+   ============================================================================= */
+.network-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  width: 100%;
+  max-width: 100%;
+  padding: 36px 44px 72px;
+  box-sizing: border-box;
+}
 
+.network-workspace * {
+  box-sizing: border-box;
+}
 
+/* 1. HERO SECTION & VISUAL NETWORK DIAGRAM */
+.network-hero-section {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  align-items: stretch;
+  gap: 40px;
+  width: 100%;
+}
+
+.network-hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.network-hero-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #9FB8D8;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-family: var(--font-sans, 'Inter', system-ui);
+}
+
+.network-hero-title {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: #F2F4F7;
+  margin: 0 0 14px 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+}
+
+.network-hero-lead {
+  font-size: 17px;
+  line-height: 1.55;
+  color: #9299A5;
+  margin: 0 0 24px 0;
+  font-family: var(--font-sans, 'Inter', system-ui);
+  max-width: 680px;
+}
+
+/* Primary Network Status Area */
+.network-primary-status {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.status-heading-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #6C7A8D;
+}
+
+.status-network-name-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.network-name-display {
+  font-size: 26px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.02em;
+}
+
+.status-badge-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+.status-sub-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #1E2530;
+}
+
+.sub-grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-item-label {
+  font-size: 12px;
+  color: #8D96A6;
+  font-weight: 500;
+}
+
+.sub-item-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F2F4F7;
+}
+
+/* 2. VISUAL NETWORK DIAGRAM CARD */
+.network-diagram-card {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 22px 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.diagram-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #1E2530;
+}
+
+.diagram-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9FB8D8;
+}
+
+.diagram-status-pulse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.network-tree-diagram {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 0;
+  position: relative;
+}
+
+.diagram-node {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #080B10;
+  border: 1px solid #1D2635;
+  border-radius: 6px;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+}
+
+.diagram-node.root-node {
+  border-color: rgba(100, 181, 246, 0.3);
+  background: #0A0F17;
+}
+
+.node-icon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-network {
+  background: #64B5F6;
+  box-shadow: 0 0 8px rgba(100, 181, 246, 0.5);
+  animation: slowNodePulse 8s infinite ease-in-out;
+}
+
+.dot-wallet {
+  background: #34D399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+}
+
+.dot-contract {
+  background: #FBBF24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.dot-tx {
+  background: #64748B;
+}
+
+.node-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.node-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #F2F4F7;
+}
+
+.node-sub {
+  font-size: 11px;
+  color: #8D96A6;
+}
+
+.node-status-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.status-tag-success {
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.status-tag-warning {
+  color: #FBBF24;
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.status-tag-amber {
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.status-tag-muted {
+  color: #94A3B8;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.diagram-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 20px;
+  padding-left: 18px;
+  border-left: 1px solid #242A32;
+  margin-top: 8px;
+  position: relative;
+}
+
+.diagram-branch-item {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.branch-line-horiz {
+  position: absolute;
+  left: -18px;
+  width: 18px;
+  height: 1px;
+  background: #242A32;
+}
+
+.diagram-footer {
+  padding-top: 12px;
+  border-top: 1px solid #1E2530;
+  display: flex;
+  justify-content: flex-end;
+}
+
+@keyframes slowNodePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(100, 181, 246, 0.7);
+  }
+}
+
+/* 3. NETWORK HEALTH HORIZONTAL FLOW */
+.network-health-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.health-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-heading {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: -0.015em;
+  font-family: var(--font-sans, 'Inter', system-ui);
+}
+
+.health-meta-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #6C7A8D;
+}
+
+.network-health-flow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 20px 28px;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.health-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.stage-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-step-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64B5F6;
+}
+
+.stage-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #F2F4F7;
+  letter-spacing: 0.06em;
+}
+
+.stage-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-status-text {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #8D96A6;
+}
+
+.health-flow-connector {
+  flex: 1;
+  height: 1px;
+  background: #242A32;
+  margin: 0 12px;
+}
+
+/* 4. DETAILED INFRASTRUCTURE & CONTRACT READINESS PANELS */
+.network-panels-container {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  width: 100%;
+}
+
+.network-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #1E2530;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.section-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9FB8D8;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.section-tag {
+  font-size: 11.5px;
+  color: #8D96A6;
+}
+
+.infra-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.infra-key-val-table {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.infra-table-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #161D27;
+  font-size: 14px;
+}
+
+.infra-table-row:last-child {
+  border-bottom: none;
+}
+
+.infra-key {
+  color: #8D96A6;
+  font-weight: 500;
+}
+
+.infra-val {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+.capabilities-matrix-panel {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.matrix-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9FB8D8;
+}
+
+.matrix-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.matrix-tag {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.matrix-tag.tag-active {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #34D399;
+}
+
+.matrix-tag.tag-disabled {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  color: #F87171;
+}
+
+.lifecycle-dispatch-panel {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.dispatch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dispatch-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #F2F4F7;
+}
+
+.dispatch-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dispatch-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dispatch-key {
+  font-weight: 600;
+}
+
+.dispatch-val {
+  color: #BAC8DA;
+}
+
+.honest-notice-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  padding: 14px 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.notice-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notice-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #FBBF24;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.notice-text {
+  font-size: 12.5px;
+  color: #FBBF24;
+  opacity: 0.9;
+}
+
+.btn-notice-disconnect {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #F87171;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-notice-disconnect:hover {
+  background: rgba(248, 113, 113, 0.22);
+}
+
+.btn-notice-connect {
+  background: rgba(100, 181, 246, 0.15);
+  border: 1px solid rgba(100, 181, 246, 0.35);
+  color: #64B5F6;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-notice-connect:hover {
+  background: rgba(100, 181, 246, 0.25);
+}
+
+/* Contract Status Card */
+.contract-status-card {
+  background: #0D111A;
+  border: 1px solid #242A32;
+  border-radius: 8px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.card-sub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1A222E;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-sub-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9FB8D8;
+}
+
+.status-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+
+.pill-success {
+  color: #34D399;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+.pill-amber {
+  color: #FBBF24;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.pill-subtle {
+  color: #94A3B8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.card-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contract-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  font-size: 13.5px;
+}
+
+.spec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.spec-item.spec-full-width {
+  grid-column: 1 / -1;
+}
+
+.spec-label {
+  font-size: 11px;
+  color: #8D96A6;
+  font-weight: 500;
+}
+
+.spec-value {
+  color: #F2F4F7;
+  font-weight: 600;
+}
+
+/* Responsive Media Queries for Network Workspace */
+@media (max-width: 1280px) {
+  .network-workspace {
+    padding: 32px 28px 60px;
+  }
+  .network-hero-title {
+    font-size: 44px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .network-hero-section {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .infra-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .network-workspace {
+    padding: 24px 16px 48px;
+    gap: 28px;
+  }
+  .network-hero-title {
+    font-size: 36px;
+  }
+  .status-sub-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .network-health-flow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .health-flow-connector {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .status-sub-grid {
+    grid-template-columns: 1fr;
+  }
+  .network-hero-title {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 390px) {
+  .network-workspace {
+    padding: 16px 12px 36px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+}

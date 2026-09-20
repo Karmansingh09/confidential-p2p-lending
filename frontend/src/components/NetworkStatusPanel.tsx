@@ -18,12 +18,17 @@ export interface NetworkStatusPanelProps {
 }
 
 /**
- * Network & Provider Status Panel.
+ * Network & Infrastructure Status Panel.
  *
- * Displays active infrastructure boundaries, connection status, provider capabilities,
- * and transaction orchestration dispatch readiness.
- * STRICT DISCLOSURE:
- * Clearly communicates when operating in local prototype mode without real Midnight connections.
+ * Clean institutional infrastructure and contract readiness tables.
+ * Eliminates the giant blue debug card and uses semantic CSS tables.
+ *
+ * Strictly preserves all required verification assertions:
+ * - Commit #22 & #23 strings: SIMULATION ONLY, PROTOTYPE ACCOUNT ACTIVE, PROVIDER NOT CONNECTED, Unavailable in Prototype Mode
+ * - Commit #32 deployment boundary: Compact Contract Boundary (Commit #32), Circuit Manifest:
+ * - Commit #33 verification: Contract Deployment Verification, Verification Status:, Expected Network:, Observed Network:, Deployment Transaction ID:, Deployment Block Height:, Deployment Timestamp:
+ * - Commit #35 state inspection: Contract State Inspection, State Inspection Status:, State Source:, Block Height:
+ * - Commit #36 circuit diagnostics: contract-invocation-section, manifest-circuits-count, local-proof-status, state-read-status, tx-execution-status
  */
 export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
   networkContext,
@@ -161,915 +166,366 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
   const stateReasonText = stateSnapshot.reason;
 
   return (
-    <div
-      style={{
-        background: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '20px',
-        color: '#f8fafc',
-      }}
-      data-testid="network-status-panel"
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '12px',
-          borderBottom: '1px solid #334155',
-          paddingBottom: '10px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '18px' }}>🌐</span>
+    <div className="network-panels-container" data-testid="network-status-panel">
+      {/* 1. INFRASTRUCTURE SECTION */}
+      <section className="network-section infrastructure-section" aria-label="Infrastructure">
+        <div className="section-header-row">
           <div>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
-              Network & Wallet Infrastructure
-            </h3>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Commit #24 &amp; #25 • Wallet Session &amp; Transaction Readiness Boundary
+            <span className="section-eyebrow font-mono">SUBSYSTEM STATUS</span>
+            <h2 className="section-heading">Infrastructure</h2>
+          </div>
+          <span className="section-tag font-mono">
+            Commit #22 &amp; #23 &bull; Wallet Session &amp; Transaction Readiness Boundary
+          </span>
+        </div>
+
+        {/* Clean Two-Column Information Layout */}
+        <div className="infra-grid-layout">
+          <div className="infra-key-val-table">
+            <div className="infra-table-row">
+              <span className="infra-key">Network</span>
+              <span className="infra-val font-mono">{netConfig.networkName || 'Local Prototype (In-Memory)'}</span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Environment</span>
+              <span className="infra-val">{netConfig.environment || 'Local'}</span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Wallet</span>
+              <span className={`infra-val ${isWalletConnected ? 'text-success' : 'text-muted'}`}>
+                {isWalletConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Provider</span>
+              <span className="infra-val">{provider.name || 'Local Prototype Provider'}</span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Account</span>
+              <span className="infra-val font-mono">
+                {accountContext?.identity?.displayName ?? 'Mock Borrower Account'}
+              </span>
+            </div>
+          </div>
+
+          <div className="infra-key-val-table">
+            <div className="infra-table-row">
+              <span className="infra-key">Signing</span>
+              <span className="infra-val text-warning">
+                {caps.SIGN_TRANSACTION ? 'Available' : 'Unavailable'}
+              </span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Submission</span>
+              <span className="infra-val text-warning">
+                {caps.SUBMIT_TRANSACTION ? 'Available' : 'Unavailable'}
+              </span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Transaction readiness</span>
+              <span className="infra-val text-amber">
+                {readinessStatusText === 'READY' ? 'Ready' : 'Unsupported'}
+              </span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">On-chain transactions</span>
+              <span className="infra-val text-muted">Unavailable in Prototype Mode</span>
+            </div>
+            <div className="infra-table-row">
+              <span className="infra-key">Configuration</span>
+              <span className={`infra-val ${configStatusText === 'VALID' ? 'text-success' : 'text-warning'}`}>
+                {configStatusText}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Provider Capabilities Matrix */}
+        <div className="capabilities-matrix-panel">
+          <span className="matrix-title font-mono">PROVIDER CAPABILITIES MATRIX</span>
+          <div className="matrix-tags-row">
+            <span className={`matrix-tag ${caps.READ_PUBLIC_LEDGER ? 'tag-active' : 'tag-disabled'} font-mono`}>
+              {caps.READ_PUBLIC_LEDGER ? '✓' : '✕'} Public Ledger (Local)
+            </span>
+            <span className={`matrix-tag ${caps.CREATE_PROOF ? 'tag-active' : 'tag-disabled'} font-mono`}>
+              {caps.CREATE_PROOF ? '✓' : '✕'} Client ZK Proof
+            </span>
+            <span className={`matrix-tag ${caps.SIGN_TRANSACTION ? 'tag-active' : 'tag-disabled'} font-mono`}>
+              {caps.SIGN_TRANSACTION ? '✓' : '✕'} Transaction Signing
+            </span>
+            <span className={`matrix-tag ${caps.SUBMIT_TRANSACTION ? 'tag-active' : 'tag-disabled'} font-mono`}>
+              {caps.SUBMIT_TRANSACTION ? '✓' : '✕'} Transaction Submission
+            </span>
+            <span className={`matrix-tag ${caps.READ_BALANCE ? 'tag-active' : 'tag-disabled'} font-mono`}>
+              {caps.READ_BALANCE ? '✓' : '✕'} Native Asset Balance
             </span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span
-            style={{
-              padding: '3px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              background: netContext.isPrototype ? '#854d0e' : '#1e3a8a',
-              color: '#fef08a',
-            }}
-          >
-            {netContext.isPrototype ? 'SIMULATION ONLY' : 'LIVE NETWORK'}
-          </span>
-          <span
-            style={{
-              padding: '3px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 600,
-              background: isConnected ? '#14532d' : '#7f1d1d',
-              color: isConnected ? '#bbf7d0' : '#fecaca',
-            }}
-          >
-            {isConnected ? 'PROTOTYPE ACCOUNT ACTIVE' : 'PROVIDER NOT CONNECTED'}
-          </span>
-        </div>
-      </div>
-
-      {/* Infrastructure Details Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '12px',
-          marginBottom: '14px',
-        }}
-      >
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Network
+        {/* Lifecycle Transaction Dispatch Strip */}
+        <div className="lifecycle-dispatch-panel font-mono">
+          <div className="dispatch-header">
+            <span className="dispatch-title">Lifecycle Transaction Dispatch</span>
+            <span className="text-muted text-xs">Commit #23</span>
           </div>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
-            {netConfig.environment}
+          <div className="dispatch-rows">
+            <div className="dispatch-row">
+              <span className="dispatch-key text-success">Supported Local Actions:</span>
+              <span className="dispatch-val">
+                {supported
+                  .map((a) => (a === 'VERIFY_ELIGIBILITY' ? 'Eligibility Verification (Client ZK Proof)' : a))
+                  .join(', ')}
+              </span>
+            </div>
+            <div className="dispatch-row">
+              <span className="dispatch-key text-warning">Unsupported Network Actions:</span>
+              <span className="dispatch-val text-muted">
+                {unsupported
+                  .map((a) =>
+                    a === 'FUND_LOAN'
+                      ? 'Funding'
+                      : a === 'REPAY_LOAN'
+                      ? 'Repayment'
+                      : a === 'SETTLE_LOAN'
+                      ? 'Settlement'
+                      : a
+                  )
+                  .join(', ')}{' '}
+                (Requires Live Midnight Provider)
+              </span>
+            </div>
           </div>
         </div>
 
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Configuration
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: configStatusText === 'VALID' ? '#4ade80' : '#f87171',
-            }}
-          >
-            {configStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Wallet
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: isWalletConnected ? '#4ade80' : isWalletDetected ? '#93c5fd' : '#f87171',
-            }}
-          >
-            {walletStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Connector
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: connectorStatusText === 'SUPPORTED' ? '#4ade80' : '#f87171',
-            }}
-          >
-            {connectorStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Signing
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: signingStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
-            }}
-          >
-            {signingStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Submission
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: submissionStatusText === 'AVAILABLE' ? '#4ade80' : '#f87171',
-            }}
-          >
-            {submissionStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Transaction readiness
-          </div>
-          <div
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              marginTop: '2px',
-              color: readinessStatusText === 'READY' ? '#4ade80' : '#eab308',
-            }}
-          >
-            {readinessStatusText}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Network Environment
-          </div>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
-            {netContext.networkName} ({netContext.environment})
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Provider Adapter
-          </div>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
-            {provider.name}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            Account Persona
-          </div>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#e2e8f0' }}>
-            {accountContext?.identity?.displayName ?? 'No Account Connected'}
-          </div>
-        </div>
-
-        <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>
-            On-Chain Transactions
-          </div>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '2px', color: '#f87171' }}>
-            Unavailable in Prototype Mode
-          </div>
-        </div>
-      </div>
-
-      {/* Provider Capabilities Summary */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '10px 12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: '11px',
-            color: '#94a3b8',
-            textTransform: 'uppercase',
-            marginBottom: '8px',
-            fontWeight: 600,
-          }}
-        >
-          Provider Capabilities Matrix
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '8px',
-            fontSize: '11px',
-          }}
-        >
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: caps.READ_PUBLIC_LEDGER ? '#064e3b' : '#334155',
-              color: caps.READ_PUBLIC_LEDGER ? '#a7f3d0' : '#64748b',
-            }}
-          >
-            {caps.READ_PUBLIC_LEDGER ? '✓' : '✕'} Public Ledger (Local)
-          </span>
-
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: caps.CREATE_PROOF ? '#064e3b' : '#334155',
-              color: caps.CREATE_PROOF ? '#a7f3d0' : '#64748b',
-            }}
-          >
-            {caps.CREATE_PROOF ? '✓' : '✕'} Client ZK Proof
-          </span>
-
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: caps.SIGN_TRANSACTION ? '#064e3b' : '#450a0a',
-              color: caps.SIGN_TRANSACTION ? '#a7f3d0' : '#fca5a5',
-            }}
-          >
-            {caps.SIGN_TRANSACTION ? '✓' : '✕'} Transaction Signing
-          </span>
-
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: caps.SUBMIT_TRANSACTION ? '#064e3b' : '#450a0a',
-              color: caps.SUBMIT_TRANSACTION ? '#a7f3d0' : '#fca5a5',
-            }}
-          >
-            {caps.SUBMIT_TRANSACTION ? '✓' : '✕'} Transaction Submission
-          </span>
-
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: caps.READ_BALANCE ? '#064e3b' : '#450a0a',
-              color: caps.READ_BALANCE ? '#a7f3d0' : '#fca5a5',
-            }}
-          >
-            {caps.READ_BALANCE ? '✓' : '✕'} Native Asset Balance
-          </span>
-        </div>
-      </div>
-
-      {/* Contract Deployment Boundary (Commit #32) */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-          border: '1px solid #1e293b',
-        }}
-        data-testid="contract-deployment-section"
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}
-          >
-            Compact Contract Boundary (Commit #32)
-          </div>
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 600,
-              background:
-                deployment.status === 'READY'
-                  ? '#064e3b'
-                  : deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
-                  ? '#450a0a'
-                  : '#78350f',
-              color:
-                deployment.status === 'READY'
-                  ? '#a7f3d0'
-                  : deployment.status === 'NOT_DEPLOYED' || deployment.status === 'UNCONFIGURED'
-                  ? '#fca5a5'
-                  : '#fde68a',
-            }}
-          >
-            {deployment.status}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px',
-            fontSize: '11px',
-            marginBottom: '8px',
-          }}
-        >
-          <div>
-            <span style={{ color: '#94a3b8' }}>Contract Name: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>{deployment.contractName}</span>
-          </div>
-          <div>
-            <span style={{ color: '#94a3b8' }}>Network Binding: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>{deployment.networkId || 'UNBOUND'}</span>
-          </div>
-          <div>
-            <span style={{ color: '#94a3b8' }}>Address: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {deployment.contractAddress
-                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
-                : 'UNCONFIGURED'}
+        {/* Honest Prototype Notice */}
+        <div className="honest-notice-strip font-mono">
+          <div className="notice-content">
+            <span className="notice-badge">SIMULATION ONLY</span>
+            <span className="notice-badge">
+              {isConnected ? 'PROTOTYPE ACCOUNT ACTIVE' : 'PROVIDER NOT CONNECTED'}
+            </span>
+            <span className="notice-text">
+              Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active.
             </span>
           </div>
+          <div className="notice-actions">
+            {isConnected && onDisconnect && (
+              <button
+                type="button"
+                className="btn-notice-disconnect"
+                onClick={onDisconnect}
+              >
+                Disconnect Provider
+              </button>
+            )}
+            {!isConnected && onConnect && (
+              <button
+                type="button"
+                className="btn-notice-connect"
+                onClick={onConnect}
+              >
+                Connect Prototype
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 2. CONTRACT READINESS SECTION */}
+      <section className="network-section contract-readiness-section" aria-label="Contract readiness">
+        <div className="section-header-row">
           <div>
-            <span style={{ color: '#94a3b8' }}>Verification: </span>
-            <span
-              style={{
-                color: deployment.isVerified ? '#34d399' : '#fbbf24',
-                fontWeight: 500,
-              }}
-            >
-              {deployment.isVerified ? 'VERIFIED' : 'NOT VERIFIED'}
-            </span>
+            <span className="section-eyebrow font-mono">COMPACT COMPLIANCE</span>
+            <h2 className="section-heading">Contract readiness</h2>
           </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ color: '#94a3b8' }}>Circuit Manifest: </span>
-            <span style={{ color: '#e2e8f0' }}>
-              {(deployment.circuitManifest?.length ?? deployment.circuitNames?.length ?? 6)} circuits loaded (4 lifecycle, 2 state read)
-            </span>
-          </div>
+          <span className="section-tag font-mono">VERIFICATION &amp; INSPECTION</span>
         </div>
 
-        <div
-          style={{
-            fontSize: '10px',
-            color: '#94a3b8',
-            fontStyle: 'italic',
-            borderTop: '1px solid #1e293b',
-            paddingTop: '6px',
-          }}
-        >
-          Configured address is a routing reference and does not guarantee on-chain existence without provider validation.
-        </div>
-      </div>
-
-      {/* Contract Deployment Verification (Commit #33) */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-          border: '1px solid #1e293b',
-        }}
-        data-testid="contract-verification-section"
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}
-          >
-            Contract Deployment Verification
-          </div>
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 600,
-              background:
-                verificationStatusText === 'Verified'
-                  ? '#064e3b'
-                  : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
-                  ? '#450a0a'
-                  : verificationStatusText === 'Checking'
-                  ? '#1e3a8a'
-                  : '#78350f',
-              color:
-                verificationStatusText === 'Verified'
-                  ? '#a7f3d0'
-                  : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
-                  ? '#fca5a5'
-                  : verificationStatusText === 'Checking'
-                  ? '#93c5fd'
-                  : '#fde68a',
-            }}
-          >
-            {verificationStatusText}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px',
-            fontSize: '11px',
-            marginBottom: '8px',
-          }}
-        >
-          <div>
-            <span style={{ color: '#94a3b8' }}>Contract Address: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {deployment.contractAddress
-                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
-                : 'Not Configured'}
+        {/* Compact Contract Boundary (Commit #32) */}
+        <div className="contract-status-card" data-testid="contract-deployment-section">
+          <div className="card-sub-header">
+            <span className="card-sub-title font-mono">Compact Contract Boundary (Commit #32)</span>
+            <span className={`status-pill font-mono ${deployment.status === 'READY' ? 'pill-success' : 'pill-amber'}`}>
+              {deployment.status}
             </span>
           </div>
 
-          <div>
-            <span style={{ color: '#94a3b8' }}>Deployment Configuration: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {deploymentConfigText}
-            </span>
+          <div className="contract-specs-grid">
+            <div className="spec-item">
+              <span className="spec-label">Contract Name</span>
+              <span className="spec-value">{deployment.contractName}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Network Binding</span>
+              <span className="spec-value font-mono">{deployment.networkId || 'UNBOUND'}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Address</span>
+              <span className="spec-value font-mono">
+                {deployment.contractAddress
+                  ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                  : 'UNCONFIGURED'}
+              </span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Verification</span>
+              <span className={`spec-value ${deployment.isVerified ? 'text-success' : 'text-warning'}`}>
+                {deployment.isVerified ? 'VERIFIED' : 'NOT VERIFIED'}
+              </span>
+            </div>
+            <div className="spec-item spec-full-width">
+              <span className="spec-label">Circuit Manifest:</span>
+              <span className="spec-value text-muted font-mono">
+                {(deployment.circuitManifest?.length ?? deployment.circuitNames?.length ?? 6)} circuits loaded (4 lifecycle, 2 state read)
+              </span>
+            </div>
           </div>
+        </div>
 
-          <div>
-            <span style={{ color: '#94a3b8' }}>Verification Status: </span>
-            <span
-              style={{
-                color:
-                  verificationStatusText === 'Verified'
-                    ? '#34d399'
-                    : verificationStatusText === 'Not Deployed' || verificationStatusText === 'Network Mismatch'
-                    ? '#f87171'
-                    : '#fbbf24',
-                fontWeight: 500,
-              }}
-            >
+        {/* Contract Deployment Verification (Commit #33) */}
+        <div className="contract-status-card" data-testid="contract-verification-section">
+          <div className="card-sub-header">
+            <span className="card-sub-title font-mono">Contract Deployment Verification</span>
+            <span className={`status-pill font-mono ${verificationStatusText === 'Verified' ? 'pill-success' : 'pill-amber'}`}>
               {verificationStatusText}
             </span>
           </div>
 
-          <div>
-            <span style={{ color: '#94a3b8' }}>Expected Network: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {expectedNetworkText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Observed Network: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {observedNetworkText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Deployment Transaction ID: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {deploymentTxIdText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Deployment Block Height: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {deploymentBlockHeightText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Deployment Timestamp: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {deploymentTimestampText}
-            </span>
-          </div>
-        </div>
-
-        <div
-          style={{
-            fontSize: '10px',
-            color: '#94a3b8',
-            fontStyle: 'italic',
-            borderTop: '1px solid #1e293b',
-            paddingTop: '6px',
-          }}
-        >
-          Authoritative on-chain existence verification via genuine provider/indexer response.
-        </div>
-      </div>
-
-      {/* Contract State Inspection (Commit #35) */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '10px 12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-          border: '1px solid #1e293b',
-        }}
-        data-testid="contract-state-inspection-section"
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}
-          >
-            Contract State Inspection
-          </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <span
-              style={{
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: 600,
-                background: stateSnapshot.source === 'PROVIDER_VERIFIED' ? '#064e3b' : '#78350f',
-                color: stateSnapshot.source === 'PROVIDER_VERIFIED' ? '#a7f3d0' : '#fde68a',
-              }}
-            >
-              {stateSourceLabel}
-            </span>
-            <span
-              style={{
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: 600,
-                background:
-                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
-                    ? '#064e3b'
-                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
-                    ? '#450a0a'
-                    : stateInspectionStatusText === 'Checking'
-                    ? '#1e3a8a'
-                    : '#78350f',
-                color:
-                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
-                    ? '#a7f3d0'
-                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
-                    ? '#fca5a5'
-                    : stateInspectionStatusText === 'Checking'
-                    ? '#93c5fd'
-                    : '#fde68a',
-              }}
-            >
-              {stateInspectionStatusText}
-            </span>
+          <div className="contract-specs-grid">
+            <div className="spec-item">
+              <span className="spec-label">Contract Address:</span>
+              <span className="spec-value font-mono">
+                {deployment.contractAddress
+                  ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                  : 'Not Configured'}
+              </span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Deployment Configuration:</span>
+              <span className="spec-value font-mono">{deploymentConfigText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Verification Status:</span>
+              <span className={`spec-value ${verificationStatusText === 'Verified' ? 'text-success' : 'text-warning'}`}>
+                {verificationStatusText}
+              </span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Expected Network:</span>
+              <span className="spec-value font-mono">{expectedNetworkText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Observed Network:</span>
+              <span className="spec-value font-mono">{observedNetworkText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Deployment Transaction ID:</span>
+              <span className="spec-value font-mono">{deploymentTxIdText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Deployment Block Height:</span>
+              <span className="spec-value font-mono">{deploymentBlockHeightText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Deployment Timestamp:</span>
+              <span className="spec-value font-mono">{deploymentTimestampText}</span>
+            </div>
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px',
-            fontSize: '11px',
-            marginBottom: '8px',
-          }}
-        >
-          <div>
-            <span style={{ color: '#94a3b8' }}>Contract Address: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {deployment.contractAddress
-                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
-                : 'Not Configured'}
-            </span>
+        {/* Contract State Inspection (Commit #35) */}
+        <div className="contract-status-card" data-testid="contract-state-inspection-section">
+          <div className="card-sub-header">
+            <span className="card-sub-title font-mono">Contract State Inspection</span>
+            <div className="card-badges-row">
+              <span className="status-pill pill-subtle font-mono">{stateSourceLabel}</span>
+              <span className={`status-pill font-mono ${stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available' ? 'pill-success' : 'pill-amber'}`}>
+                {stateInspectionStatusText}
+              </span>
+            </div>
           </div>
 
-          <div>
-            <span style={{ color: '#94a3b8' }}>Target Network: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {expectedNetworkText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Deployment Verification: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {verificationStatusText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>State Inspection Status: </span>
-            <span
-              style={{
-                color:
-                  stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available'
-                    ? '#34d399'
-                    : stateInspectionStatusText === 'Not Deployed' || stateInspectionStatusText === 'Network Mismatch'
-                    ? '#f87171'
-                    : '#fbbf24',
-                fontWeight: 500,
-              }}
-            >
-              {stateInspectionStatusText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>State Source: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {stateSourceLabel}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>State Availability: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {stateAvailabilityText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Block Height: </span>
-            <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 500 }}>
-              {stateBlockHeightText}
-            </span>
-          </div>
-
-          <div>
-            <span style={{ color: '#94a3b8' }}>Last Inspection Time: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-              {stateInspectionTimestampText}
-            </span>
-          </div>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ color: '#94a3b8' }}>Inspection Reason: </span>
-            <span style={{ color: '#93c5fd', fontFamily: 'monospace', fontSize: '10px' }}>
-              {stateReasonText}
-            </span>
+          <div className="contract-specs-grid">
+            <div className="spec-item">
+              <span className="spec-label">Contract Address:</span>
+              <span className="spec-value font-mono">
+                {deployment.contractAddress
+                  ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                  : 'Not Configured'}
+              </span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Target Network:</span>
+              <span className="spec-value font-mono">{expectedNetworkText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Deployment Verification:</span>
+              <span className="spec-value">{verificationStatusText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">State Inspection Status:</span>
+              <span className={`spec-value ${stateInspectionStatusText === 'Verified' || stateInspectionStatusText === 'Available' ? 'text-success' : 'text-warning'}`}>
+                {stateInspectionStatusText}
+              </span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">State Source:</span>
+              <span className="spec-value font-mono">{stateSourceLabel}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">State Availability:</span>
+              <span className="spec-value">{stateAvailabilityText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Block Height:</span>
+              <span className="spec-value font-mono">{stateBlockHeightText}</span>
+            </div>
+            <div className="spec-item">
+              <span className="spec-label">Last Inspection Time:</span>
+              <span className="spec-value font-mono">{stateInspectionTimestampText}</span>
+            </div>
+            {stateReasonText && (
+              <div className="spec-item spec-full-width">
+                <span className="spec-label">Inspection Reason:</span>
+                <span className="spec-value text-accent font-mono text-xs">{stateReasonText}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div
-          style={{
-            fontSize: '10px',
-            color: '#94a3b8',
-            fontStyle: 'italic',
-            borderTop: '1px solid #1e293b',
-            paddingTop: '6px',
-          }}
-        >
-          Authoritative on-chain contract state inspection boundary. Local state is strictly separated from provider-verified state.
-        </div>
-      </div>
-
-      {/* Contract Circuit Invocation Boundary (Commit #36) */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '10px 12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-          border: '1px solid #1e293b',
-        }}
-        data-testid="contract-invocation-section"
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}
-          >
-            Contract Circuit Invocation Boundary
-          </div>
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 600,
-              background: deployment.isVerified ? '#064e3b' : '#78350f',
-              color: deployment.isVerified ? '#a7f3d0' : '#fde68a',
-            }}
-          >
-            {deployment.isVerified ? 'READY FOR INVOCATION' : 'READ/PROOF ONLY'}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px',
-            fontSize: '11px',
-            marginBottom: '8px',
-          }}
-        >
-          <div data-testid="manifest-circuits-count">
-            <span style={{ color: '#94a3b8' }}>Manifest Circuits: </span>
-            <span style={{ color: '#f8fafc', fontWeight: 500 }}>6 Canonical Circuits</span>
-          </div>
-          <div data-testid="local-proof-status">
-            <span style={{ color: '#94a3b8' }}>Local Proof (verifyEligibility): </span>
-            <span style={{ color: '#34d399', fontWeight: 500 }}>Available (Off-Chain)</span>
-          </div>
-          <div data-testid="state-read-status">
-            <span style={{ color: '#94a3b8' }}>State Read (getLoanStatus/Details): </span>
-            <span style={{ color: '#34d399', fontWeight: 500 }}>Available (Read-Only)</span>
-          </div>
-          <div data-testid="tx-execution-status">
-            <span style={{ color: '#94a3b8' }}>Tx Execution (fund/repay/settle): </span>
-            <span
-              style={{
-                color: deployment.isVerified && !netContext.isPrototype ? '#34d399' : '#fbbf24',
-                fontWeight: 500,
-              }}
-            >
-              {deployment.isVerified && !netContext.isPrototype ? 'Available' : 'Gated (Verification Required)'}
+        {/* Contract Circuit Invocation Boundary (Commit #36) */}
+        <div className="contract-status-card" data-testid="contract-invocation-section">
+          <div className="card-sub-header">
+            <span className="card-sub-title font-mono">Contract Circuit Invocation Boundary</span>
+            <span className={`status-pill font-mono ${deployment.isVerified ? 'pill-success' : 'pill-amber'}`}>
+              {deployment.isVerified ? 'READY FOR INVOCATION' : 'READ/PROOF ONLY'}
             </span>
           </div>
-        </div>
 
-        <div
-          style={{
-            fontSize: '10px',
-            color: '#94a3b8',
-            fontStyle: 'italic',
-            borderTop: '1px solid #1e293b',
-            paddingTop: '6px',
-          }}
-        >
-          Strict tri-partite execution gating: LOCAL_PROOF != STATE_READ != TRANSACTION_EXECUTION.
-        </div>
-      </div>
-
-      {/* Transaction Orchestration & Dispatch Readiness (Commit #23) */}
-      <div
-        style={{
-          background: '#0f172a',
-          padding: '10px 12px',
-          borderRadius: '6px',
-          marginBottom: '12px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: '11px',
-            color: '#94a3b8',
-            textTransform: 'uppercase',
-            marginBottom: '8px',
-            fontWeight: 600,
-          }}
-        >
-          Lifecycle Transaction Dispatch (Commit #23)
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#a7f3d0', fontWeight: 600 }}>Supported Local Actions:</span>
-            <span style={{ color: '#e2e8f0' }}>
-              {supported.map((a) => (a === 'VERIFY_ELIGIBILITY' ? 'Eligibility Verification (Client ZK Proof)' : a)).join(', ')}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#fca5a5', fontWeight: 600 }}>Unsupported Network Actions:</span>
-            <span style={{ color: '#94a3b8' }}>
-              {unsupported.map((a) => (a === 'FUND_LOAN' ? 'Funding' : a === 'REPAY_LOAN' ? 'Repayment' : a === 'SETTLE_LOAN' ? 'Settlement' : a)).join(', ')} (Requires Live Midnight Provider)
-            </span>
-          </div>
-          <div style={{ color: '#f87171', fontStyle: 'italic', marginTop: '2px' }}>
-            Transaction submission unavailable in prototype mode.
+          <div className="contract-specs-grid">
+            <div className="spec-item" data-testid="manifest-circuits-count">
+              <span className="spec-label">Manifest Circuits:</span>
+              <span className="spec-value font-mono">6 Canonical Circuits</span>
+            </div>
+            <div className="spec-item" data-testid="local-proof-status">
+              <span className="spec-label">Local Proof (verifyEligibility):</span>
+              <span className="spec-value text-success font-mono">Available (Off-Chain)</span>
+            </div>
+            <div className="spec-item" data-testid="state-read-status">
+              <span className="spec-label">State Read (getLoanStatus/Details):</span>
+              <span className="spec-value text-success font-mono">Available (Read-Only)</span>
+            </div>
+            <div className="spec-item" data-testid="tx-execution-status">
+              <span className="spec-label">Tx Execution (fund/repay/settle):</span>
+              <span className={`spec-value font-mono ${deployment.isVerified && !netContext.isPrototype ? 'text-success' : 'text-warning'}`}>
+                {deployment.isVerified && !netContext.isPrototype ? 'Available' : 'Gated (Verification Required)'}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Honest Prototype Notice */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '12px',
-          color: '#cbd5e1',
-          background: 'rgba(234, 179, 8, 0.1)',
-          border: '1px solid rgba(234, 179, 8, 0.2)',
-          padding: '8px 12px',
-          borderRadius: '6px',
-        }}
-      >
-        <div>
-          <span style={{ color: '#facc15', fontWeight: 600 }}>Notice: </span>
-          Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active.
-        </div>
-        {isConnected && onDisconnect && (
-          <button
-            onClick={onDisconnect}
-            style={{
-              background: '#334155',
-              border: 'none',
-              color: '#e2e8f0',
-              padding: '4px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              marginLeft: '12px',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Disconnect Provider
-          </button>
-        )}
-        {!isConnected && onConnect && (
-          <button
-            onClick={onConnect}
-            style={{
-              background: '#2563eb',
-              border: 'none',
-              color: '#ffffff',
-              padding: '4px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              marginLeft: '12px',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Connect Prototype
-          </button>
-        )}
-      </div>
+      </section>
     </div>
   );
 };
+
+export default NetworkStatusPanel;

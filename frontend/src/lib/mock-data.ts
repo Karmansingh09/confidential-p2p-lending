@@ -29,6 +29,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'requested',
     eligibilityThreshold: 30000n,
     isEligibilityVerified: false,
+    isConfirmedOnChain: false,
   },
 
   // Phase 2: ZK Eligibility verified, awaiting lender capital
@@ -44,6 +45,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'requested',
     eligibilityThreshold: 40000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 3: Funded by lender, awaiting borrower repayment
@@ -59,6 +61,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'funded',
     eligibilityThreshold: 60000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 4: Repaid by borrower (principal + interest satisfied), awaiting settlement
@@ -74,6 +77,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'repaid',
     eligibilityThreshold: 35000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 5: Concluded and settled
@@ -89,6 +93,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'settled',
     eligibilityThreshold: 25000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Additional realistic loans for marketplace discovery and filtering:
@@ -105,6 +110,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'requested',
     eligibilityThreshold: 45000n,
     isEligibilityVerified: false,
+    isConfirmedOnChain: false,
   },
 
   // Phase 2: Verified loan request ready for funding
@@ -120,6 +126,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'requested',
     eligibilityThreshold: 50000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 3: Active funded loan
@@ -135,6 +142,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'funded',
     eligibilityThreshold: 20000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 4: Repaid loan awaiting settlement
@@ -150,6 +158,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'repaid',
     eligibilityThreshold: 35000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 
   // Phase 5: Another terminal settled agreement
@@ -165,6 +174,7 @@ export const MOCK_LOANS: Record<string, LoanDetailsModel> = {
     statusText: 'settled',
     eligibilityThreshold: 70000n,
     isEligibilityVerified: true,
+    isConfirmedOnChain: false,
   },
 };
 

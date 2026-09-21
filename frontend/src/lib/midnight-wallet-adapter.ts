@@ -576,6 +576,23 @@ export class MidnightWalletAdapter implements WalletProvider {
     // Retrieve real address - ANTI-FABRICATION: never fake an address
     let resolvedAddress = '';
 
+    // 0. Official Connector API hintUsage Flow:
+    // Conforms to @midnight-ntwrk/dapp-connector-api HintUsage specification.
+    // Informs the wallet of expected operations to allow granular permission prompts.
+    if (typeof api.hintUsage === 'function') {
+      try {
+        await api.hintUsage([
+          'getShieldedAddresses',
+          'getUnshieldedAddress',
+          'getDustAddress',
+          'getDustBalance',
+        ]);
+        console.log('[WALLET DIAGNOSTIC] api.hintUsage() completed successfully');
+      } catch (hintErr) {
+        console.log('[WALLET DIAGNOSTIC] api.hintUsage() non-blocking failure:', hintErr);
+      }
+    }
+
     // 1. Primary: Retrieve Shielded Address via official connector API
     if (typeof api.getShieldedAddresses === 'function') {
       try {
@@ -583,21 +600,21 @@ export class MidnightWalletAdapter implements WalletProvider {
         console.log('[WALLET DIAGNOSTIC] api.getShieldedAddresses() resolved:', shieldedRaw);
         if (typeof shieldedRaw === 'string' && shieldedRaw.length > 0) {
           resolvedAddress = shieldedRaw;
-        } else if (Array.isArray(shieldedRaw) && shieldedRaw.length > 0) {
-          const first = shieldedRaw[0];
-          if (typeof first === 'string') {
-            resolvedAddress = first;
-          } else if (first && typeof first === 'object' && 'shieldedAddress' in first) {
-            resolvedAddress = String((first as Record<string, unknown>).shieldedAddress);
-          }
         } else if (shieldedRaw && typeof shieldedRaw === 'object') {
           const rec = shieldedRaw as Record<string, unknown>;
-          if (typeof rec.shieldedAddress === 'string') {
+          if (typeof rec.shieldedAddress === 'string' && rec.shieldedAddress.length > 0) {
             resolvedAddress = rec.shieldedAddress;
           } else if (Array.isArray(rec.shieldedAddresses) && typeof rec.shieldedAddresses[0] === 'string') {
             resolvedAddress = rec.shieldedAddresses[0];
           } else if (Array.isArray(rec.addresses) && typeof rec.addresses[0] === 'string') {
             resolvedAddress = rec.addresses[0];
+          } else if (Array.isArray(shieldedRaw) && shieldedRaw.length > 0) {
+            const first = shieldedRaw[0];
+            if (typeof first === 'string') {
+              resolvedAddress = first;
+            } else if (first && typeof first === 'object' && 'shieldedAddress' in first) {
+              resolvedAddress = String((first as Record<string, unknown>).shieldedAddress);
+            }
           }
         }
       } catch (err) {
@@ -614,9 +631,9 @@ export class MidnightWalletAdapter implements WalletProvider {
           resolvedAddress = unshieldedRaw;
         } else if (unshieldedRaw && typeof unshieldedRaw === 'object') {
           const rec = unshieldedRaw as Record<string, unknown>;
-          if (typeof rec.unshieldedAddress === 'string') {
+          if (typeof rec.unshieldedAddress === 'string' && rec.unshieldedAddress.length > 0) {
             resolvedAddress = rec.unshieldedAddress;
-          } else if (typeof rec.address === 'string') {
+          } else if (typeof rec.address === 'string' && rec.address.length > 0) {
             resolvedAddress = rec.address;
           }
         }
@@ -630,9 +647,9 @@ export class MidnightWalletAdapter implements WalletProvider {
       try {
         const st = (await api.state()) as Record<string, unknown>;
         console.log('[WALLET DIAGNOSTIC] api.state() resolved:', st);
-        if (st && typeof st.address === 'string') {
+        if (st && typeof st.address === 'string' && st.address.length > 0) {
           resolvedAddress = st.address;
-        } else if (st && typeof st.shieldedAddress === 'string') {
+        } else if (st && typeof st.shieldedAddress === 'string' && st.shieldedAddress.length > 0) {
           resolvedAddress = st.shieldedAddress;
         }
       } catch (err) {
@@ -645,7 +662,7 @@ export class MidnightWalletAdapter implements WalletProvider {
       publicKeyHex: resolvedAddress || '',
       role: personaRole ?? 'PARTICIPANT',
       displayName: 'Midnight Lace Wallet Account',
-      address: resolvedAddress,
+      address: resolvedAddress || undefined,
     };
 
     // Synchronize authoritative NetworkConfigService with authentic connected wallet network and endpoints
@@ -710,7 +727,7 @@ export class MidnightWalletAdapter implements WalletProvider {
       this.laceState = 'CONNECTED_NOT_TRANSACTION_CAPABLE';
     }
 
-    return { ...this.activeAccount };
+    return { ...this.activeAccount } as NetworkAccount;
   }
 
   /**
@@ -1064,6 +1081,17 @@ export class MidnightWalletAdapter implements WalletProvider {
 
     if (isConnected && api) {
       try {
+        if (typeof (api as { hintUsage?: (m: string[]) => Promise<void> }).hintUsage === 'function') {
+          try {
+            await (api as { hintUsage: (m: string[]) => Promise<void> }).hintUsage([
+              'getDustAddress',
+              'getDustBalance',
+            ]);
+          } catch {
+            // Non-blocking
+          }
+        }
+
         if (hasGetDustAddress) {
           const addrResult = await (api.getDustAddress as () => Promise<unknown>)();
           if (typeof addrResult === 'string') {

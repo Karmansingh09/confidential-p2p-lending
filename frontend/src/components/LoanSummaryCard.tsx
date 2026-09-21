@@ -33,7 +33,11 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan, loanId }
             <h2>Loan Agreement Details</h2>
             {loanId && <span className="card-loan-id-badge">{loanId}</span>}
           </div>
-          <span className="card-subtitle">Public Agreement Terms Recorded on Midnight Ledger</span>
+          <span className="card-subtitle">
+            {loan.isConfirmedOnChain
+              ? 'Public Agreement Terms Recorded on Midnight Ledger'
+              : 'Local Prototype Preview • Not Confirmed on Midnight Ledger'}
+          </span>
         </div>
         <div className="card-header-badges">
           <LoanStatusBadge statusText={loan.statusText} />
@@ -89,7 +93,7 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan, loanId }
           </span>
           <span className="metric-subtext">
             {loan.isEligibilityVerified
-              ? 'Off-chain proof accepted by contract'
+              ? (loan.isConfirmedOnChain ? 'Off-chain proof accepted by contract' : 'Local prototype ZK proof simulated (Off-Chain)')
               : 'Borrower proof submission pending'}
           </span>
         </div>

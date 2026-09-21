@@ -424,4 +424,18 @@ export class LoanRegistry {
 
     return counts;
   }
+
+  /**
+   * Returns whether the given loan is confirmed on the real Midnight ledger.
+   */
+  isConfirmedOnChain(loanId: string): boolean {
+    return this.loans[loanId]?.isConfirmedOnChain === true;
+  }
+
+  /**
+   * Returns true if any active loans in the registry are unconfirmed prototype/demo records.
+   */
+  hasUnconfirmedMockLoans(): boolean {
+    return Object.values(this.loans).some((loan) => loan.isConfirmedOnChain !== true);
+  }
 }

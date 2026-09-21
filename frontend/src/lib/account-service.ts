@@ -190,11 +190,8 @@ export function connectMockAccount(
     // Sync session
     void sessionService.connect({ providerKind: 'LOCAL_PROTOTYPE', role, customLoan });
   } else {
-    // For real Midnight Lace adapter: only initiate connect if not already connected
-    const currentSession = sessionService.getSession();
-    if (currentSession.status !== 'CONNECTED' && provider.getConnectionStatus() !== 'CONNECTED') {
-      void sessionService.connect({ role, customLoan });
-    }
+    // For real Midnight Lace adapter: NEVER auto-connect.
+    // Explicit user action via "Connect Lace" is strictly required.
   }
 
   const netContext = provider.getNetworkContext();
@@ -217,11 +214,21 @@ export function connectMockAccount(
 
 /**
  * Disconnects the active account via the wallet session and provider.
+ * Guarantees that the session remains disconnected until explicit user reconnection.
  */
 export function disconnectMockAccount(): AccountContext {
   const sessionService = getWalletSessionService();
   void sessionService.disconnect();
-  return connectMockAccount('NONE');
+  const netContext = sessionService.getProvider().getNetworkContext();
+  return {
+    identity: null,
+    selectedRole: 'NONE',
+    availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
+    connectionStatus: 'DISCONNECTED',
+    networkName: netContext.networkName,
+    isRealNetwork: netContext.isRealNetwork,
+    isPrototype: netContext.isPrototype,
+  };
 }
 
 /**

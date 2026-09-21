@@ -14038,4 +14038,261 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
       );
     });
   });
+
+  describe('Commit #42: Forensic Wallet Integration & State Separation Safeguards', () => {
+    it('Test 620 (Commit #42 Disconnect Invariant): Explicit Lace disconnect remains disconnected and does NOT trigger sessionService.connect()', async () => {
+      const sessionService = getWalletSessionService();
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => ({
+          getConnectionStatus: async () => ({ status: 'connected' }),
+          getConfiguration: async () => ({
+            networkId: 'preprod',
+            indexerUri: 'https://indexer.preprod.midnight.network',
+            indexerWsUri: 'wss://indexer.preprod.midnight.network',
+            substrateNodeUri: 'https://rpc.preprod.midnight.network',
+          }),
+          getShieldedAddresses: async () => ({
+            shieldedAddress: 'mn_shielded_test_addr_12345',
+            shieldedCoinPublicKey: '0x1111',
+            shieldedEncryptionPublicKey: '0x2222',
+          }),
+        }),
+      });
+
+      sessionService.setProvider(adapter);
+      await sessionService.connect({ networkId: 'preprod' });
+      assert.equal(sessionService.getSession().status, 'CONNECTED');
+
+      let connectCalledCount = 0;
+      const originalConnect = sessionService.connect.bind(sessionService);
+      sessionService.connect = async (params) => {
+        connectCalledCount++;
+        return originalConnect(params);
+      };
+
+      try {
+        const disconnectedCtx = disconnectMockAccount();
+        assert.equal(disconnectedCtx.connectionStatus, 'DISCONNECTED');
+        assert.equal(disconnectedCtx.selectedRole, 'NONE');
+        assert.equal(disconnectedCtx.identity, null);
+
+        // Wait tick to ensure no background async re-connection occurred
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        assert.equal(connectCalledCount, 0, 'sessionService.connect must NEVER be called during or after disconnect');
+        assert.equal(sessionService.getSession().status, 'DISCONNECTED');
+        assert.equal(sessionService.getAccount(), null);
+        assert.equal(adapter.getConnectionStatus(), 'DISCONNECTED');
+
+        // Calling connectMockAccount with role NONE also must not trigger reconnect
+        connectMockAccount('NONE');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.equal(connectCalledCount, 0, 'connectMockAccount(NONE) must not trigger reconnect');
+        assert.equal(sessionService.getSession().status, 'DISCONNECTED');
+      } finally {
+        sessionService.connect = originalConnect;
+        resetWalletProvider();
+      }
+    });
+
+    it('Test 621 (Commit #42 AccountSwitcher Label): Displays Disconnected state when disconnected and never masks with Connected', () => {
+      const renderProviderName = (isProto, isConnected) => {
+        return isProto
+          ? 'Local Prototype Account • Simulation Only'
+          : isConnected
+          ? 'Midnight Lace Wallet • Connected'
+          : 'Midnight Lace Wallet • Disconnected';
+      };
+
+      assert.equal(
+        renderProviderName(false, false),
+        'Midnight Lace Wallet • Disconnected',
+        'Must honestly display Disconnected when not connected'
+      );
+
+      assert.equal(
+        renderProviderName(false, true),
+        'Midnight Lace Wallet • Connected',
+        'Must display Connected when genuine connection exists'
+      );
+
+      assert.equal(
+        renderProviderName(true, false),
+        'Local Prototype Account • Simulation Only'
+      );
+      assert.equal(
+        renderProviderName(true, true),
+        'Local Prototype Account • Simulation Only'
+      );
+
+      const switcherPath = path.resolve(process.cwd(), 'frontend', 'src', 'components', 'AccountSwitcher.tsx');
+      const switcherSrc = fs.readFileSync(switcherPath, 'utf8');
+      assert.ok(
+        switcherSrc.includes('Midnight Lace Wallet • Disconnected'),
+        'AccountSwitcher must include disconnected label'
+      );
+    });
+
+    it('Test 622 (Commit #42 hintUsage & Address Resolution): Adapter calls hintUsage before address queries and extracts real address', async () => {
+      const hintCalls = [];
+      let shieldedRequested = false;
+
+      const mockConnector = {
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => ({
+          getConnectionStatus: async () => ({ status: 'connected' }),
+          getConfiguration: async () => ({
+            networkId: 'preprod',
+            indexerUri: 'https://indexer.preprod.midnight.network',
+            indexerWsUri: 'wss://indexer.preprod.midnight.network',
+            substrateNodeUri: 'https://rpc.preprod.midnight.network',
+          }),
+          hintUsage: async (methodNames) => {
+            hintCalls.push(...methodNames);
+          },
+          getShieldedAddresses: async () => {
+            shieldedRequested = true;
+            return {
+              shieldedAddress: 'mn_shielded_preprod1real_shielded_address_bech32m',
+              shieldedCoinPublicKey: '0xaa11',
+              shieldedEncryptionPublicKey: '0xbb22',
+            };
+          },
+        }),
+      };
+
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting(mockConnector);
+      await adapter.connect('preprod');
+
+      assert.ok(hintCalls.length > 0, 'hintUsage must be invoked');
+      assert.ok(hintCalls.includes('getShieldedAddresses'), 'hintUsage must include getShieldedAddresses');
+      assert.ok(hintCalls.includes('getUnshieldedAddress'), 'hintUsage must include getUnshieldedAddress');
+      assert.ok(shieldedRequested, 'getShieldedAddresses must be requested');
+
+      const acc = adapter.getAccount();
+      assert.ok(acc);
+      assert.equal(acc.address, 'mn_shielded_preprod1real_shielded_address_bech32m');
+
+      // Test fallback when Lace provides no address (returns empty/null)
+      const mockEmptyConnector = {
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => ({
+          getConnectionStatus: async () => ({ status: 'connected' }),
+          getConfiguration: async () => ({ networkId: 'preprod' }),
+          getShieldedAddresses: async () => ({ shieldedAddress: '' }),
+          getUnshieldedAddress: async () => ({ unshieldedAddress: '' }),
+        }),
+      };
+
+      const emptyAdapter = new MidnightWalletAdapter();
+      emptyAdapter.injectMockConnectorForTesting(mockEmptyConnector);
+      await emptyAdapter.connect('preprod');
+
+      const emptyAcc = emptyAdapter.getAccount();
+      assert.ok(emptyAcc);
+      assert.equal(emptyAcc.address, undefined, 'Address must be undefined when Lace does not expose one');
+      assert.equal(emptyAcc.publicKeyHex, '');
+    });
+
+    it('Test 623 (Commit #42 DUST Anti-Fabrication): No hardcoded DUST balances or addresses exist in frontend source code', () => {
+      const frontendSrcDir = path.resolve(process.cwd(), 'frontend', 'src');
+      const files = [];
+
+      function scanDir(dir) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            scanDir(fullPath);
+          } else if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+            files.push(fullPath);
+          }
+        }
+      }
+
+      scanDir(frontendSrcDir);
+      assert.ok(files.length > 20, 'Should find frontend source files');
+
+      // The fake DUST fixtures from CLI self-test must NEVER leak into frontend source files
+      const forbiddenDustPatterns = [
+        '12500',
+        'mn_dust_preprod1testdustaddress',
+      ];
+
+      for (const file of files) {
+        const content = fs.readFileSync(file, 'utf8');
+        for (const pattern of forbiddenDustPatterns) {
+          assert.ok(
+            !content.includes(pattern),
+            `Forbidden hardcoded DUST fixture "${pattern}" found in browser production file: ${path.relative(process.cwd(), file)}`
+          );
+        }
+      }
+
+      // Wallet adapter must not hardcode any DUST balances or capacity
+      const adapterFile = path.resolve(process.cwd(), 'frontend', 'src', 'lib', 'midnight-wallet-adapter.ts');
+      const adapterSrc = fs.readFileSync(adapterFile, 'utf8');
+      assert.ok(!adapterSrc.includes('12500'), 'midnight-wallet-adapter must not contain 12500');
+      assert.ok(!adapterSrc.includes('25000'), 'midnight-wallet-adapter must not contain 25000');
+      assert.ok(!adapterSrc.includes('mn_dust_'), 'midnight-wallet-adapter must not contain fake mn_dust_ address');
+    });
+
+    it('Test 624 (Commit #42 State Separation): Mock loans are explicitly flagged as unconfirmed and separated from ledger state', () => {
+      for (const [id, loan] of Object.entries(MOCK_LOANS)) {
+        assert.equal(
+          loan.isConfirmedOnChain,
+          false,
+          `Mock loan ${id} must have isConfirmedOnChain explicitly set to false`
+        );
+      }
+
+      const registry = new LoanRegistry(MOCK_LOANS);
+      assert.equal(registry.isConfirmedOnChain('loan-001'), false);
+      assert.equal(registry.isConfirmedOnChain('loan-002'), false);
+      assert.equal(registry.hasUnconfirmedMockLoans(), true);
+
+      const onChainLoan = {
+        ...MOCK_LOANS['loan-001'],
+        isConfirmedOnChain: true,
+      };
+      const updatedRegistry = registry.replaceLoan('loan-001', onChainLoan);
+      assert.equal(updatedRegistry.isConfirmedOnChain('loan-001'), true);
+      assert.equal(updatedRegistry.isConfirmedOnChain('loan-002'), false);
+
+      const cardPath = path.resolve(process.cwd(), 'frontend', 'src', 'components', 'LoanSummaryCard.tsx');
+      const cardSrc = fs.readFileSync(cardPath, 'utf8');
+      assert.ok(
+        cardSrc.includes('loan.isConfirmedOnChain'),
+        'LoanSummaryCard must inspect isConfirmedOnChain before claiming terms are on Midnight ledger'
+      );
+      assert.ok(
+        cardSrc.includes('Local Prototype Preview • Not Confirmed on Midnight Ledger'),
+        'LoanSummaryCard must include honest prototype preview subtitle'
+      );
+
+      const marketplaceCompPath = path.resolve(process.cwd(), 'frontend', 'src', 'components', 'LoanMarketplace.tsx');
+      const marketSrc = fs.readFileSync(marketplaceCompPath, 'utf8');
+      assert.ok(
+        marketSrc.includes('PROTOTYPE PREVIEW • NOT ON-CHAIN LEDGER'),
+        'LoanMarketplace must display clear prototype preview indicator'
+      );
+    });
+
+    it('Test 625 (Commit #42 Contract Integrity): contracts/src/index.compact remains 100% untouched', () => {
+      const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+      assert.ok(fs.existsSync(contractPath));
+      const content = fs.readFileSync(contractPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      assert.equal(
+        COMPACT_SOURCE_FINGERPRINT,
+        hash,
+        'Compact source fingerprint must match exactly (Commit #42 guard)'
+      );
+    });
+  });
 });

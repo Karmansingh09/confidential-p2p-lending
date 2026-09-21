@@ -90,7 +90,11 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
             <span className="status-role-badge font-mono">{roleDisplayNames[selectedRole]}</span>
           </div>
           <span className="identity-provider-name">
-            {isProto ? 'Local Prototype Account \u2022 Simulation Only' : 'Midnight Lace Wallet \u2022 Connected'}
+            {isProto
+              ? 'Local Prototype Account • Simulation Only'
+              : isConnected
+              ? 'Midnight Lace Wallet • Connected'
+              : 'Midnight Lace Wallet • Disconnected'}
           </span>
         </div>
 

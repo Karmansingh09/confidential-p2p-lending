@@ -92,6 +92,7 @@ export interface MidnightServiceUriConfig {
  * Conforms to @midnight-ntwrk/dapp-connector-api WalletConnectedAPI specification.
  */
 export interface MidnightConnectedAPI {
+  hintUsage?: (methodNames: string[]) => Promise<void>;
   getShieldedAddresses?: () => Promise<MidnightShieldedAddresses | string[]>;
   getUnshieldedAddress?: () => Promise<string | { unshieldedAddress: string }>;
   getDustAddress?: () => Promise<string | { dustAddress: string }>;

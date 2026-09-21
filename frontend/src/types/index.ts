@@ -39,6 +39,8 @@ export interface LoanDetailsModel {
   eligibilityThreshold: bigint;
   /** Whether zero-knowledge proof has been verified */
   isEligibilityVerified: boolean;
+  /** Whether this loan is confirmed on the real Midnight ledger (false for prototype/demo preview) */
+  isConfirmedOnChain?: boolean;
 }
 
 /**

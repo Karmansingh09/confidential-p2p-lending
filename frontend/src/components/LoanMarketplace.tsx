@@ -29,6 +29,7 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
 
   const counts = getLifecycleCounts(loansMap);
   const items = queryMarketplace(loansMap, searchQuery, filter, sortOption);
+  const hasDemoLoans = Object.values(loansMap).some((l) => !l.isConfirmedOnChain);
 
   const filterOptions: { key: LifecycleFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -46,6 +47,23 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
         <div className="orderbook-title-group">
           <h2 className="orderbook-title">ORDER BOOK</h2>
           <span className="orderbook-count-badge font-mono">{items.length} OPPORTUNITIES</span>
+          {hasDemoLoans && (
+            <span
+              className="orderbook-demo-pill font-mono"
+              style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                background: 'rgba(255, 180, 0, 0.12)',
+                color: '#d48800',
+                border: '1px solid rgba(255, 180, 0, 0.3)',
+                marginLeft: '10px',
+              }}
+              title="These opportunities are local prototype simulations and are not confirmed on the Midnight Preprod ledger."
+            >
+              PROTOTYPE PREVIEW • NOT ON-CHAIN LEDGER
+            </span>
+          )}
         </div>
 
         <div className="orderbook-filter-tabs" role="tablist" aria-label="Order Book Lifecycle Filters">
@@ -165,7 +183,25 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
                     onClick={() => onSelectLoan(id)}
                   >
                     <td>
-                      <span className="orderbook-loan-id font-mono">{id}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="orderbook-loan-id font-mono">{id}</span>
+                        {!loan.isConfirmedOnChain && (
+                          <span
+                            className="font-mono"
+                            style={{
+                              fontSize: '9px',
+                              padding: '1px 4px',
+                              borderRadius: '3px',
+                              background: 'rgba(159, 184, 216, 0.12)',
+                              color: 'var(--text-muted)',
+                              border: '1px solid rgba(159, 184, 216, 0.2)',
+                            }}
+                            title="Local prototype simulation record (not confirmed on Midnight ledger)"
+                          >
+                            DEMO
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className="orderbook-principal-val">{loan.amount.toLocaleString()}</span>

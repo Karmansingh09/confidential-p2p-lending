@@ -78,8 +78,12 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
                 <span className="status-enclave-val text-accent">{totalCount} Active</span>
               </div>
               <div className="status-enclave-row">
-                <span className="status-enclave-key">NETWORK</span>
-                <span className="status-enclave-val">Local Prototype</span>
+                <span className="status-enclave-key">SOURCE</span>
+                <span className="status-enclave-val">Demo Prototype State</span>
+              </div>
+              <div className="status-enclave-row">
+                <span className="status-enclave-key">ON-CHAIN</span>
+                <span className="status-enclave-val text-warning">Unconfirmed (Demo)</span>
               </div>
               <div className="status-enclave-row">
                 <span className="status-enclave-key">PRIVACY</span>

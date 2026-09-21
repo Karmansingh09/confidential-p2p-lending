@@ -117,11 +117,19 @@ export const WalletPage: React.FC<WalletPageProps> = ({
     }
   };
 
-  const handleDisconnectLace = async () => {
+  const handleDisconnectLace = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setConnectError(null);
     try {
+      console.log('[WALLET DISCONNECT] Initiating disconnect from WalletPage...');
       await sessionService.disconnect();
       onDisconnect();
+      console.log('[WALLET DISCONNECT] Disconnect completed successfully.');
+    } catch (err) {
+      console.error('[WALLET DISCONNECT ERROR]', err);
     } finally {
       setSession(sessionService.getSession());
       setHandshake(handshakeService.getHandshakeState());
@@ -323,8 +331,9 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                     <button
                       type="button"
                       className="btn-desk-nav font-mono"
-                      onClick={handleDisconnectLace}
-                      style={{ padding: '8px 16px', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                      onClick={(e) => void handleDisconnectLace(e)}
+                      style={{ padding: '8px 16px', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', cursor: 'pointer' }}
+                      data-testid="disconnect-lace-btn"
                     >
                       Disconnect Lace
                     </button>

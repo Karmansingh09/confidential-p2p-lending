@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { DashboardPage } from './pages/DashboardPage.js';
-import { CreateLoanPage } from './pages/CreateLoanPage.js';
+import { DashboardPage } from './pages/DashboardPage.tsx';
+import { CreateLoanPage } from './pages/CreateLoanPage.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
 import {
   connectMockAccount,
   disconnectMockAccount,
   switchMockRole,
   getWalletProvider,
-} from './lib/account-service.js';
+} from './lib/account-service.ts';
 import { subscribeToWalletSession, getWalletSessionService } from './lib/wallet-session-service.ts';
-import { createDefaultLoanRegistry } from './lib/application-store.js';
+import { createDefaultLoanRegistry } from './lib/application-store.ts';
 import { getTransactionRecoveryService } from './lib/transaction-recovery-service.ts';
-import type { LoanRegistry } from './lib/loan-registry.js';
-import type { LoanDetailsModel } from './types/index.js';
-import type { AccountContext, AccountRole } from './types/account.js';
+import type { LoanRegistry } from './lib/loan-registry.ts';
+import type { LoanDetailsModel } from './types/index.ts';
+import type { AccountContext, AccountRole } from './types/account.ts';
 import './App.css';
 
 export type AppView = 'landing' | 'dashboard' | 'create-loan';
@@ -67,7 +67,7 @@ export const App: React.FC = () => {
     const unsubscribe = subscribeToWalletSession((session) => {
       if (session.status === 'DISCONNECTED') {
         setSelectedRole('NONE');
-        setAccountContext(connectMockAccount('NONE'));
+        setAccountContext(disconnectMockAccount());
       } else if (session.status === 'CONNECTED' && session.account) {
         const effectiveRole = selectedRole !== 'NONE' ? selectedRole : (session.account.role ?? 'BORROWER');
         setSelectedRole(effectiveRole);

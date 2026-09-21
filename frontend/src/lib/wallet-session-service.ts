@@ -499,6 +499,10 @@ export class WalletSessionService {
    * Disconnects the active wallet session cleanly.
    */
   async disconnect(): Promise<WalletSessionResult> {
+    if (this.currentSession.status === 'DISCONNECTED' && this.currentSession.account === null) {
+      return { success: true, session: this.getSession() };
+    }
+
     try {
       await this.activeProvider.disconnect();
     } catch {

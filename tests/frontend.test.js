@@ -14294,5 +14294,83 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
         'Compact source fingerprint must match exactly (Commit #42 guard)'
       );
     });
+
+    it('Test 626 (Commit #43 Disconnect Lace Button Flow): WalletPage handleDisconnectLace transitions to DISCONNECTED cleanly without re-entrant loop', async () => {
+      const sessionService = resetWalletSessionService();
+      const mockConnectedApi = {
+        getConnectionStatus: async () => ({ status: 'connected' }),
+        getConfiguration: async () => ({ networkId: 'preprod' }),
+        hintUsage: async () => {},
+        getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded_preprod1button_test_address' }),
+        balanceUnsealedTransaction: async () => ({}),
+        submitTransaction: async () => 'txhash',
+      };
+
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => mockConnectedApi,
+      });
+
+      sessionService.setProvider(adapter);
+      await sessionService.connect();
+      assert.equal(sessionService.getSession().status, 'CONNECTED');
+      assert.ok(adapter.getAccount());
+
+      // App.tsx subscriber simulation
+      let appSubscriberFireCount = 0;
+      const unsub = sessionService.subscribe((session) => {
+        appSubscriberFireCount++;
+        if (session.status === 'DISCONNECTED') {
+          disconnectMockAccount();
+        }
+      });
+
+      try {
+        // Execute exact WalletPage handleDisconnectLace flow
+        let errorCaught = null;
+        let localSession = null;
+        try {
+          await sessionService.disconnect();
+          disconnectMockAccount();
+        } catch (err) {
+          errorCaught = err;
+        } finally {
+          localSession = sessionService.getSession();
+        }
+
+        assert.equal(errorCaught, null, 'handleDisconnectLace must not throw');
+        assert.ok(localSession);
+        assert.equal(localSession.status, 'DISCONNECTED', 'Session must be DISCONNECTED');
+        assert.equal(localSession.account, null, 'Session account must be null');
+        assert.equal(adapter.getConnectionStatus(), 'DISCONNECTED');
+        assert.equal(adapter.getAccount(), null);
+        assert.equal(appSubscriberFireCount, 1, 'Subscriber must fire exactly once without recursive looping');
+
+        // Verify button in WalletPage.tsx has proper event handling and markup
+        const walletPagePath = path.resolve(process.cwd(), 'frontend', 'src', 'pages', 'WalletPage.tsx');
+        const walletPageSrc = fs.readFileSync(walletPagePath, 'utf8');
+        assert.ok(walletPageSrc.includes('data-testid="disconnect-lace-btn"'), 'Disconnect Lace button must have test id');
+        assert.ok(walletPageSrc.includes('handleDisconnectLace(e)'), 'Button must pass event to handleDisconnectLace');
+        assert.ok(walletPageSrc.includes('e.preventDefault()'), 'handleDisconnectLace must call e.preventDefault');
+        assert.ok(walletPageSrc.includes('e.stopPropagation()'), 'handleDisconnectLace must call e.stopPropagation');
+      } finally {
+        unsub();
+        resetWalletProvider();
+      }
+    });
+
+    it('Test 627 (Commit #43 Contract Integrity): contracts/src/index.compact remains 100% untouched', () => {
+      const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+      assert.ok(fs.existsSync(contractPath));
+      const content = fs.readFileSync(contractPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      assert.equal(
+        COMPACT_SOURCE_FINGERPRINT,
+        hash,
+        'Compact source fingerprint must match exactly (Commit #43 guard)'
+      );
+    });
   });
 });

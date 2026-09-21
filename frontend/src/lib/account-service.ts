@@ -184,7 +184,7 @@ export function connectMockAccount(
   const provider = sessionService.getProvider();
 
   if (role === 'NONE') {
-    void sessionService.disconnect();
+    // Role NONE represents a disconnected state; do not trigger recursive disconnect
   } else if (provider instanceof LocalPrototypeWalletProvider) {
     provider.connectSync(role, customLoan);
     // Sync session
@@ -218,7 +218,9 @@ export function connectMockAccount(
  */
 export function disconnectMockAccount(): AccountContext {
   const sessionService = getWalletSessionService();
-  void sessionService.disconnect();
+  if (sessionService.getSession().status !== 'DISCONNECTED') {
+    void sessionService.disconnect();
+  }
   const netContext = sessionService.getProvider().getNetworkContext();
   return {
     identity: null,

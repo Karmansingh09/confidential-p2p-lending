@@ -164,6 +164,8 @@ export class WalletHandshakeService {
     let laceConnectionState: LaceConnectionState = 'LACE_NOT_DETECTED';
     if (this.lastError?.code === 'USER_REJECTED') {
       laceConnectionState = 'CONNECTION_REJECTED';
+    } else if (this.lastError?.code === 'NETWORK_MISMATCH') {
+      laceConnectionState = 'UNSUPPORTED_NETWORK';
     } else if (!isDetected) {
       laceConnectionState = 'LACE_NOT_DETECTED';
     } else if (this.isConnecting) {
@@ -278,6 +280,8 @@ export class WalletHandshakeService {
           handshakeErr = new WalletHandshakeError('WALLET_NOT_DETECTED', err.message);
         } else if (err.code === 'UNSUPPORTED_OPERATION') {
           handshakeErr = new WalletHandshakeError('UNSUPPORTED_PROVIDER', err.message);
+        } else if (err.code === 'UNSUPPORTED_NETWORK') {
+          handshakeErr = new WalletHandshakeError('NETWORK_MISMATCH', err.message);
         } else {
           handshakeErr = new WalletHandshakeError('CONNECTION_FAILED', err.message);
         }

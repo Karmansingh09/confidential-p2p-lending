@@ -27,6 +27,14 @@ export type ValidLaceNetworkId = (typeof VALID_LACE_NETWORKS)[number];
 export const DEFAULT_REAL_MIDNIGHT_NETWORK_ID: ValidLaceNetworkId = 'preprod';
 
 /**
+ * Official Midnight Preprod network endpoints.
+ */
+export const OFFICIAL_PREPROD_NODE_URL = 'https://rpc.preprod.midnight.network';
+export const OFFICIAL_PREPROD_INDEXER_URL = 'https://indexer.preprod.midnight.network/api/v3/graphql';
+export const OFFICIAL_PREPROD_INDEXER_WS_URL = 'wss://indexer.preprod.midnight.network/api/v3/graphql/ws';
+export const OFFICIAL_PREPROD_PROOF_SERVER_URL = 'http://localhost:6300';
+
+/**
  * Supported Midnight network identifiers.
  */
 export type MidnightNetwork =
@@ -102,6 +110,8 @@ export interface NetworkConfig {
   nodeRpcEndpoint?: NetworkEndpoint | null;
   /** Indexer GraphQL/REST endpoint, or null if unconfigured */
   indexerEndpoint?: NetworkEndpoint | null;
+  /** Local or remote proof server endpoint, or null if default */
+  proofServerEndpoint?: NetworkEndpoint | null;
   /** Indicates whether a compatible wallet connector was detected */
   walletConnectorAvailable: boolean;
   /** Indicates if pointing to real distributed ledger infrastructure */
@@ -111,6 +121,34 @@ export interface NetworkConfig {
   /** Validation status of this configuration */
   status: NetworkConfigurationStatus;
 }
+
+/**
+ * Canonical official Midnight Preprod network configuration.
+ */
+export const OFFICIAL_PREPROD_NETWORK_CONFIG: Readonly<NetworkConfig> = Object.freeze({
+  environment: 'TESTNET',
+  networkName: 'Midnight Preprod Testnet',
+  networkId: 'preprod',
+  nodeRpcEndpoint: {
+    url: OFFICIAL_PREPROD_NODE_URL,
+    protocol: 'https' as const,
+    isAccessible: true,
+  },
+  indexerEndpoint: {
+    url: OFFICIAL_PREPROD_INDEXER_URL,
+    protocol: 'https' as const,
+    isAccessible: true,
+  },
+  proofServerEndpoint: {
+    url: OFFICIAL_PREPROD_PROOF_SERVER_URL,
+    protocol: 'http' as const,
+    isAccessible: true,
+  },
+  walletConnectorAvailable: true,
+  isRealNetwork: true,
+  isPrototype: false,
+  status: 'CONFIGURED',
+});
 
 /**
  * Discrete states representing wallet connector discovery and lifecycle readiness.

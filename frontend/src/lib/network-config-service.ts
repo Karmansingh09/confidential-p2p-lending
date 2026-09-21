@@ -3,6 +3,11 @@ import {
   LOCAL_PROTOTYPE_NETWORK_ID,
   VALID_LACE_NETWORKS,
   DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  OFFICIAL_PREPROD_NETWORK_CONFIG,
+  OFFICIAL_PREPROD_NODE_URL,
+  OFFICIAL_PREPROD_INDEXER_URL,
+  OFFICIAL_PREPROD_INDEXER_WS_URL,
+  OFFICIAL_PREPROD_PROOF_SERVER_URL,
   type ValidLaceNetworkId,
   type NetworkConfig,
   type NetworkConfigurationStatus,
@@ -14,6 +19,11 @@ export {
   LOCAL_PROTOTYPE_NETWORK_ID,
   VALID_LACE_NETWORKS,
   DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  OFFICIAL_PREPROD_NETWORK_CONFIG,
+  OFFICIAL_PREPROD_NODE_URL,
+  OFFICIAL_PREPROD_INDEXER_URL,
+  OFFICIAL_PREPROD_INDEXER_WS_URL,
+  OFFICIAL_PREPROD_PROOF_SERVER_URL,
   type ValidLaceNetworkId,
 };
 
@@ -210,6 +220,13 @@ export function validateNetworkConfig(config: NetworkConfig): {
     const indexerErr = validateEndpointUrl(config.indexerEndpoint, 'indexerEndpoint');
     if (indexerErr) {
       return { valid: false, error: indexerErr };
+    }
+  }
+
+  if (config.proofServerEndpoint && config.proofServerEndpoint.url && config.proofServerEndpoint.url.trim() !== '') {
+    const proofErr = validateEndpointUrl(config.proofServerEndpoint, 'proofServerEndpoint');
+    if (proofErr) {
+      return { valid: false, error: proofErr };
     }
   }
 

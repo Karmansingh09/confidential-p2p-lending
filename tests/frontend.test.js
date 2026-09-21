@@ -145,6 +145,11 @@ import {
   LOCAL_PROTOTYPE_NETWORK_ID,
   VALID_LACE_NETWORKS,
   DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  OFFICIAL_PREPROD_NETWORK_CONFIG,
+  OFFICIAL_PREPROD_NODE_URL,
+  OFFICIAL_PREPROD_INDEXER_URL,
+  OFFICIAL_PREPROD_INDEXER_WS_URL,
+  OFFICIAL_PREPROD_PROOF_SERVER_URL,
   setTargetMidnightNetworkId,
 } from '../frontend/src/lib/network-config-service.ts';
 import {
@@ -13794,7 +13799,7 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
       global.window = origWin;
     });
 
-    it('Test 612 (Commit #40 Probing): Safe candidate auto-probing connects when subsequent valid candidate matches', async () => {
+    it('Test 612 (Commit #41 Explicit Preprod): Explicitly targets preprod and rejects without probing other networks on mismatch', async () => {
       resetNetworkConfig();
       const attemptedNetworks = [];
       const adapter = new MidnightWalletAdapter();
@@ -13819,16 +13824,26 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
         },
       });
 
-      await adapter.connect();
-      assert.equal(adapter.getConnectionStatus(), 'CONNECTED');
-      assert.equal(adapter.getReportedNetworkId(), 'undeployed');
-      assert.equal(adapter.getLaceConnectionState(), 'READY');
-      assert.ok(attemptedNetworks.includes('preprod'));
-      assert.ok(attemptedNetworks.includes('undeployed'));
+      await assert.rejects(
+        async () => await adapter.connect(),
+        (err) => {
+          assert.ok(err instanceof WalletAdapterError);
+          assert.equal(err.code, 'UNSUPPORTED_NETWORK');
+          assert.ok(err.message.includes('Network ID mismatch'));
+          assert.ok(err.message.includes('https://rpc.preprod.midnight.network'));
+          assert.ok(err.message.includes('https://indexer.preprod.midnight.network/api/v3/graphql'));
+          return true;
+        }
+      );
+
+      assert.equal(adapter.getConnectionStatus(), 'ERROR');
+      assert.equal(adapter.getLaceConnectionState(), 'UNSUPPORTED_NETWORK');
+      // STRICT INVARIANT: Never probe 'undeployed' or other networks when target is preprod
+      assert.deepEqual(attemptedNetworks, ['preprod']);
       resetNetworkConfig();
     });
 
-    it('Test 613 (Commit #40 Probing): User rejection immediately aborts probing without further attempts', async () => {
+    it('Test 613 (Commit #41 Explicit Preprod): User rejection on preprod immediately aborts without further attempts', async () => {
       resetNetworkConfig();
       const attemptedNetworks = [];
       const adapter = new MidnightWalletAdapter();
@@ -13861,23 +13876,24 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
       resetNetworkConfig();
     });
 
-    it('Test 614 (Commit #40 Sync): Post-connect configuration synchronization updates NetworkConfigService and reaches READY', async () => {
+    it('Test 614 (Commit #41 Preprod Connect): Real Preprod connection resolves, synchronizes NetworkConfigService, and reaches READY', async () => {
       resetNetworkConfig();
       const handshakeService = getWalletHandshakeService();
       const adapter = new MidnightWalletAdapter();
       adapter.injectMockConnectorForTesting({
         name: 'Midnight Lace Extension',
         rdns: 'org.midnight.mnLace',
-        connect: async () => {
+        connect: async (networkId) => {
+          assert.equal(networkId, 'preprod');
           return {
             getConfiguration: async () => ({
-              networkId: 'undeployed',
-              substrateNodeUri: 'http://localhost:9944',
-              indexerUri: 'http://localhost:8088',
+              networkId: 'preprod',
+              substrateNodeUri: OFFICIAL_PREPROD_NODE_URL,
+              indexerUri: OFFICIAL_PREPROD_INDEXER_URL,
             }),
-            getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1syncaddr' }),
+            getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1preprodaddr' }),
             balanceUnsealedTransaction: async () => ({ tx: {} }),
-            submitTransaction: async () => 'tx-hash-sync',
+            submitTransaction: async () => 'tx-hash-preprod',
           };
         },
       });
@@ -13886,14 +13902,17 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
       await adapter.connect();
 
       const activeConfig = getNetworkConfig();
-      assert.equal(activeConfig.networkId, 'undeployed');
+      assert.equal(activeConfig.networkId, 'preprod');
       assert.equal(activeConfig.environment, 'TESTNET');
       assert.equal(activeConfig.isRealNetwork, true);
-      assert.equal(activeConfig.nodeRpcEndpoint?.url, 'http://localhost:9944');
+      assert.equal(activeConfig.nodeRpcEndpoint?.url, OFFICIAL_PREPROD_NODE_URL);
+      assert.equal(activeConfig.indexerEndpoint?.url, OFFICIAL_PREPROD_INDEXER_URL);
+      assert.equal(activeConfig.proofServerEndpoint?.url, OFFICIAL_PREPROD_PROOF_SERVER_URL);
 
       const handshakeState = handshakeService.getHandshakeState();
       assert.equal(handshakeState.status, 'READY');
       assert.equal(handshakeState.networkCompatibility, 'MATCH');
+      assert.equal(handshakeState.walletNetwork, 'preprod');
 
       resetNetworkConfig();
       handshakeService.setProvider(getWalletProvider());
@@ -13908,6 +13927,114 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
         COMPACT_SOURCE_FINGERPRINT,
         hash,
         'Compact source fingerprint must match exactly (Commit #40 guard)'
+      );
+    });
+  });
+
+  describe('Commit #41: Official Midnight Preprod Configuration & Diagnostic Telemetry', () => {
+    it('Test 616 (Commit #41 Configuration): OFFICIAL_PREPROD_NETWORK_CONFIG defines canonical Preprod endpoints and passes validation', () => {
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.networkId, 'preprod');
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.environment, 'TESTNET');
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.nodeRpcEndpoint?.url, 'https://rpc.preprod.midnight.network');
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.indexerEndpoint?.url, 'https://indexer.preprod.midnight.network/api/v3/graphql');
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.proofServerEndpoint?.url, 'http://localhost:6300');
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.isRealNetwork, true);
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.isPrototype, false);
+      assert.equal(OFFICIAL_PREPROD_NETWORK_CONFIG.status, 'CONFIGURED');
+
+      const val = validateNetworkConfig(OFFICIAL_PREPROD_NETWORK_CONFIG);
+      assert.equal(val.valid, true);
+      assert.equal(val.error, undefined);
+    });
+
+    it('Test 617 (Commit #41 Diagnostics): Diagnostic logging captures telemetry without exposing private credentials', async () => {
+      const logs = [];
+      const origLog = console.log;
+      console.log = (...args) => {
+        logs.push(args.join(' '));
+      };
+
+      try {
+        const adapter = new MidnightWalletAdapter();
+        adapter.injectMockConnectorForTesting({
+          name: 'Midnight Lace Extension',
+          rdns: 'org.midnight.mnLace',
+          connect: async (networkId) => {
+            assert.equal(networkId, 'preprod');
+            return {
+              getConfiguration: async () => ({
+                networkId: 'preprod',
+                substrateNodeUri: OFFICIAL_PREPROD_NODE_URL,
+                indexerUri: OFFICIAL_PREPROD_INDEXER_URL,
+              }),
+              getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1preproddiag' }),
+              balanceUnsealedTransaction: async () => ({ tx: {} }),
+              submitTransaction: async () => 'tx-hash-diag',
+            };
+          },
+        });
+
+        await adapter.connect();
+
+        const diagLogs = logs.filter((l) => l.includes('[WALLET DIAGNOSTIC]'));
+        assert.ok(diagLogs.length >= 5);
+        assert.ok(diagLogs.some((l) => l.includes('requestedNetworkId = preprod')));
+        assert.ok(diagLogs.some((l) => l.includes('nodeEndpoint = https://rpc.preprod.midnight.network')));
+        assert.ok(diagLogs.some((l) => l.includes('indexerEndpoint = https://indexer.preprod.midnight.network/api/v3/graphql')));
+        assert.ok(diagLogs.some((l) => l.includes('proofServerMode = Local (http://localhost:6300)')));
+        assert.ok(diagLogs.some((l) => l.includes('actualConnectorNetworkId = preprod')));
+        assert.ok(diagLogs.some((l) => l.includes('compatibility = MATCH')));
+
+        // Zero sensitive leaks
+        for (const log of logs) {
+          assert.ok(!log.includes('seedPhrase'));
+          assert.ok(!log.includes('privateKey'));
+          assert.ok(!log.includes('sk_'));
+          assert.ok(!log.includes('secretWitness'));
+        }
+      } finally {
+        console.log = origLog;
+      }
+    });
+
+    it('Test 618 (Commit #41 Handshake Mapping): WalletHandshakeService maps UNSUPPORTED_NETWORK to NETWORK_MISMATCH status', async () => {
+      resetNetworkConfig();
+      const handshakeService = getWalletHandshakeService();
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => {
+          throw new Error('Network ID mismatch');
+        },
+      });
+
+      handshakeService.setProvider(adapter);
+      const result = await handshakeService.connect();
+
+      assert.equal(result.success, false);
+      assert.ok(result.error);
+      assert.equal(result.error.code, 'NETWORK_MISMATCH');
+      assert.ok(result.error.message.includes('Network ID mismatch'));
+      assert.ok(result.error.message.includes('Settings » Midnight'));
+
+      const state = handshakeService.getHandshakeState();
+      assert.equal(state.status, 'NETWORK_MISMATCH');
+      assert.equal(state.laceConnectionState, 'UNSUPPORTED_NETWORK');
+
+      resetNetworkConfig();
+      handshakeService.setProvider(getWalletProvider());
+    });
+
+    it('Test 619 (Commit #41 Contract Integrity): contracts/src/index.compact remains 100% untouched', () => {
+      const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+      assert.ok(fs.existsSync(contractPath));
+      const content = fs.readFileSync(contractPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      assert.equal(
+        COMPACT_SOURCE_FINGERPRINT,
+        hash,
+        'Compact source fingerprint must match exactly (Commit #41 guard)'
       );
     });
   });

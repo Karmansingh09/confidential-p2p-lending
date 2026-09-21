@@ -43,6 +43,11 @@ import {
   getRealMidnightNetworkId,
   LOCAL_PROTOTYPE_NETWORK_ID,
   VALID_LACE_NETWORKS,
+  DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  OFFICIAL_PREPROD_NETWORK_CONFIG,
+  OFFICIAL_PREPROD_NODE_URL,
+  OFFICIAL_PREPROD_INDEXER_URL,
+  OFFICIAL_PREPROD_PROOF_SERVER_URL,
   normalizeLaceNetworkId,
   type ValidLaceNetworkId,
 } from './network-config-service.ts';
@@ -444,16 +449,17 @@ export class MidnightWalletAdapter implements WalletProvider {
     // Phase 5: Connector Pre-Inspection
     const detectedConnectorNet = detectNetworkFromConnector(rawConnector);
 
-    // Resolve authentic target network ID for Midnight Lace
-    const targetNetworkId = detectedConnectorNet ?? getRealMidnightNetworkId();
+    // Target network MUST remain preprod - explicit single target
+    const targetNetworkId: ValidLaceNetworkId = 'preprod';
 
-    // Phase 2 Safe Diagnostic Logging: Before connector.connect()
-    console.log('[WALLET DEBUG] targetNetworkId =', targetNetworkId);
-    console.log('[WALLET DEBUG] connector =', discovery.connectorName || 'mnLace/lace');
-    console.log('[WALLET DEBUG] browserLocation =', typeof window !== 'undefined' ? window.location.href : 'N/A');
-    console.log('[WALLET DEBUG] rawConnector keys =', Object.keys(rawConnector || {}));
+    // Structured Diagnostic Logging: Before connector.connect()
+    console.log('[WALLET DIAGNOSTIC] requestedNetworkId =', targetNetworkId);
+    console.log('[WALLET DIAGNOSTIC] connector =', discovery.connectorName || 'mnLace/lace');
+    console.log('[WALLET DIAGNOSTIC] nodeEndpoint =', OFFICIAL_PREPROD_NODE_URL);
+    console.log('[WALLET DIAGNOSTIC] indexerEndpoint =', OFFICIAL_PREPROD_INDEXER_URL);
+    console.log('[WALLET DIAGNOSTIC] proofServerMode = Local (http://localhost:6300)');
     if (detectedConnectorNet) {
-      console.log('[WALLET DEBUG] detectedConnectorNet =', detectedConnectorNet);
+      console.log('[WALLET DIAGNOSTIC] actualConnectorNetworkId =', detectedConnectorNet);
     }
 
     // STRICT ARCHITECTURAL INVARIANT: Never pass prototype identifier to real connector
@@ -466,65 +472,58 @@ export class MidnightWalletAdapter implements WalletProvider {
       );
     }
 
-    // Candidate network list: start with primary target, then fallback to other valid Lace networks
-    const candidateNetworks: ValidLaceNetworkId[] = [
-      targetNetworkId,
-      ...VALID_LACE_NETWORKS.filter((net) => net !== targetNetworkId),
-    ];
-
     let api: MidnightConnectedAPI | null = null;
-    let successfulNetwork: ValidLaceNetworkId = targetNetworkId;
-    let lastError: unknown = null;
-
-    for (const candidate of candidateNetworks) {
-      try {
-        console.log('[WALLET DEBUG] Attempting connector.connect with networkId =', candidate);
-        if (typeof rawConnector.connect === 'function') {
-          api = await rawConnector.connect(candidate);
-        } else if (typeof rawConnector.enable === 'function') {
-          api = (await rawConnector.enable()) as MidnightConnectedAPI;
-        } else {
-          throw new Error('Connector missing connect/enable function');
-        }
-
-        successfulNetwork = candidate;
-        console.log('[WALLET DEBUG] connect() RESOLVED with networkId =', candidate);
-        console.log('[WALLET DEBUG] connect() resolved =', api ? 'ConnectedAPI obtained' : 'null');
-        break;
-      } catch (err: unknown) {
-        lastError = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        console.log('[WALLET DEBUG] connect() REJECTED for networkId =', candidate, 'with error =', msg);
-
-        // Immediate exit if user actively declined/cancelled authorization prompt
-        if (/reject|denied|declined|cancel|user/i.test(msg)) {
-          this.status = 'ERROR';
-          this.laceState = 'CONNECTION_REJECTED';
-          throw new WalletAdapterError(
-            'USER_REJECTED',
-            'User rejected wallet connection request.',
-            err
-          );
-        }
-
-        // If error is network mismatch, probe next candidate network
-        if (/network.*mismatch|invalid network/i.test(msg)) {
-          continue;
-        }
-
-        // Other non-mismatch fatal error
-        break;
+    try {
+      console.log('[WALLET DIAGNOSTIC] Attempting connector.connect with networkId =', targetNetworkId);
+      if (typeof rawConnector.connect === 'function') {
+        api = await rawConnector.connect(targetNetworkId);
+      } else if (typeof rawConnector.enable === 'function') {
+        api = (await rawConnector.enable()) as MidnightConnectedAPI;
+      } else {
+        throw new Error('Connector missing connect/enable function');
       }
+      console.log('[WALLET DIAGNOSTIC] connect() RESOLVED with networkId =', targetNetworkId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log('[WALLET DIAGNOSTIC] connect() REJECTED for networkId =', targetNetworkId, 'with error =', msg);
+
+      // Immediate exit if user actively declined/cancelled authorization prompt
+      if (/reject|denied|declined|cancel|user/i.test(msg)) {
+        this.status = 'ERROR';
+        this.laceState = 'CONNECTION_REJECTED';
+        throw new WalletAdapterError(
+          'USER_REJECTED',
+          'User rejected wallet connection request.',
+          err
+        );
+      }
+
+      // If error is network mismatch, map directly to UNSUPPORTED_NETWORK with actionable guidance
+      if (/network.*mismatch|invalid network/i.test(msg)) {
+        this.status = 'ERROR';
+        this.laceState = 'UNSUPPORTED_NETWORK';
+        throw new WalletAdapterError(
+          'UNSUPPORTED_NETWORK',
+          `Midnight wallet connection failed: Network ID mismatch. Lace is configured for a different network. In Lace extension, go to Settings » Midnight and set Node address to "${OFFICIAL_PREPROD_NODE_URL}" and Indexer address to "${OFFICIAL_PREPROD_INDEXER_URL}".`,
+          err
+        );
+      }
+
+      this.status = 'ERROR';
+      this.laceState = 'LACE_DETECTED';
+      throw new WalletAdapterError(
+        'CONNECTION_FAILED',
+        `Midnight wallet connection failed: ${msg}`,
+        err
+      );
     }
 
     if (!api) {
       this.status = 'ERROR';
       this.laceState = 'LACE_DETECTED';
-      const msg = lastError instanceof Error ? lastError.message : String(lastError);
       throw new WalletAdapterError(
         'CONNECTION_FAILED',
-        `Midnight wallet connection failed: ${msg}`,
-        lastError
+        'Midnight wallet connection failed: No connected API returned.'
       );
     }
 
@@ -565,9 +564,9 @@ export class MidnightWalletAdapter implements WalletProvider {
       // Non-blocking network inspection
     }
 
-    // Default reported network to the successful network that Lace connected with
-    if (!this.explicitReportedNetworkId && successfulNetwork) {
-      this.explicitReportedNetworkId = successfulNetwork;
+    // Default reported network to the target network that Lace connected with
+    if (!this.explicitReportedNetworkId && targetNetworkId) {
+      this.explicitReportedNetworkId = targetNetworkId;
     }
 
     // Retrieve real address - ANTI-FABRICATION: never fake an address
@@ -610,15 +609,18 @@ export class MidnightWalletAdapter implements WalletProvider {
     // Synchronize authoritative NetworkConfigService with authentic connected wallet network and endpoints
     const reportedNet = this.getReportedNetworkId();
     const netConfigService = getNetworkConfigService();
-    const currentConfig = netConfigService.getNetworkConfig();
 
     if (reportedNet) {
-      const nodeRpcUrl = (walletConfig?.substrateNodeUri as string) || null;
-      const indexerUrl = (walletConfig?.indexerUri as string) || null;
+      const nodeRpcUrl =
+        (walletConfig?.substrateNodeUri as string) ||
+        (reportedNet === 'preprod' ? OFFICIAL_PREPROD_NODE_URL : null);
+      const indexerUrl =
+        (walletConfig?.indexerUri as string) ||
+        (reportedNet === 'preprod' ? OFFICIAL_PREPROD_INDEXER_URL : null);
 
       netConfigService.setNetworkConfig({
         environment: reportedNet === 'mainnet' ? 'MAINNET' : 'TESTNET',
-        networkName: `Midnight ${reportedNet.toUpperCase()}`,
+        networkName: reportedNet === 'preprod' ? 'Midnight Preprod Testnet' : `Midnight ${reportedNet.toUpperCase()}`,
         networkId: reportedNet,
         nodeRpcEndpoint: nodeRpcUrl ? {
           url: nodeRpcUrl,
@@ -628,6 +630,10 @@ export class MidnightWalletAdapter implements WalletProvider {
           url: indexerUrl,
           protocol: indexerUrl.startsWith('https') ? 'https' : (indexerUrl.startsWith('wss') ? 'wss' : (indexerUrl.startsWith('ws') ? 'ws' : 'http')),
         } : null,
+        proofServerEndpoint: {
+          url: OFFICIAL_PREPROD_PROOF_SERVER_URL,
+          protocol: 'http',
+        },
         walletConnectorAvailable: true,
         isRealNetwork: true,
         isPrototype: false,
@@ -642,10 +648,12 @@ export class MidnightWalletAdapter implements WalletProvider {
     const expectedConfig = netConfigService.getNetworkConfig();
     const netEval = evaluateNetworkCompatibility(expectedConfig, reportedNet);
 
-    // Phase 2 Safe Diagnostic Logging: Post-connect evaluation
-    console.log('[WALLET DEBUG] reportedNetworkId =', reportedNet || 'unavailable');
-    console.log('[WALLET DEBUG] expectedNetworkId =', expectedConfig.networkId);
-    console.log('[WALLET DEBUG] compatibility =', netEval.compatibility);
+    // Structured Diagnostic Logging: Post-connect evaluation
+    console.log('[WALLET DIAGNOSTIC] actualConnectorNetworkId =', reportedNet || 'unavailable');
+    console.log('[WALLET DIAGNOSTIC] nodeEndpoint =', expectedConfig.nodeRpcEndpoint?.url || OFFICIAL_PREPROD_NODE_URL);
+    console.log('[WALLET DIAGNOSTIC] indexerEndpoint =', expectedConfig.indexerEndpoint?.url || OFFICIAL_PREPROD_INDEXER_URL);
+    console.log('[WALLET DIAGNOSTIC] proofServerMode = Local (http://localhost:6300)');
+    console.log('[WALLET DIAGNOSTIC] compatibility =', netEval.compatibility);
 
     if (reportedNet && netEval.compatibility === 'MISMATCH') {
       // Confirmed mismatch after actual wallet network ID retrieved

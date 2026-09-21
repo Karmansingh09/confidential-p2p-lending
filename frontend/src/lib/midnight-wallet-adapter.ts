@@ -42,8 +42,56 @@ import {
   getNetworkConfigService,
   getRealMidnightNetworkId,
   LOCAL_PROTOTYPE_NETWORK_ID,
+  VALID_LACE_NETWORKS,
+  normalizeLaceNetworkId,
+  type ValidLaceNetworkId,
 } from './network-config-service.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
+
+/**
+ * Safe connector property inspection before connect (Phase 5).
+ * Inspects if the injected connector exposes any property or method indicating the wallet's current network.
+ */
+export function detectNetworkFromConnector(connector: unknown): ValidLaceNetworkId | null {
+  if (!connector || typeof connector !== 'object') return null;
+  const conn = connector as Record<string, unknown>;
+
+  // Check candidate string properties
+  const candidateKeys = [
+    'networkId',
+    'network',
+    'selectedNetwork',
+    'selectedNetworkId',
+    'activeNetwork',
+    'activeNetworkId',
+    'currentNetwork',
+    'targetNetwork',
+  ];
+  for (const key of candidateKeys) {
+    const val = conn[key];
+    if (typeof val === 'string') {
+      const normalized = normalizeLaceNetworkId(val);
+      if (normalized) return normalized;
+    }
+  }
+
+  // Check candidate inspection methods if safe and synchronous
+  for (const fnKey of ['getNetwork', 'getNetworkId', 'getSelectedNetwork']) {
+    if (typeof conn[fnKey] === 'function') {
+      try {
+        const val = (conn[fnKey] as () => unknown)();
+        if (typeof val === 'string') {
+          const normalized = normalizeLaceNetworkId(val);
+          if (normalized) return normalized;
+        }
+      } catch {
+        // Non-blocking inspection
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * Real Midnight / Lace Wallet Adapter.
@@ -393,8 +441,20 @@ export class MidnightWalletAdapter implements WalletProvider {
       );
     }
 
+    // Phase 5: Connector Pre-Inspection
+    const detectedConnectorNet = detectNetworkFromConnector(rawConnector);
+
     // Resolve authentic target network ID for Midnight Lace
-    const targetNetworkId = getRealMidnightNetworkId();
+    const targetNetworkId = detectedConnectorNet ?? getRealMidnightNetworkId();
+
+    // Phase 2 Safe Diagnostic Logging: Before connector.connect()
+    console.log('[WALLET DEBUG] targetNetworkId =', targetNetworkId);
+    console.log('[WALLET DEBUG] connector =', discovery.connectorName || 'mnLace/lace');
+    console.log('[WALLET DEBUG] browserLocation =', typeof window !== 'undefined' ? window.location.href : 'N/A');
+    console.log('[WALLET DEBUG] rawConnector keys =', Object.keys(rawConnector || {}));
+    if (detectedConnectorNet) {
+      console.log('[WALLET DEBUG] detectedConnectorNet =', detectedConnectorNet);
+    }
 
     // STRICT ARCHITECTURAL INVARIANT: Never pass prototype identifier to real connector
     if ((targetNetworkId as string) === (LOCAL_PROTOTYPE_NETWORK_ID as string)) {
@@ -406,32 +466,65 @@ export class MidnightWalletAdapter implements WalletProvider {
       );
     }
 
-    let api: MidnightConnectedAPI;
-    try {
-      if (typeof rawConnector.connect === 'function') {
-        api = await rawConnector.connect(targetNetworkId);
-      } else if (typeof rawConnector.enable === 'function') {
-        api = (await rawConnector.enable()) as MidnightConnectedAPI;
-      } else {
-        throw new Error('Connector missing connect/enable function');
+    // Candidate network list: start with primary target, then fallback to other valid Lace networks
+    const candidateNetworks: ValidLaceNetworkId[] = [
+      targetNetworkId,
+      ...VALID_LACE_NETWORKS.filter((net) => net !== targetNetworkId),
+    ];
+
+    let api: MidnightConnectedAPI | null = null;
+    let successfulNetwork: ValidLaceNetworkId = targetNetworkId;
+    let lastError: unknown = null;
+
+    for (const candidate of candidateNetworks) {
+      try {
+        console.log('[WALLET DEBUG] Attempting connector.connect with networkId =', candidate);
+        if (typeof rawConnector.connect === 'function') {
+          api = await rawConnector.connect(candidate);
+        } else if (typeof rawConnector.enable === 'function') {
+          api = (await rawConnector.enable()) as MidnightConnectedAPI;
+        } else {
+          throw new Error('Connector missing connect/enable function');
+        }
+
+        successfulNetwork = candidate;
+        console.log('[WALLET DEBUG] connect() RESOLVED with networkId =', candidate);
+        console.log('[WALLET DEBUG] connect() resolved =', api ? 'ConnectedAPI obtained' : 'null');
+        break;
+      } catch (err: unknown) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log('[WALLET DEBUG] connect() REJECTED for networkId =', candidate, 'with error =', msg);
+
+        // Immediate exit if user actively declined/cancelled authorization prompt
+        if (/reject|denied|declined|cancel|user/i.test(msg)) {
+          this.status = 'ERROR';
+          this.laceState = 'CONNECTION_REJECTED';
+          throw new WalletAdapterError(
+            'USER_REJECTED',
+            'User rejected wallet connection request.',
+            err
+          );
+        }
+
+        // If error is network mismatch, probe next candidate network
+        if (/network.*mismatch|invalid network/i.test(msg)) {
+          continue;
+        }
+
+        // Other non-mismatch fatal error
+        break;
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/reject|denied|declined|cancel|user/i.test(msg)) {
-        this.status = 'ERROR';
-        this.laceState = 'CONNECTION_REJECTED';
-        throw new WalletAdapterError(
-          'USER_REJECTED',
-          'User rejected wallet connection request.',
-          err
-        );
-      }
+    }
+
+    if (!api) {
       this.status = 'ERROR';
       this.laceState = 'LACE_DETECTED';
+      const msg = lastError instanceof Error ? lastError.message : String(lastError);
       throw new WalletAdapterError(
         'CONNECTION_FAILED',
         `Midnight wallet connection failed: ${msg}`,
-        err
+        lastError
       );
     }
 
@@ -439,6 +532,7 @@ export class MidnightWalletAdapter implements WalletProvider {
     this.status = 'CONNECTED';
 
     // Retrieve network identity if reported by wallet
+    let walletConfig: Record<string, unknown> | null = null;
     try {
       if (typeof api.getConnectionStatus === 'function') {
         const connStatus = await api.getConnectionStatus();
@@ -447,13 +541,19 @@ export class MidnightWalletAdapter implements WalletProvider {
         }
       } else if (typeof api.getConfiguration === 'function') {
         const cfg = await api.getConfiguration();
-        if (cfg && cfg.networkId) {
-          this.explicitReportedNetworkId = cfg.networkId;
+        if (cfg) {
+          walletConfig = cfg as Record<string, unknown>;
+          if (cfg.networkId) {
+            this.explicitReportedNetworkId = typeof cfg.networkId === 'string' ? cfg.networkId : String(cfg.networkId);
+          }
         }
       } else if (typeof api.serviceUriConfig === 'function') {
         const cfg = await api.serviceUriConfig();
-        if (cfg && cfg.networkId) {
-          this.explicitReportedNetworkId = cfg.networkId;
+        if (cfg) {
+          walletConfig = cfg as Record<string, unknown>;
+          if (cfg.networkId) {
+            this.explicitReportedNetworkId = cfg.networkId;
+          }
         }
       } else if (typeof api.state === 'function') {
         const st = (await api.state()) as Record<string, unknown>;
@@ -463,6 +563,11 @@ export class MidnightWalletAdapter implements WalletProvider {
       }
     } catch {
       // Non-blocking network inspection
+    }
+
+    // Default reported network to the successful network that Lace connected with
+    if (!this.explicitReportedNetworkId && successfulNetwork) {
+      this.explicitReportedNetworkId = successfulNetwork;
     }
 
     // Retrieve real address - ANTI-FABRICATION: never fake an address
@@ -478,7 +583,12 @@ export class MidnightWalletAdapter implements WalletProvider {
           }
         }
       } else if (typeof api.getUnshieldedAddress === 'function') {
-        resolvedAddress = await api.getUnshieldedAddress();
+        const unshielded = await api.getUnshieldedAddress();
+        if (typeof unshielded === 'string') {
+          resolvedAddress = unshielded;
+        } else if (unshielded && typeof unshielded === 'object' && 'unshieldedAddress' in unshielded) {
+          resolvedAddress = (unshielded as { unshieldedAddress: string }).unshieldedAddress;
+        }
       } else if (typeof api.state === 'function') {
         const st = (await api.state()) as Record<string, unknown>;
         if (st && typeof st.address === 'string') {
@@ -497,13 +607,45 @@ export class MidnightWalletAdapter implements WalletProvider {
       address: resolvedAddress,
     };
 
+    // Synchronize authoritative NetworkConfigService with authentic connected wallet network and endpoints
+    const reportedNet = this.getReportedNetworkId();
+    const netConfigService = getNetworkConfigService();
+    const currentConfig = netConfigService.getNetworkConfig();
+
+    if (reportedNet) {
+      const nodeRpcUrl = (walletConfig?.substrateNodeUri as string) || null;
+      const indexerUrl = (walletConfig?.indexerUri as string) || null;
+
+      netConfigService.setNetworkConfig({
+        environment: reportedNet === 'mainnet' ? 'MAINNET' : 'TESTNET',
+        networkName: `Midnight ${reportedNet.toUpperCase()}`,
+        networkId: reportedNet,
+        nodeRpcEndpoint: nodeRpcUrl ? {
+          url: nodeRpcUrl,
+          protocol: nodeRpcUrl.startsWith('https') ? 'https' : (nodeRpcUrl.startsWith('wss') ? 'wss' : (nodeRpcUrl.startsWith('ws') ? 'ws' : 'http')),
+        } : null,
+        indexerEndpoint: indexerUrl ? {
+          url: indexerUrl,
+          protocol: indexerUrl.startsWith('https') ? 'https' : (indexerUrl.startsWith('wss') ? 'wss' : (indexerUrl.startsWith('ws') ? 'ws' : 'http')),
+        } : null,
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+        status: 'CONFIGURED',
+      }, true);
+    }
+
     // Evaluate capabilities and strict network compatibility
     const canSign = typeof api.balanceUnsealedTransaction === 'function';
     const canSubmit = typeof api.submitTransaction === 'function';
     const isTxCapable = canSign && canSubmit;
-    const reportedNet = this.getReportedNetworkId();
-    const expectedConfig = getNetworkConfigService().getNetworkConfig();
+    const expectedConfig = netConfigService.getNetworkConfig();
     const netEval = evaluateNetworkCompatibility(expectedConfig, reportedNet);
+
+    // Phase 2 Safe Diagnostic Logging: Post-connect evaluation
+    console.log('[WALLET DEBUG] reportedNetworkId =', reportedNet || 'unavailable');
+    console.log('[WALLET DEBUG] expectedNetworkId =', expectedConfig.networkId);
+    console.log('[WALLET DEBUG] compatibility =', netEval.compatibility);
 
     if (reportedNet && netEval.compatibility === 'MISMATCH') {
       // Confirmed mismatch after actual wallet network ID retrieved

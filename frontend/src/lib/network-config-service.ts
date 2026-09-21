@@ -42,8 +42,9 @@ export function normalizeLaceNetworkId(id?: string | null): ValidLaceNetworkId |
  * RESOLUTION ORDER:
  * 1. Environment variable: import.meta.env?.VITE_MIDNIGHT_NETWORK_ID
  * 2. Window variable: (window as any).MIDNIGHT_NETWORK_ID
- * 3. Active NetworkConfig (if NOT LOCAL and NOT midnight-prototype-local)
- * 4. Fallback: DEFAULT_REAL_MIDNIGHT_NETWORK_ID ('preprod')
+ * 3. Browser localStorage: localStorage.getItem('midnight_network_id')
+ * 4. Active NetworkConfig (if NOT LOCAL and NOT midnight-prototype-local)
+ * 5. Fallback: DEFAULT_REAL_MIDNIGHT_NETWORK_ID ('preprod')
  *
  * GUARANTEE: NEVER returns 'midnight-prototype-local'.
  */
@@ -73,7 +74,20 @@ export function getRealMidnightNetworkId(): ValidLaceNetworkId {
     // Non-blocking window check
   }
 
-  // 3. Active application network configuration
+  // 3. Browser localStorage override
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = window.localStorage['midnight_network_id'];
+      if (stored && typeof stored === 'string') {
+        const normalizedStored = normalizeLaceNetworkId(stored);
+        if (normalizedStored) return normalizedStored;
+      }
+    }
+  } catch {
+    // Non-blocking storage check
+  }
+
+  // 4. Active application network configuration
   try {
     const netConfig = getNetworkConfigService().getNetworkConfig();
     if (
@@ -88,8 +102,25 @@ export function getRealMidnightNetworkId(): ValidLaceNetworkId {
     // Non-blocking config check
   }
 
-  // 4. Default authentic target for Midnight challenge
+  // 5. Default authentic target for Midnight challenge
   return DEFAULT_REAL_MIDNIGHT_NETWORK_ID;
+}
+
+/**
+ * Sets or clears the target Midnight network ID in browser localStorage.
+ */
+export function setTargetMidnightNetworkId(networkId?: ValidLaceNetworkId | null): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (networkId) {
+        window.localStorage['midnight_network_id'] = networkId;
+      } else {
+        delete window.localStorage['midnight_network_id'];
+      }
+    }
+  } catch {
+    // Non-blocking storage operation
+  }
 }
 
 /**

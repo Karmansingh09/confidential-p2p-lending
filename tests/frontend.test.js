@@ -96,6 +96,7 @@ import {
 import {
   MidnightWalletAdapter,
   createMidnightWalletAdapter,
+  detectNetworkFromConnector,
 } from '../frontend/src/lib/midnight-wallet-adapter.ts';
 import { WalletAdapterError } from '../frontend/src/types/wallet-adapter.ts';
 import {
@@ -144,6 +145,7 @@ import {
   LOCAL_PROTOTYPE_NETWORK_ID,
   VALID_LACE_NETWORKS,
   DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  setTargetMidnightNetworkId,
 } from '../frontend/src/lib/network-config-service.ts';
 import {
   discoverWalletConnector,
@@ -13763,6 +13765,149 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
         COMPACT_SOURCE_FINGERPRINT,
         hash,
         'Compact source fingerprint must match exactly (Commit #39 guard)'
+      );
+    });
+  });
+
+  describe('Commit #40: Resilient Multi-Network Probing & Real Network Synchronization', () => {
+    it('Test 610 (Commit #40 Detection): detectNetworkFromConnector extracts valid Lace network identifier', () => {
+      assert.equal(detectNetworkFromConnector({ networkId: 'undeployed' }), 'undeployed');
+      assert.equal(detectNetworkFromConnector({ network: 'preview-testnet' }), 'preview');
+      assert.equal(detectNetworkFromConnector({ selectedNetwork: 'devnet' }), 'devnet');
+      assert.equal(detectNetworkFromConnector({ getNetwork: () => 'preprod' }), 'preprod');
+      assert.equal(detectNetworkFromConnector({}), null);
+      assert.equal(detectNetworkFromConnector(null), null);
+    });
+
+    it('Test 611 (Commit #40 Config): setTargetMidnightNetworkId stores override for getRealMidnightNetworkId', () => {
+      const origWin = global.window;
+      global.window = {
+        localStorage: {},
+      };
+
+      setTargetMidnightNetworkId('devnet');
+      assert.equal(getRealMidnightNetworkId(), 'devnet');
+
+      setTargetMidnightNetworkId(null);
+      assert.equal(getRealMidnightNetworkId(), DEFAULT_REAL_MIDNIGHT_NETWORK_ID);
+
+      global.window = origWin;
+    });
+
+    it('Test 612 (Commit #40 Probing): Safe candidate auto-probing connects when subsequent valid candidate matches', async () => {
+      resetNetworkConfig();
+      const attemptedNetworks = [];
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async (networkId) => {
+          attemptedNetworks.push(networkId);
+          if (networkId !== 'undeployed') {
+            throw new Error('Network ID mismatch');
+          }
+          return {
+            getConfiguration: async () => ({
+              networkId: 'undeployed',
+              substrateNodeUri: 'http://localhost:9944',
+              indexerUri: 'http://localhost:8088',
+            }),
+            getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1undeployedaddr' }),
+            balanceUnsealedTransaction: async () => ({ tx: {} }),
+            submitTransaction: async () => 'tx-hash-undeployed',
+          };
+        },
+      });
+
+      await adapter.connect();
+      assert.equal(adapter.getConnectionStatus(), 'CONNECTED');
+      assert.equal(adapter.getReportedNetworkId(), 'undeployed');
+      assert.equal(adapter.getLaceConnectionState(), 'READY');
+      assert.ok(attemptedNetworks.includes('preprod'));
+      assert.ok(attemptedNetworks.includes('undeployed'));
+      resetNetworkConfig();
+    });
+
+    it('Test 613 (Commit #40 Probing): User rejection immediately aborts probing without further attempts', async () => {
+      resetNetworkConfig();
+      const attemptedNetworks = [];
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async (networkId) => {
+          attemptedNetworks.push(networkId);
+          if (networkId === 'preprod') {
+            throw new Error('User rejected the connection request in Lace extension');
+          }
+          return {
+            getConnectionStatus: async () => ({ isConnected: true, networkId }),
+          };
+        },
+      });
+
+      await assert.rejects(
+        async () => await adapter.connect(),
+        (err) => {
+          assert.ok(err instanceof WalletAdapterError);
+          assert.equal(err.code, 'USER_REJECTED');
+          return true;
+        }
+      );
+
+      assert.equal(attemptedNetworks.length, 1);
+      assert.equal(attemptedNetworks[0], 'preprod');
+      assert.equal(adapter.getLaceConnectionState(), 'CONNECTION_REJECTED');
+      resetNetworkConfig();
+    });
+
+    it('Test 614 (Commit #40 Sync): Post-connect configuration synchronization updates NetworkConfigService and reaches READY', async () => {
+      resetNetworkConfig();
+      const handshakeService = getWalletHandshakeService();
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => {
+          return {
+            getConfiguration: async () => ({
+              networkId: 'undeployed',
+              substrateNodeUri: 'http://localhost:9944',
+              indexerUri: 'http://localhost:8088',
+            }),
+            getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1syncaddr' }),
+            balanceUnsealedTransaction: async () => ({ tx: {} }),
+            submitTransaction: async () => 'tx-hash-sync',
+          };
+        },
+      });
+
+      handshakeService.setProvider(adapter);
+      await adapter.connect();
+
+      const activeConfig = getNetworkConfig();
+      assert.equal(activeConfig.networkId, 'undeployed');
+      assert.equal(activeConfig.environment, 'TESTNET');
+      assert.equal(activeConfig.isRealNetwork, true);
+      assert.equal(activeConfig.nodeRpcEndpoint?.url, 'http://localhost:9944');
+
+      const handshakeState = handshakeService.getHandshakeState();
+      assert.equal(handshakeState.status, 'READY');
+      assert.equal(handshakeState.networkCompatibility, 'MATCH');
+
+      resetNetworkConfig();
+      handshakeService.setProvider(getWalletProvider());
+    });
+
+    it('Test 615 (Commit #40 Contract Integrity): contracts/src/index.compact remains 100% untouched', () => {
+      const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+      assert.ok(fs.existsSync(contractPath));
+      const content = fs.readFileSync(contractPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      assert.equal(
+        COMPACT_SOURCE_FINGERPRINT,
+        hash,
+        'Compact source fingerprint must match exactly (Commit #40 guard)'
       );
     });
   });

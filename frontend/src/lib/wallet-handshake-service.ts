@@ -1,6 +1,6 @@
 import type { WalletProvider } from './wallet-provider.ts';
 import { getWalletSessionService, WalletSessionService } from './wallet-session-service.ts';
-import { getNetworkConfigService } from './network-config-service.ts';
+import { getNetworkConfigService, getRealMidnightNetworkId } from './network-config-service.ts';
 import { discoverWalletConnector } from './wallet-connector-discovery.ts';
 import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 import type {
@@ -71,9 +71,18 @@ export class WalletHandshakeService {
     const provider = this.getProvider();
     const netConfigService = getNetworkConfigService();
     const expectedConfig = netConfigService.getNetworkConfig();
+    const effectiveExpectedConfig =
+      !provider.isPrototype && expectedConfig.environment === 'LOCAL'
+        ? {
+            ...expectedConfig,
+            networkId: getRealMidnightNetworkId(),
+            environment: 'TESTNET' as const,
+          }
+        : expectedConfig;
+
     const expectedNetwork =
-      expectedConfig.networkId ??
-      (expectedConfig.environment === 'LOCAL' ? LOCAL_PROTOTYPE_NETWORK_ID : '');
+      effectiveExpectedConfig.networkId ??
+      (effectiveExpectedConfig.environment === 'LOCAL' ? LOCAL_PROTOTYPE_NETWORK_ID : '');
 
     // 1. Connector Detection
     let isDetected = false;
@@ -92,13 +101,13 @@ export class WalletHandshakeService {
 
     // 3. Identity Resolution
     const account = isConnected ? provider.getAccount() : null;
-    const identityResolved = !!(account && (account.publicKey || account.publicKeyHex));
+    const identityResolved = !!(account && (account.publicKey || account.publicKeyHex || account.address));
 
     // 4. Wallet Network Identification & Compatibility
     const walletNetwork =
       typeof provider.getReportedNetworkId === 'function' ? provider.getReportedNetworkId() : null;
 
-    const netComp = evaluateNetworkCompatibility(expectedConfig, walletNetwork);
+    const netComp = evaluateNetworkCompatibility(effectiveExpectedConfig, walletNetwork);
     const networkCompatibility = netComp.compatibility;
 
     // 5. Capability Verification

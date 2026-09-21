@@ -327,6 +327,10 @@ export function resolveLaceConnectionState(
   if (params.networkCompatible === false) {
     return 'UNSUPPORTED_NETWORK';
   }
+  // If network compatibility is unknown or pending, stay in CONNECTED (never READY, never UNSUPPORTED)
+  if (params.networkCompatible !== true) {
+    return 'CONNECTED';
+  }
   if (!params.canSign || !params.canSubmit) {
     return 'CONNECTED_NOT_TRANSACTION_CAPABLE';
   }

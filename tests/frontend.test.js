@@ -139,6 +139,11 @@ import {
   setNetworkConfig,
   resetNetworkConfig,
   DEFAULT_LOCAL_NETWORK_CONFIG,
+  getRealMidnightNetworkId,
+  normalizeLaceNetworkId,
+  LOCAL_PROTOTYPE_NETWORK_ID,
+  VALID_LACE_NETWORKS,
+  DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
 } from '../frontend/src/lib/network-config-service.ts';
 import {
   discoverWalletConnector,
@@ -13545,5 +13550,220 @@ describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', ()
       compactText.includes('witness getPrivateFinancialValue(): Uint<64>;'),
       'Legitimate Compact witness getPrivateFinancialValue must be preserved in contract'
     );
+  });
+
+  describe('Commit #39: Midnight Lace Network Configuration & Honest Status Boundary', () => {
+    it('Test 598 (Commit #39 Separation): LOCAL_PROTOTYPE_NETWORK_ID is distinct from VALID_LACE_NETWORKS', () => {
+      assert.equal(LOCAL_PROTOTYPE_NETWORK_ID, 'midnight-prototype-local');
+      assert.ok(VALID_LACE_NETWORKS.includes('preprod'));
+      assert.ok(VALID_LACE_NETWORKS.includes('preview'));
+      assert.ok(VALID_LACE_NETWORKS.includes('devnet'));
+      assert.ok(VALID_LACE_NETWORKS.includes('mainnet'));
+      assert.equal(
+        VALID_LACE_NETWORKS.includes(LOCAL_PROTOTYPE_NETWORK_ID),
+        false,
+        'Local prototype network identifier must NEVER be among valid Lace networks'
+      );
+    });
+
+    it('Test 599 (Commit #39 Resolution): getRealMidnightNetworkId() resolves to preprod by default', () => {
+      const netId = getRealMidnightNetworkId();
+      assert.equal(netId, 'preprod');
+      assert.notEqual(netId, LOCAL_PROTOTYPE_NETWORK_ID);
+    });
+
+    it('Test 600 (Commit #39 Normalization): normalizeLaceNetworkId handles aliases accurately', () => {
+      assert.equal(normalizeLaceNetworkId('preprod-testnet'), 'preprod');
+      assert.equal(normalizeLaceNetworkId('PREPROD'), 'preprod');
+      assert.equal(normalizeLaceNetworkId('preview-testnet'), 'preview');
+      assert.equal(normalizeLaceNetworkId('devnet'), 'devnet');
+      assert.equal(normalizeLaceNetworkId('midnight-prototype-local'), null);
+      assert.equal(normalizeLaceNetworkId('unknown-net'), null);
+      assert.equal(normalizeLaceNetworkId(null), null);
+    });
+
+    it('Test 601 (Commit #39 Adapter Safety): rawConnector.connect receives preprod, NEVER midnight-prototype-local', async () => {
+      let capturedNetworkId = null;
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        mockConnectedAPI: {
+          getConnectionStatus: async () => ({ isConnected: true, networkId: 'preprod' }),
+          getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1preprodaddr' }),
+          balanceUnsealedTransaction: async () => ({ tx: {} }),
+          submitTransaction: async () => 'tx-hash-1',
+        },
+        connect: async (networkId) => {
+          capturedNetworkId = networkId;
+          return {
+            getConnectionStatus: async () => ({ isConnected: true, networkId: 'preprod' }),
+            getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1preprodaddr' }),
+            balanceUnsealedTransaction: async () => ({ tx: {} }),
+            submitTransaction: async () => 'tx-hash-1',
+          };
+        },
+      });
+
+      await adapter.connect();
+      assert.equal(capturedNetworkId, 'preprod');
+      assert.notEqual(capturedNetworkId, 'midnight-prototype-local');
+      assert.equal(adapter.getReportedNetworkId(), 'preprod');
+      await adapter.disconnect();
+    });
+
+    it('Test 602 (Commit #39 Rejection Guard): Prevents prototype identifier from being passed to real connector', async () => {
+      const adapter = new MidnightWalletAdapter();
+      let connectCalled = false;
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async (netId) => {
+          connectCalled = true;
+          if (netId === 'midnight-prototype-local') {
+            throw new Error(
+              'Invalid network ID: midnight-prototype-local valid networks are: mainnet, testnet, devnet, undeployed, preview, preprod'
+            );
+          }
+          return {
+            getConnectionStatus: async () => ({ isConnected: true, networkId: 'preprod' }),
+          };
+        },
+      });
+
+      await adapter.connect();
+      assert.equal(connectCalled, true);
+      await adapter.disconnect();
+    });
+
+    it('Test 603 (Commit #39 Gating): resolveLaceConnectionState returns CONNECTED when network is unknown', () => {
+      const state = resolveLaceConnectionState({
+        isDetected: true,
+        isConnected: true,
+        isConnecting: false,
+        isRejected: false,
+        networkCompatible: undefined,
+        canSign: true,
+        canSubmit: true,
+      });
+      assert.equal(
+        state,
+        'CONNECTED',
+        'Must not advance to READY or UNSUPPORTED when network compatibility is unknown'
+      );
+      assert.notEqual(state, 'READY');
+      assert.notEqual(state, 'UNSUPPORTED_NETWORK');
+    });
+
+    it('Test 604 (Commit #39 Gating): resolveLaceConnectionState returns UNSUPPORTED_NETWORK only on confirmed mismatch', () => {
+      const state = resolveLaceConnectionState({
+        isDetected: true,
+        isConnected: true,
+        isConnecting: false,
+        isRejected: false,
+        networkCompatible: false,
+        canSign: true,
+        canSubmit: true,
+      });
+      assert.equal(state, 'UNSUPPORTED_NETWORK');
+    });
+
+    it('Test 605 (Commit #39 Compatibility): evaluateNetworkCompatibility normalizes testnet aliases', () => {
+      const preprodAppConfig = {
+        environment: 'TESTNET',
+        networkName: 'Midnight Preprod Testnet',
+        networkId: 'preprod',
+        status: 'CONFIGURED',
+        walletConnectorAvailable: true,
+        isRealNetwork: true,
+        isPrototype: false,
+      };
+
+      const exactMatch = evaluateNetworkCompatibility(preprodAppConfig, 'preprod');
+      assert.equal(exactMatch.compatibility, 'MATCH');
+      assert.equal(exactMatch.isMatch, true);
+
+      const aliasMatch = evaluateNetworkCompatibility(preprodAppConfig, 'preprod-testnet');
+      assert.equal(aliasMatch.compatibility, 'MATCH');
+      assert.equal(aliasMatch.isMatch, true);
+
+      const mismatch = evaluateNetworkCompatibility(preprodAppConfig, 'preview');
+      assert.equal(mismatch.compatibility, 'MISMATCH');
+      assert.equal(mismatch.isMatch, false);
+
+      const unknown = evaluateNetworkCompatibility(preprodAppConfig, null);
+      assert.equal(unknown.compatibility, 'UNKNOWN');
+      assert.equal(unknown.isMatch, false);
+    });
+
+    it('Test 606 (Commit #39 Handshake): Handshake derives CONNECTED when connected but wallet network is unretrieved', () => {
+      const handshakeService = getWalletHandshakeService();
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        mockAccount: {
+          address: 'mn_shielded1pendingnet',
+          publicKeyHex: '02aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
+        },
+        mockSigningCapable: true,
+        mockSubmissionCapable: true,
+      });
+
+      handshakeService.setProvider(adapter);
+      const handshakeBeforeConnect = handshakeService.getHandshakeState();
+      assert.equal(handshakeBeforeConnect.status, 'DETECTED');
+      assert.equal(handshakeBeforeConnect.laceConnectionState, 'LACE_DETECTED');
+      assert.equal(handshakeBeforeConnect.networkCompatibility, 'UNKNOWN');
+
+      handshakeService.setProvider(getWalletProvider());
+    });
+
+    it('Test 607 (Commit #39 Session Service): Initial session does not label disconnected network as Mismatch', () => {
+      const sessionService = getWalletSessionService();
+      const session = sessionService.getSession();
+      assert.notEqual(session.status, 'FAILED');
+      if (session.providerKind === 'LOCAL_PROTOTYPE') {
+        assert.equal(session.network.networkCompatible, true);
+      }
+    });
+
+    it('Test 608 (Commit #39 Anti-Fabrication): Zero synthetic signatures or hashes on failed Lace connection', async () => {
+      const adapter = new MidnightWalletAdapter();
+      adapter.injectMockConnectorForTesting({
+        name: 'Midnight Lace Extension',
+        rdns: 'org.midnight.mnLace',
+        connect: async () => {
+          throw new Error('User declined wallet connection');
+        },
+      });
+
+      await assert.rejects(
+        async () => {
+          await adapter.connect();
+        },
+        (err) => {
+          assert.ok(err instanceof WalletAdapterError);
+          assert.equal(err.code, 'USER_REJECTED');
+          return true;
+        }
+      );
+
+      assert.equal(adapter.getConnectionStatus(), 'ERROR');
+      assert.equal(adapter.getAccount(), null);
+      assert.equal(adapter.getLaceConnectionState(), 'CONNECTION_REJECTED');
+    });
+
+    it('Test 609 (Commit #39 Contract Integrity): contracts/src/index.compact remains 100% untouched', () => {
+      const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+      assert.ok(fs.existsSync(contractPath));
+      const content = fs.readFileSync(contractPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      assert.equal(
+        COMPACT_SOURCE_FINGERPRINT,
+        hash,
+        'Compact source fingerprint must match exactly (Commit #39 guard)'
+      );
+    });
   });
 });

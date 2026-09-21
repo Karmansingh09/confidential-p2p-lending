@@ -4,6 +4,7 @@ import type {
   WalletConnectionStatus,
   NetworkContext,
   NetworkAccount,
+  NetworkEnvironment,
   ProviderCapabilities,
 } from '../types/network.ts';
 import type {
@@ -37,7 +38,12 @@ import {
   discoverWalletConnector,
   type MidnightLaceConnector,
 } from './wallet-connector-discovery.ts';
-import { getNetworkConfigService } from './network-config-service.ts';
+import {
+  getNetworkConfigService,
+  getRealMidnightNetworkId,
+  LOCAL_PROTOTYPE_NETWORK_ID,
+} from './network-config-service.ts';
+import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 
 /**
  * Real Midnight / Lace Wallet Adapter.
@@ -239,13 +245,28 @@ export class MidnightWalletAdapter implements WalletProvider {
    */
   getNetworkInfo(): WalletNetworkInfo {
     const reportedId = this.getReportedNetworkId();
-    const expectedId = getNetworkConfigService().getNetworkConfig().networkId ?? null;
-    const isMatch = !!(reportedId && expectedId && reportedId.trim().toLowerCase() === expectedId.trim().toLowerCase());
+    const expectedConfig = getNetworkConfigService().getNetworkConfig();
+    const netEval = evaluateNetworkCompatibility(expectedConfig, reportedId);
+
+    let env: NetworkEnvironment = 'LOCAL';
+    if (reportedId) {
+      const norm = reportedId.toLowerCase();
+      if (norm.includes('mainnet')) env = 'MAINNET';
+      else if (
+        norm.includes('testnet') ||
+        norm.includes('preview') ||
+        norm.includes('preprod') ||
+        norm.includes('devnet')
+      ) {
+        env = 'TESTNET';
+      }
+    }
+
     return {
-      environment: 'LOCAL',
+      environment: env,
       networkId: reportedId,
       networkName: reportedId ? `Midnight Network (${reportedId})` : null,
-      networkCompatible: isMatch,
+      networkCompatible: netEval.isMatch,
       isPrototype: false,
       isRealNetwork: true,
     };
@@ -324,7 +345,10 @@ export class MidnightWalletAdapter implements WalletProvider {
         );
       }
 
-      if (mockObj.mockAccount || mockObj.mockAddress || mockObj.mockConnectedAPI || mockObj.mockSigningCapable !== undefined) {
+      if (
+        (mockObj.mockAccount || mockObj.mockAddress || mockObj.mockConnectedAPI || mockObj.mockSigningCapable !== undefined) &&
+        typeof mockObj.connect !== 'function'
+      ) {
         if (mockObj.mockConnectedAPI) {
           this.connectedAPI = mockObj.mockConnectedAPI as MidnightConnectedAPI;
         }
@@ -341,14 +365,14 @@ export class MidnightWalletAdapter implements WalletProvider {
         const caps = this.getCapabilities();
         const isTxCapable = Boolean(caps.SIGN_TRANSACTION && caps.SUBMIT_TRANSACTION);
         const reportedNet = this.getReportedNetworkId();
-        const expectedNet = getNetworkConfigService().getNetworkConfig().networkId ?? null;
-        const netCompatible = reportedNet && expectedNet
-          ? reportedNet.trim().toLowerCase() === expectedNet.trim().toLowerCase()
-          : true;
+        const expectedConfig = getNetworkConfigService().getNetworkConfig();
+        const netEval = evaluateNetworkCompatibility(expectedConfig, reportedNet);
 
-        if (!netCompatible) {
+        if (reportedNet && netEval.compatibility === 'MISMATCH') {
           this.laceState = 'UNSUPPORTED_NETWORK';
-        } else if (isTxCapable) {
+        } else if (!reportedNet) {
+          this.laceState = 'CONNECTED';
+        } else if (isTxCapable && netEval.compatibility === 'MATCH') {
           this.laceState = 'READY';
         } else {
           this.laceState = 'CONNECTED_NOT_TRANSACTION_CAPABLE';
@@ -369,12 +393,23 @@ export class MidnightWalletAdapter implements WalletProvider {
       );
     }
 
-    const expectedNetworkId = getNetworkConfigService().getNetworkConfig().networkId ?? 'preview-testnet';
+    // Resolve authentic target network ID for Midnight Lace
+    const targetNetworkId = getRealMidnightNetworkId();
+
+    // STRICT ARCHITECTURAL INVARIANT: Never pass prototype identifier to real connector
+    if ((targetNetworkId as string) === (LOCAL_PROTOTYPE_NETWORK_ID as string)) {
+      this.status = 'ERROR';
+      this.laceState = 'LACE_DETECTED';
+      throw new WalletAdapterError(
+        'CONFIGURATION_ERROR',
+        `Local prototype network identifier "${LOCAL_PROTOTYPE_NETWORK_ID}" must never be passed to real Midnight Lace connector.`
+      );
+    }
 
     let api: MidnightConnectedAPI;
     try {
       if (typeof rawConnector.connect === 'function') {
-        api = await rawConnector.connect(expectedNetworkId);
+        api = await rawConnector.connect(targetNetworkId);
       } else if (typeof rawConnector.enable === 'function') {
         api = (await rawConnector.enable()) as MidnightConnectedAPI;
       } else {
@@ -420,6 +455,11 @@ export class MidnightWalletAdapter implements WalletProvider {
         if (cfg && cfg.networkId) {
           this.explicitReportedNetworkId = cfg.networkId;
         }
+      } else if (typeof api.state === 'function') {
+        const st = (await api.state()) as Record<string, unknown>;
+        if (st && typeof st.networkId === 'string') {
+          this.explicitReportedNetworkId = st.networkId;
+        }
       }
     } catch {
       // Non-blocking network inspection
@@ -460,14 +500,19 @@ export class MidnightWalletAdapter implements WalletProvider {
     // Evaluate capabilities and strict network compatibility
     const canSign = typeof api.balanceUnsealedTransaction === 'function';
     const canSubmit = typeof api.submitTransaction === 'function';
+    const isTxCapable = canSign && canSubmit;
     const reportedNet = this.getReportedNetworkId();
-    const networkCompatible = reportedNet
-      ? reportedNet.trim().toLowerCase() === expectedNetworkId.trim().toLowerCase()
-      : true;
+    const expectedConfig = getNetworkConfigService().getNetworkConfig();
+    const netEval = evaluateNetworkCompatibility(expectedConfig, reportedNet);
 
-    if (!networkCompatible) {
+    if (reportedNet && netEval.compatibility === 'MISMATCH') {
+      // Confirmed mismatch after actual wallet network ID retrieved
       this.laceState = 'UNSUPPORTED_NETWORK';
-    } else if (canSign && canSubmit) {
+    } else if (!reportedNet) {
+      // Wallet connected, but network ID is unretrieved or unavailable yet
+      // ANTI-FABRICATION GUARANTEE: Never show READY or UNSUPPORTED_NETWORK
+      this.laceState = 'CONNECTED';
+    } else if (isTxCapable && netEval.compatibility === 'MATCH') {
       this.laceState = 'READY';
     } else {
       this.laceState = 'CONNECTED_NOT_TRANSACTION_CAPABLE';

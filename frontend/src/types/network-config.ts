@@ -3,13 +3,42 @@ import type { NetworkEnvironment } from './network.ts';
 export type { NetworkEnvironment };
 
 /**
+ * Canonical local prototype identifier used exclusively for deterministic tests and offline sandbox.
+ * MUST NEVER be sent to the real Midnight Lace browser extension.
+ */
+export const LOCAL_PROTOTYPE_NETWORK_ID = 'midnight-prototype-local';
+
+/**
+ * Authentic Midnight networks accepted by the Midnight Lace DApp Connector.
+ * Directly validated against Midnight Lace runtime extension error:
+ * "valid networks are: mainnet, testnet, devnet, undeployed, preview, preprod"
+ */
+export const VALID_LACE_NETWORKS = [
+  'mainnet',
+  'testnet',
+  'devnet',
+  'undeployed',
+  'preview',
+  'preprod',
+] as const;
+
+export type ValidLaceNetworkId = (typeof VALID_LACE_NETWORKS)[number];
+
+export const DEFAULT_REAL_MIDNIGHT_NETWORK_ID: ValidLaceNetworkId = 'preprod';
+
+/**
  * Supported Midnight network identifiers.
  */
 export type MidnightNetwork =
   | 'local-standalone'
   | 'preview-testnet'
   | 'preprod-testnet'
-  | 'mainnet';
+  | 'mainnet'
+  | 'testnet'
+  | 'devnet'
+  | 'undeployed'
+  | 'preview'
+  | 'preprod';
 
 /**
  * Validated status of a network configuration descriptor.

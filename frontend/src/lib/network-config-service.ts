@@ -1,11 +1,96 @@
 import {
   NetworkConfigurationError,
+  LOCAL_PROTOTYPE_NETWORK_ID,
+  VALID_LACE_NETWORKS,
+  DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  type ValidLaceNetworkId,
   type NetworkConfig,
   type NetworkConfigurationStatus,
   type NetworkEndpoint,
 } from '../types/network-config.ts';
 
-export { NetworkConfigurationError };
+export {
+  NetworkConfigurationError,
+  LOCAL_PROTOTYPE_NETWORK_ID,
+  VALID_LACE_NETWORKS,
+  DEFAULT_REAL_MIDNIGHT_NETWORK_ID,
+  type ValidLaceNetworkId,
+};
+
+/**
+ * Normalizes any network identifier or alias to a valid Lace network identifier if recognized.
+ * Maps 'preprod-testnet' -> 'preprod', 'preview-testnet' -> 'preview', etc.
+ */
+export function normalizeLaceNetworkId(id?: string | null): ValidLaceNetworkId | null {
+  if (!id) return null;
+  const cleaned = id.trim().toLowerCase();
+  if ((VALID_LACE_NETWORKS as readonly string[]).includes(cleaned)) {
+    return cleaned as ValidLaceNetworkId;
+  }
+  if (cleaned.includes('preprod')) return 'preprod';
+  if (cleaned.includes('preview')) return 'preview';
+  if (cleaned.includes('devnet')) return 'devnet';
+  if (cleaned.includes('testnet')) return 'testnet';
+  if (cleaned.includes('mainnet')) return 'mainnet';
+  if (cleaned.includes('undeployed')) return 'undeployed';
+  return null;
+}
+
+/**
+ * Resolves the authentic real Midnight network ID to use for Lace browser connections.
+ *
+ * RESOLUTION ORDER:
+ * 1. Environment variable: import.meta.env?.VITE_MIDNIGHT_NETWORK_ID
+ * 2. Window variable: (window as any).MIDNIGHT_NETWORK_ID
+ * 3. Active NetworkConfig (if NOT LOCAL and NOT midnight-prototype-local)
+ * 4. Fallback: DEFAULT_REAL_MIDNIGHT_NETWORK_ID ('preprod')
+ *
+ * GUARANTEE: NEVER returns 'midnight-prototype-local'.
+ */
+export function getRealMidnightNetworkId(): ValidLaceNetworkId {
+  // 1. Vite environment variable
+  try {
+    const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any)?.env : undefined;
+    if (metaEnv && typeof metaEnv.VITE_MIDNIGHT_NETWORK_ID === 'string') {
+      const normalizedEnv = normalizeLaceNetworkId(metaEnv.VITE_MIDNIGHT_NETWORK_ID);
+      if (normalizedEnv) return normalizedEnv;
+    }
+  } catch {
+    // Non-blocking env check
+  }
+
+  // 2. Window global variable
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      (window as any).MIDNIGHT_NETWORK_ID &&
+      typeof (window as any).MIDNIGHT_NETWORK_ID === 'string'
+    ) {
+      const normalizedWin = normalizeLaceNetworkId((window as any).MIDNIGHT_NETWORK_ID);
+      if (normalizedWin) return normalizedWin;
+    }
+  } catch {
+    // Non-blocking window check
+  }
+
+  // 3. Active application network configuration
+  try {
+    const netConfig = getNetworkConfigService().getNetworkConfig();
+    if (
+      netConfig.environment !== 'LOCAL' &&
+      netConfig.networkId &&
+      netConfig.networkId !== LOCAL_PROTOTYPE_NETWORK_ID
+    ) {
+      const normalizedConfig = normalizeLaceNetworkId(netConfig.networkId);
+      if (normalizedConfig) return normalizedConfig;
+    }
+  } catch {
+    // Non-blocking config check
+  }
+
+  // 4. Default authentic target for Midnight challenge
+  return DEFAULT_REAL_MIDNIGHT_NETWORK_ID;
+}
 
 /**
  * Default offline local prototype network configuration.
@@ -14,7 +99,7 @@ export { NetworkConfigurationError };
 export const DEFAULT_LOCAL_NETWORK_CONFIG: Readonly<NetworkConfig> = Object.freeze({
   environment: 'LOCAL',
   networkName: 'Local Prototype (In-Memory)',
-  networkId: 'midnight-prototype-local',
+  networkId: LOCAL_PROTOTYPE_NETWORK_ID,
   nodeRpcEndpoint: null,
   indexerEndpoint: null,
   walletConnectorAvailable: false,

@@ -36,6 +36,7 @@ import type {
   NetworkConfig,
   ConnectorReadinessState,
 } from '../types/network-config.ts';
+import { evaluateNetworkCompatibility } from './wallet-network-compatibility.ts';
 
 /**
  * Listener callback invoked on session transitions.
@@ -81,7 +82,9 @@ export class WalletSessionService {
     const reportedNetId = provider.getReportedNetworkId ? provider.getReportedNetworkId() : null;
     const expectedConfig = this.getNetworkConfig();
     const expectedNetId = expectedConfig.networkId ?? null;
-    const netCompatible = isProto ? true : (reportedNetId && expectedNetId ? reportedNetId.trim().toLowerCase() === expectedNetId.trim().toLowerCase() : false);
+    const netCompatible = isProto
+      ? true
+      : evaluateNetworkCompatibility(expectedConfig, reportedNetId).isMatch;
 
     const netContext = provider.getNetworkContext();
     const network: WalletNetworkInfo = {
@@ -376,7 +379,7 @@ export class WalletSessionService {
       const expectedNetId = expectedConfig.networkId ?? null;
       const netCompatible = provider.isPrototype
         ? true
-        : !!(reportedNetId && expectedNetId && reportedNetId.trim().toLowerCase() === expectedNetId.trim().toLowerCase());
+        : evaluateNetworkCompatibility(expectedConfig, reportedNetId).isMatch;
 
       const network: WalletNetworkInfo = {
         environment: netContext.environment,

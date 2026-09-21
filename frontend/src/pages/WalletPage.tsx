@@ -461,7 +461,13 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                 <span className="spec-val">
                   {provider.isPrototype
                     ? 'Sandbox Mode'
-                    : (handshake.networkCompatibility === 'MATCH' ? 'Compatible (MATCH)' : 'Mismatch / Unsupported')}
+                    : handshake.networkCompatibility === 'MATCH'
+                    ? 'Compatible (MATCH)'
+                    : handshake.networkCompatibility === 'MISMATCH'
+                    ? 'Mismatch / Unsupported'
+                    : isConnected
+                    ? 'Pending Network Identification'
+                    : 'Awaiting Connection'}
                 </span>
               </div>
               <div className="spec-row">

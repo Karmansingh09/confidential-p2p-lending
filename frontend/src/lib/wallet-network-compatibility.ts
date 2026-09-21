@@ -1,4 +1,5 @@
 import type { NetworkConfig } from '../types/network-config.ts';
+import { LOCAL_PROTOTYPE_NETWORK_ID } from '../types/network-config.ts';
 import type { NetworkCompatibilityStatus } from '../types/wallet-handshake.ts';
 
 export interface NetworkCompatibilityEvaluation {
@@ -14,7 +15,10 @@ export interface NetworkCompatibilityEvaluation {
  */
 export function normalizeNetworkId(networkId?: string | null): string {
   if (!networkId) return '';
-  return networkId.trim().toLowerCase();
+  const cleaned = networkId.trim().toLowerCase();
+  if (cleaned === 'preprod-testnet' || cleaned === 'preprod') return 'preprod';
+  if (cleaned === 'preview-testnet' || cleaned === 'preview') return 'preview';
+  return cleaned;
 }
 
 /**
@@ -30,7 +34,9 @@ export function evaluateNetworkCompatibility(
   expectedConfig: NetworkConfig,
   reportedNetworkId?: string | null
 ): NetworkCompatibilityEvaluation {
-  const expectedId = expectedConfig.networkId ?? (expectedConfig.environment === 'LOCAL' ? 'midnight-prototype-local' : '');
+  const expectedId =
+    expectedConfig.networkId ??
+    (expectedConfig.environment === 'LOCAL' ? LOCAL_PROTOTYPE_NETWORK_ID : '');
   const normalizedExpected = normalizeNetworkId(expectedId);
   const normalizedReported = normalizeNetworkId(reportedNetworkId);
 
@@ -56,12 +62,16 @@ export function evaluateNetworkCompatibility(
     };
   }
 
-  // Known canonical equivalence aliases (e.g. preview-testnet vs midnight-testnet if same environment)
-  const isTestnetPair =
-    (normalizedExpected.includes('testnet') || normalizedExpected.includes('preview') || normalizedExpected.includes('preprod')) &&
-    (normalizedReported.includes('testnet') || normalizedReported.includes('preview') || normalizedReported.includes('preprod'));
+  // Known canonical equivalence aliases (e.g. preview-testnet vs preview, or midnight-testnet if same generic testnet)
+  const isGenericTestnetPair =
+    (normalizedExpected.includes('testnet') || normalizedExpected === 'testnet') &&
+    (normalizedReported.includes('testnet') || normalizedReported === 'testnet') &&
+    !normalizedExpected.includes('preview') &&
+    !normalizedReported.includes('preview') &&
+    !normalizedExpected.includes('preprod') &&
+    !normalizedReported.includes('preprod');
 
-  if (isTestnetPair && expectedConfig.environment === 'TESTNET') {
+  if (isGenericTestnetPair && expectedConfig.environment === 'TESTNET') {
     return {
       compatibility: 'MATCH',
       isMatch: true,

@@ -15,6 +15,7 @@ import {
   WalletAdapterError,
   type LaceConnectionState,
 } from '../types/wallet-adapter.ts';
+import { LOCAL_PROTOTYPE_NETWORK_ID } from '../types/network-config.ts';
 
 export type WalletHandshakeListener = (state: WalletHandshakeState) => void;
 
@@ -72,7 +73,7 @@ export class WalletHandshakeService {
     const expectedConfig = netConfigService.getNetworkConfig();
     const expectedNetwork =
       expectedConfig.networkId ??
-      (expectedConfig.environment === 'LOCAL' ? 'midnight-prototype-local' : '');
+      (expectedConfig.environment === 'LOCAL' ? LOCAL_PROTOTYPE_NETWORK_ID : '');
 
     // 1. Connector Detection
     let isDetected = false;
@@ -160,12 +161,19 @@ export class WalletHandshakeService {
       laceConnectionState = 'CONNECTING';
     } else if (!isConnected) {
       laceConnectionState = 'LACE_DETECTED';
-    } else if (!networkCompatible && expectedConfig.environment !== 'LOCAL') {
+    } else if (walletNetwork && networkCompatibility === 'MISMATCH' && expectedConfig.environment !== 'LOCAL') {
+      // Only classify as UNSUPPORTED_NETWORK after actual wallet network ID has been retrieved and compared
       laceConnectionState = 'UNSUPPORTED_NETWORK';
+    } else if (!walletNetwork && expectedConfig.environment !== 'LOCAL') {
+      // Wallet connected, but network ID is unretrieved or unavailable
+      // Honest state: CONNECTED (neither UNSUPPORTED_NETWORK nor READY)
+      laceConnectionState = 'CONNECTED';
     } else if (!isTransactionCapable) {
       laceConnectionState = 'CONNECTED_NOT_TRANSACTION_CAPABLE';
-    } else {
+    } else if (networkCompatibility === 'MATCH') {
       laceConnectionState = 'READY';
+    } else {
+      laceConnectionState = 'CONNECTED';
     }
 
     return {

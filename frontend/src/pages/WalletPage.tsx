@@ -13,7 +13,7 @@ import {
 import { getWalletHandshakeService } from '../lib/wallet-handshake-service.ts';
 import { AccountSwitcher } from '../components/AccountSwitcher.tsx';
 import type { NavigationTab } from '../types/navigation.ts';
-import type { LaceConnectionState } from '../types/wallet-adapter.ts';
+import type { LaceConnectionState, SafeDustDiagnosticReport } from '../types/wallet-adapter.ts';
 
 export interface WalletPageProps {
   accountContext: AccountContext;
@@ -37,6 +37,26 @@ export const WalletPage: React.FC<WalletPageProps> = ({
   const [handshake, setHandshake] = useState(() => handshakeService.getHandshakeState());
   const [isConnectingLace, setIsConnectingLace] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [diagnosticReport, setDiagnosticReport] = useState<SafeDustDiagnosticReport | null>(null);
+  const [isRunningDiagnostic, setIsRunningDiagnostic] = useState(false);
+
+  const handleRunDiagnostic = async () => {
+    setIsRunningDiagnostic(true);
+    try {
+      const activeProv = sessionService.getProvider();
+      if (activeProv && typeof (activeProv as unknown as { runSafeDustDiagnostic?: () => Promise<SafeDustDiagnosticReport> }).runSafeDustDiagnostic === 'function') {
+        const rep = await (activeProv as unknown as { runSafeDustDiagnostic: () => Promise<SafeDustDiagnosticReport> }).runSafeDustDiagnostic();
+        setDiagnosticReport(rep);
+      } else if (typeof (window as unknown as { runMidnightDiagnostic?: () => Promise<SafeDustDiagnosticReport> }).runMidnightDiagnostic === 'function') {
+        const rep = await (window as unknown as { runMidnightDiagnostic: () => Promise<SafeDustDiagnosticReport> }).runMidnightDiagnostic();
+        setDiagnosticReport(rep);
+      }
+    } catch (err: unknown) {
+      console.error('[DIAGNOSTIC ERROR]', err);
+    } finally {
+      setIsRunningDiagnostic(false);
+    }
+  };
 
   useEffect(() => {
     const unsubSession = subscribeToWalletSession((updated) => {
@@ -287,7 +307,18 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                   )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {isConnected && (
+                    <button
+                      type="button"
+                      className="btn-desk-nav font-mono"
+                      onClick={handleRunDiagnostic}
+                      disabled={isRunningDiagnostic}
+                      style={{ padding: '8px 16px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)' }}
+                    >
+                      {isRunningDiagnostic ? 'Inspecting...' : 'Run Preprod DUST Diagnostic'}
+                    </button>
+                  )}
                   {isConnected ? (
                     <button
                       type="button"
@@ -310,6 +341,74 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                   )}
                 </div>
               </div>
+
+              {diagnosticReport && (
+                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(159, 184, 216, 0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span className="font-mono text-xs text-accent" style={{ fontWeight: 600 }}>
+                      // MIDNIGHT PREPROD CONNECTOR &amp; DUST DIAGNOSTIC REPORT
+                    </span>
+                    <span className="font-mono text-xs" style={{ color: '#22c55e' }}>
+                      READ-ONLY // ZERO CREDENTIALS ACCESSED
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', fontSize: '13px', fontFamily: 'monospace' }}>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>NETWORK ID</div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600 }}>{diagnosticReport.networkId || 'Unavailable'}</div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>CONNECTION STATE</div>
+                      <div style={{ color: '#38bdf8', fontWeight: 600 }}>{diagnosticReport.walletConnectionState}</div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>TX BALANCING / SUBMISSION</div>
+                      <div style={{ color: diagnosticReport.transactionCapability.isTxCapable ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>
+                        {diagnosticReport.transactionCapability.isTxCapable ? 'Capable (balanceUnsealed + submit)' : 'Unavailable'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>DUST ADDRESS METHOD</div>
+                      <div style={{ color: diagnosticReport.dustApiMethods.hasGetDustAddress ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                        {diagnosticReport.dustApiMethods.hasGetDustAddress ? 'getDustAddress() Present' : 'Absent'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>DUST BALANCE METHOD</div>
+                      <div style={{ color: diagnosticReport.dustApiMethods.hasGetDustBalance ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                        {diagnosticReport.dustApiMethods.hasGetDustBalance ? 'getDustBalance() Present' : 'Absent'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>REGISTRATION METHOD</div>
+                      <div style={{ color: '#94a3b8', fontWeight: 600 }}>
+                        {diagnosticReport.dustApiMethods.hasAnyRegistrationMethod ? 'Present' : 'None (Wallet-Managed)'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px', gridColumn: 'span 2' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>SHIELDED DUST ADDRESS</div>
+                      <div style={{ color: '#f8fafc', wordBreak: 'break-all', fontSize: '12px' }}>
+                        {diagnosticReport.dustState.dustAddress || 'Not returned by wallet'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>CURRENT DUST BALANCE</div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600 }}>
+                        {diagnosticReport.dustState.dustBalance !== null ? `${diagnosticReport.dustState.dustBalance} tDUST` : 'Unreported'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>DUST GENERATION CAP</div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600 }}>
+                        {diagnosticReport.dustState.dustCapacity !== null ? `${diagnosticReport.dustState.dustCapacity} tDUST` : 'Unreported'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '12px', color: '#94a3b8', fontFamily: 'monospace' }}>
+                    Status: {diagnosticReport.dustState.details}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

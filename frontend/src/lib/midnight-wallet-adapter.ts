@@ -28,6 +28,7 @@ import {
   type MidnightInitialAPI,
   type MidnightConnectedAPI,
   type WalletNetworkInfo,
+  type SafeDustDiagnosticReport,
 } from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 import type {
@@ -129,6 +130,9 @@ export class MidnightWalletAdapter implements WalletProvider {
     this.status = 'DISCONNECTED';
     this.activeAccount = null;
     this.laceState = this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
+    if (typeof window !== 'undefined') {
+      (window as unknown as { runMidnightDiagnostic?: () => Promise<SafeDustDiagnosticReport> }).runMidnightDiagnostic = () => this.runSafeDustDiagnostic();
+    }
   }
 
   /**
@@ -1003,6 +1007,151 @@ export class MidnightWalletAdapter implements WalletProvider {
       errorCode: 'PROVIDER_UNSUPPORTED',
       message: 'On-chain circuit invocation requires live Midnight wallet connector SDK integration.',
     };
+  }
+
+  /**
+   * Safe read-only diagnostic for inspecting the connected Midnight Lace API and DUST status.
+   *
+   * STRICT PRIVACY & ANTI-FABRICATION GUARANTEES:
+   * 1. Purely read-only: Never inspects credentials, secrets, or confidential witnesses.
+   * 2. Non-mutating: Never submits, signs, balances, or broadcasts any transaction.
+   * 3. Discovers actual methods present on the connected API rather than assuming their presence.
+   */
+  async runSafeDustDiagnostic(): Promise<SafeDustDiagnosticReport> {
+    const isConnected = this.status === 'CONNECTED';
+    const reportedNet = this.getReportedNetworkId();
+    const caps = this.getCapabilities();
+
+    const discovery = discoverWalletConnector(this.mockConnector ?? undefined);
+    const rawConnector = (this.mockConnector || discovery.connector) as Record<string, unknown> | undefined;
+
+    const connectorInfo = {
+      name: rawConnector && typeof rawConnector.name === 'string' ? rawConnector.name : discovery.connectorName ?? null,
+      rdns: rawConnector && typeof rawConnector.rdns === 'string' ? rawConnector.rdns : null,
+      apiVersion: rawConnector && typeof rawConnector.apiVersion === 'string' ? rawConnector.apiVersion : null,
+    };
+
+    const api = this.connectedAPI as Record<string, unknown> | null;
+    const availableApiMethods: string[] = [];
+
+    if (api && typeof api === 'object') {
+      for (const key of Object.getOwnPropertyNames(api)) {
+        if (typeof api[key] === 'function') {
+          availableApiMethods.push(key);
+        }
+      }
+      const proto = Object.getPrototypeOf(api);
+      if (proto && proto !== Object.prototype) {
+        for (const key of Object.getOwnPropertyNames(proto)) {
+          if (typeof api[key] === 'function' && !availableApiMethods.includes(key)) {
+            availableApiMethods.push(key);
+          }
+        }
+      }
+    }
+
+    const hasGetDustAddress = typeof api?.getDustAddress === 'function';
+    const hasGetDustBalance = typeof api?.getDustBalance === 'function';
+    const hasBalanceUnsealedTransaction = typeof api?.balanceUnsealedTransaction === 'function';
+    const hasBalanceSealedTransaction = typeof api?.balanceSealedTransaction === 'function';
+    const hasAnyRegistrationMethod = availableApiMethods.some((m) => /register/i.test(m));
+
+    let dustAddress: string | null = null;
+    let dustBalance: string | null = null;
+    let dustCapacity: string | null = null;
+    let readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR' = 'NOT_AVAILABLE';
+    let details = '';
+
+    if (isConnected && api) {
+      try {
+        if (hasGetDustAddress) {
+          const addrResult = await (api.getDustAddress as () => Promise<unknown>)();
+          if (typeof addrResult === 'string') {
+            dustAddress = addrResult;
+          } else if (addrResult && typeof addrResult === 'object' && 'dustAddress' in addrResult) {
+            dustAddress = String((addrResult as { dustAddress: unknown }).dustAddress);
+          }
+        }
+
+        if (hasGetDustBalance) {
+          const balResult = await (api.getDustBalance as () => Promise<unknown>)();
+          if (balResult && typeof balResult === 'object') {
+            const b = balResult as Record<string, unknown>;
+            if (b.balance !== undefined) dustBalance = String(b.balance);
+            if (b.cap !== undefined) dustCapacity = String(b.cap);
+          } else if (typeof balResult === 'bigint' || typeof balResult === 'number') {
+            dustBalance = String(balResult);
+          }
+        }
+
+        if (dustAddress && dustBalance !== null) {
+          readStatus = 'SUCCESS';
+          details = `DUST address and balance retrieved: balance=${dustBalance}, cap=${dustCapacity ?? 'N/A'}`;
+        } else if (dustAddress || dustBalance !== null) {
+          readStatus = 'PARTIAL';
+          details = `Partial DUST info retrieved: address=${dustAddress ? 'Retrieved' : 'Unavailable'}, balance=${dustBalance !== null ? dustBalance : 'Unavailable'}`;
+        } else {
+          readStatus = 'NOT_AVAILABLE';
+          details = 'Connected API does not expose getDustAddress or getDustBalance methods, or returned empty state.';
+        }
+      } catch (err: unknown) {
+        readStatus = 'ERROR';
+        details = `Error querying DUST state from connected API: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else {
+      details = 'Wallet is not connected. Connect Lace to Midnight Preprod first to inspect live API.';
+    }
+
+    let networkEndpoints: { indexerUri?: string; substrateNodeUri?: string; networkId?: string } | null = null;
+    if (api && typeof api.getConfiguration === 'function') {
+      try {
+        const cfg = await (api.getConfiguration as () => Promise<Record<string, unknown>>)();
+        if (cfg) {
+          networkEndpoints = {
+            indexerUri: typeof cfg.indexerUri === 'string' ? cfg.indexerUri : undefined,
+            substrateNodeUri: typeof cfg.substrateNodeUri === 'string' ? cfg.substrateNodeUri : undefined,
+            networkId: typeof cfg.networkId === 'string' ? cfg.networkId : undefined,
+          };
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    const report: SafeDustDiagnosticReport = {
+      timestamp: new Date().toISOString(),
+      networkId: reportedNet,
+      walletConnectionState: this.laceState,
+      transactionCapability: {
+        canSign: Boolean(caps.SIGN_TRANSACTION),
+        canSubmit: Boolean(caps.SUBMIT_TRANSACTION),
+        isTxCapable: Boolean(caps.SIGN_TRANSACTION && caps.SUBMIT_TRANSACTION),
+      },
+      installedSpecVersion: '4.0.1 (@midnight-ntwrk/dapp-connector-api)',
+      connectorInfo,
+      availableApiMethods,
+      dustApiMethods: {
+        hasGetDustAddress,
+        hasGetDustBalance,
+        hasBalanceUnsealedTransaction,
+        hasBalanceSealedTransaction,
+        hasAnyRegistrationMethod,
+      },
+      dustState: {
+        dustAddress,
+        dustBalance,
+        dustCapacity,
+        readStatus,
+        details,
+      },
+      networkEndpoints,
+    };
+
+    if (typeof window !== 'undefined') {
+      console.info('[MIDNIGHT PREPROD DIAGNOSTIC]', report);
+    }
+
+    return report;
   }
 }
 

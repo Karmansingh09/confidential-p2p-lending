@@ -93,15 +93,59 @@ export interface MidnightServiceUriConfig {
  */
 export interface MidnightConnectedAPI {
   getShieldedAddresses?: () => Promise<MidnightShieldedAddresses | string[]>;
-  getUnshieldedAddress?: () => Promise<string>;
-  getDustAddress?: () => Promise<string>;
-  balanceUnsealedTransaction?: (tx: unknown) => Promise<{ tx: unknown; [key: string]: unknown }>;
-  balanceSealedTransaction?: (tx: unknown) => Promise<{ tx: unknown; [key: string]: unknown }>;
-  submitTransaction?: (tx: unknown) => Promise<string | { txHash?: string; id?: string }>;
+  getUnshieldedAddress?: () => Promise<string | { unshieldedAddress: string }>;
+  getDustAddress?: () => Promise<string | { dustAddress: string }>;
+  getDustBalance?: () => Promise<{ cap: bigint; balance: bigint }>;
+  getShieldedBalances?: () => Promise<Record<string, bigint>>;
+  getUnshieldedBalances?: () => Promise<Record<string, bigint>>;
+  balanceUnsealedTransaction?: (tx: unknown, options?: { payFees?: boolean }) => Promise<{ tx: unknown; [key: string]: unknown }>;
+  balanceSealedTransaction?: (tx: unknown, options?: { payFees?: boolean }) => Promise<{ tx: unknown; [key: string]: unknown }>;
+  submitTransaction?: (tx: unknown) => Promise<string | { txHash?: string; id?: string } | void>;
   getConnectionStatus?: () => Promise<MidnightConnectionStatus>;
   getConfiguration?: () => Promise<MidnightServiceUriConfig>;
   serviceUriConfig?: () => Promise<MidnightServiceUriConfig>;
   state?: () => Promise<unknown>;
+}
+
+/**
+ * Safe, read-only diagnostic report for inspecting Midnight Preprod Lace connection and DUST state.
+ * STRICT PRIVACY INVARIANT: Never contains sensitive credentials or confidential underwriting data.
+ */
+export interface SafeDustDiagnosticReport {
+  timestamp: string;
+  networkId: string | null;
+  walletConnectionState: string;
+  transactionCapability: {
+    canSign: boolean;
+    canSubmit: boolean;
+    isTxCapable: boolean;
+  };
+  installedSpecVersion: string;
+  connectorInfo: {
+    name: string | null;
+    rdns: string | null;
+    apiVersion: string | null;
+  };
+  availableApiMethods: string[];
+  dustApiMethods: {
+    hasGetDustAddress: boolean;
+    hasGetDustBalance: boolean;
+    hasBalanceUnsealedTransaction: boolean;
+    hasBalanceSealedTransaction: boolean;
+    hasAnyRegistrationMethod: boolean;
+  };
+  dustState: {
+    dustAddress: string | null;
+    dustBalance: string | null;
+    dustCapacity: string | null;
+    readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR';
+    details: string;
+  };
+  networkEndpoints: {
+    indexerUri?: string;
+    substrateNodeUri?: string;
+    networkId?: string;
+  } | null;
 }
 
 /**

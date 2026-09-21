@@ -8,7 +8,7 @@ import {
   switchMockRole,
   getWalletProvider,
 } from './lib/account-service.js';
-import { subscribeToWalletSession } from './lib/wallet-session-service.ts';
+import { subscribeToWalletSession, getWalletSessionService } from './lib/wallet-session-service.ts';
 import { createDefaultLoanRegistry } from './lib/application-store.js';
 import { getTransactionRecoveryService } from './lib/transaction-recovery-service.ts';
 import type { LoanRegistry } from './lib/loan-registry.js';
@@ -69,16 +69,71 @@ export const App: React.FC = () => {
         setSelectedRole('NONE');
         setAccountContext(connectMockAccount('NONE'));
       } else if (session.status === 'CONNECTED' && session.account) {
-        setSelectedRole(session.account.role ?? 'PARTICIPANT');
-        setAccountContext(connectMockAccount(session.account.role ?? 'PARTICIPANT'));
+        const effectiveRole = selectedRole !== 'NONE' ? selectedRole : (session.account.role ?? 'BORROWER');
+        setSelectedRole(effectiveRole);
+        if (session.providerKind === 'LOCAL_PROTOTYPE') {
+          setAccountContext(connectMockAccount(effectiveRole));
+        } else {
+          const rawAcc = session.account;
+          const addr = rawAcc.address || rawAcc.publicKeyHex || '';
+          const shortAddr = addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : addr;
+          setAccountContext({
+            identity: {
+              publicKey: rawAcc.publicKey,
+              publicKeyHex: rawAcc.publicKeyHex || addr,
+              connectionStatus: 'CONNECTED',
+              displayName: rawAcc.displayName ?? 'Midnight Lace Wallet Account',
+              shortLabel: `Lace (${shortAddr || 'Shielded'})`,
+              role: effectiveRole,
+              isPrototype: false,
+              address: addr,
+            },
+            selectedRole: effectiveRole,
+            availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
+            connectionStatus: 'CONNECTED',
+            networkName: session.network.networkName || `Midnight Network (${session.network.networkId || 'preprod'})`,
+            isRealNetwork: true,
+            isPrototype: false,
+          });
+        }
       }
     });
     return unsubscribe;
-  }, []);
+  }, [selectedRole]);
 
   const handleConnect = (role: AccountRole = 'BORROWER') => {
     setSelectedRole(role);
-    setAccountContext(connectMockAccount(role));
+    const provider = getWalletProvider();
+    if (provider.isPrototype) {
+      setAccountContext(connectMockAccount(role));
+    } else {
+      const session = getWalletSessionService().getSession();
+      if (session.status === 'CONNECTED' && session.account) {
+        const rawAcc = session.account;
+        const addr = rawAcc.address || rawAcc.publicKeyHex || '';
+        const shortAddr = addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : addr;
+        setAccountContext({
+          identity: {
+            publicKey: rawAcc.publicKey,
+            publicKeyHex: rawAcc.publicKeyHex || addr,
+            connectionStatus: 'CONNECTED',
+            displayName: rawAcc.displayName ?? 'Midnight Lace Wallet Account',
+            shortLabel: `Lace (${shortAddr || 'Shielded'})`,
+            role,
+            isPrototype: false,
+            address: addr,
+          },
+          selectedRole: role,
+          availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
+          connectionStatus: 'CONNECTED',
+          networkName: session.network.networkName || `Midnight Network (${session.network.networkId || 'preprod'})`,
+          isRealNetwork: true,
+          isPrototype: false,
+        });
+      } else {
+        setAccountContext(connectMockAccount(role));
+      }
+    }
   };
 
   const handleDisconnect = () => {
@@ -88,7 +143,37 @@ export const App: React.FC = () => {
 
   const handleSwitchRole = (role: AccountRole) => {
     setSelectedRole(role);
-    setAccountContext(switchMockRole(role));
+    const provider = getWalletProvider();
+    if (provider.isPrototype) {
+      setAccountContext(switchMockRole(role));
+    } else {
+      const session = getWalletSessionService().getSession();
+      if (session.status === 'CONNECTED' && session.account) {
+        const rawAcc = session.account;
+        const addr = rawAcc.address || rawAcc.publicKeyHex || '';
+        const shortAddr = addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : addr;
+        setAccountContext({
+          identity: {
+            publicKey: rawAcc.publicKey,
+            publicKeyHex: rawAcc.publicKeyHex || addr,
+            connectionStatus: 'CONNECTED',
+            displayName: rawAcc.displayName ?? 'Midnight Lace Wallet Account',
+            shortLabel: `Lace (${shortAddr || 'Shielded'})`,
+            role,
+            isPrototype: false,
+            address: addr,
+          },
+          selectedRole: role,
+          availableRoles: ['BORROWER', 'LENDER', 'PARTICIPANT', 'NONE'],
+          connectionStatus: 'CONNECTED',
+          networkName: session.network.networkName || `Midnight Network (${session.network.networkId || 'preprod'})`,
+          isRealNetwork: true,
+          isPrototype: false,
+        });
+      } else {
+        setAccountContext(switchMockRole(role));
+      }
+    }
   };
 
   const handleSelectLoan = (loanId: string) => {

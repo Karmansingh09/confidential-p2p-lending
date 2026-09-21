@@ -40,7 +40,7 @@ export const AccountStatusPanel: React.FC<AccountStatusPanelProps> = ({
           <div>
             <h4 className="panel-main-title">Active Account &amp; Permissions</h4>
             <span className="panel-subtitle-text">
-              Local Prototype Account &bull; {networkName}
+              {(accountContext.isPrototype ?? true) ? `Local Prototype Account \u2022 ${networkName}` : `Midnight Lace Account \u2022 ${networkName}`}
             </span>
           </div>
         </div>
@@ -63,8 +63,8 @@ export const AccountStatusPanel: React.FC<AccountStatusPanelProps> = ({
 
         <div className="summary-col">
           <span className="col-label">Public Identity</span>
-          <span className="col-value pk-mono" title={identity?.publicKeyHex ?? 'No account'}>
-            {formatPk(identity?.publicKeyHex)}
+          <span className="col-value pk-mono" title={identity?.publicKeyHex ?? identity?.address ?? 'No account'}>
+            {formatPk(identity?.publicKeyHex || identity?.address)}
           </span>
         </div>
 

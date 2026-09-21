@@ -105,9 +105,10 @@ export function getMockAccount(
   // If active provider is a real Midnight/Lace adapter (not prototype)
   if (!provider.isPrototype) {
     const rawAccount = provider.getAccount() ?? session.account;
-    if (session.status === 'CONNECTED' && rawAccount) {
+    const isConn = session.status === 'CONNECTED' || provider.getConnectionStatus() === 'CONNECTED';
+    if (isConn && rawAccount) {
       const pk = rawAccount.publicKey;
-      const hex = rawAccount.publicKeyHex || (pk ? bytesToHex(pk) : '');
+      const hex = rawAccount.publicKeyHex || (pk ? bytesToHex(pk) : rawAccount.address || '');
       const addr = rawAccount.address || hex;
       const shortAddr = addr ? (addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : addr) : 'Adapter Account';
       return {
@@ -118,7 +119,7 @@ export function getMockAccount(
         shortLabel: `Lace (${shortAddr})`,
         role: rawAccount.role ?? role,
         isPrototype: false,
-        address: rawAccount.address,
+        address: addr,
       };
     }
 
@@ -189,7 +190,11 @@ export function connectMockAccount(
     // Sync session
     void sessionService.connect({ providerKind: 'LOCAL_PROTOTYPE', role, customLoan });
   } else {
-    void sessionService.connect({ role, customLoan });
+    // For real Midnight Lace adapter: only initiate connect if not already connected
+    const currentSession = sessionService.getSession();
+    if (currentSession.status !== 'CONNECTED' && provider.getConnectionStatus() !== 'CONNECTED') {
+      void sessionService.connect({ role, customLoan });
+    }
   }
 
   const netContext = provider.getNetworkContext();

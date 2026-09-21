@@ -77,6 +77,8 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
     }
   };
 
+  const isProto = accountContext.isPrototype ?? true;
+
   return (
     <div className="wallet-identity-console" data-testid="account-identity-section">
       {/* 1. Primary Status Header Card */}
@@ -87,7 +89,9 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
             <span className="status-text-lg">{isConnected ? 'Connected' : 'Disconnected'}</span>
             <span className="status-role-badge font-mono">{roleDisplayNames[selectedRole]}</span>
           </div>
-          <span className="identity-provider-name">Local Prototype Account &bull; Simulation Only</span>
+          <span className="identity-provider-name">
+            {isProto ? 'Local Prototype Account \u2022 Simulation Only' : 'Midnight Lace Wallet \u2022 Connected'}
+          </span>
         </div>
 
         <div className="identity-actions">
@@ -105,7 +109,7 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
             >
               Disconnect
             </button>
-          ) : (
+          ) : isProto ? (
             <button
               type="button"
               className="btn-action-connect"
@@ -119,6 +123,10 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
             >
               Connect Account
             </button>
+          ) : (
+            <span className="text-muted font-mono" style={{ fontSize: '12px' }}>
+              Awaiting Wallet Connection
+            </span>
           )}
         </div>
       </div>
@@ -128,12 +136,14 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
         <div className="meta-cell">
           <span className="meta-label">PUBLIC IDENTITY</span>
           <div className="meta-value-row">
-            <span className="meta-value font-mono" title={identity?.publicKeyHex ?? 'No account'}>
-              {identity?.publicKeyHex
+            <span className="meta-value font-mono" title={identity?.publicKeyHex ?? identity?.address ?? 'No account'}>
+              {identity?.address
+                ? (identity.address.length > 16 ? `${identity.address.slice(0, 10)}...${identity.address.slice(-8)}` : identity.address)
+                : identity?.publicKeyHex
                 ? `${identity.publicKeyHex.slice(0, 10)}...${identity.publicKeyHex.slice(-8)}`
                 : '0x0000...0000'}
             </span>
-            {identity?.publicKeyHex && (
+            {(identity?.publicKeyHex || identity?.address) && (
               <button
                 type="button"
                 className="btn-copy-address font-mono"
@@ -148,17 +158,17 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
 
         <div className="meta-cell">
           <span className="meta-label">NETWORK</span>
-          <span className="meta-value">{accountContext.networkName || 'Local Prototype'}</span>
+          <span className="meta-value">{accountContext.networkName || (isProto ? 'Local Prototype' : 'Midnight Preprod')}</span>
         </div>
 
         <div className="meta-cell">
           <span className="meta-label">ENVIRONMENT</span>
-          <span className="meta-value">Local Sandbox</span>
+          <span className="meta-value">{isProto ? 'Local Sandbox' : 'Distributed Ledger'}</span>
         </div>
 
         <div className="meta-cell">
           <span className="meta-label">KEYRING</span>
-          <span className="meta-value">Ephemeral In-Memory</span>
+          <span className="meta-value">{isProto ? 'Ephemeral In-Memory' : 'Lace Shielded Keyring'}</span>
         </div>
       </div>
 
@@ -198,7 +208,7 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
           <div className="persona-role-banner">
             <div className="role-heading">
               <span className="role-title">{roleDisplayNames[selectedRole]}</span>
-              <span className="role-badge font-mono">SIMULATION PERSONA</span>
+              <span className="role-badge font-mono">{isProto ? 'SIMULATION PERSONA' : 'AUTHENTICATED PERSONA'}</span>
             </div>
             <p className="role-desc">{roleDescriptions[selectedRole]}</p>
           </div>
@@ -216,14 +226,24 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
           </div>
         </div>
 
-        {/* 4. Required Test 105 Simulation Warning Strip */}
-        <div className="identity-warning-strip font-mono">
-          <span className="warning-kicker">LOCAL PROTOTYPE</span>
-          <span className="warning-sep">//</span>
-          <span className="warning-text">
-            No Real Wallet Connected &mdash; Account identities are simulated deterministically for interface validation.
-          </span>
-        </div>
+        {/* 4. Required Test 105 Simulation Warning Strip & Authentic Real Wallet Banner */}
+        {isProto ? (
+          <div className="identity-warning-strip font-mono">
+            <span className="warning-kicker">LOCAL PROTOTYPE</span>
+            <span className="warning-sep">//</span>
+            <span className="warning-text">
+              No Real Wallet Connected &mdash; Account identities are simulated deterministically for interface validation.
+            </span>
+          </div>
+        ) : (
+          <div className="identity-warning-strip font-mono" style={{ borderColor: 'rgba(159, 184, 216, 0.3)', background: 'rgba(15, 23, 42, 0.7)' }}>
+            <span className="warning-kicker text-accent">AUTHENTICATED WALLET</span>
+            <span className="warning-sep">//</span>
+            <span className="warning-text">
+              Midnight Lace Wallet Connected &mdash; Operating on {accountContext.networkName || 'Midnight Network'} with client-side Zero-Knowledge proof privacy.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

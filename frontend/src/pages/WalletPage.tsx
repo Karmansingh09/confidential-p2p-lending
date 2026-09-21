@@ -274,7 +274,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                     {laceState === 'LACE_NOT_DETECTED' && 'Install the official Midnight Lace extension from Chrome Web Store to interact with confidential contracts.'}
                     {laceState === 'LACE_DETECTED' && 'Extension found on window.midnight.mnLace. Click Connect to initiate handshake.'}
                     {laceState === 'CONNECTING' && 'Please approve the connection prompt in your Lace extension window.'}
-                    {(laceState === 'CONNECTED' || laceState === 'READY') && `Public address: ${accountContext.identity?.address || 'Shielded Keyring Active'}`}
+                    {(laceState === 'CONNECTED' || laceState === 'READY') && `Public address: ${accountContext.identity?.address || session.account?.address || 'Shielded Keyring Active'}`}
                     {laceState === 'CONNECTION_REJECTED' && 'The connection request was declined in Lace. You may retry whenever ready.'}
                     {laceState === 'UNSUPPORTED_NETWORK' && `Wallet is connected to network "${session.network.networkId || 'unknown'}", but desk expects "${handshake.expectedNetwork}".`}
                     {laceState === 'CONNECTED_NOT_TRANSACTION_CAPABLE' && 'Wallet connected, but lacks cryptographic transaction balancing or submission capability.'}
@@ -473,7 +473,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
               <div className="spec-row">
                 <span className="spec-key">AUTHENTICATED ADDRESS</span>
                 <span className="spec-val" style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {accountContext.identity?.address || (isConnected && accountContext.identity?.publicKeyHex ? accountContext.identity.publicKeyHex : 'Unavailable')}
+                  {accountContext.identity?.address || session.account?.address || (isConnected && accountContext.identity?.publicKeyHex ? accountContext.identity.publicKeyHex : 'Unavailable')}
                 </span>
               </div>
               <div className="spec-row">

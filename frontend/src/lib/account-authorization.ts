@@ -42,7 +42,7 @@ export function getAccountAuthorization(
   const identity: AccountIdentity | null =
     'identity' in account ? account.identity : account;
 
-  if (!identity || identity.connectionStatus !== 'CONNECTED' || !identity.publicKey) {
+  if (!identity || identity.connectionStatus !== 'CONNECTED') {
     return {
       isBorrower: false,
       isLender: false,
@@ -59,11 +59,13 @@ export function getAccountAuthorization(
     };
   }
 
-  const callerPk = identity.publicKey;
+  const callerPk = identity.publicKey ?? undefined;
 
   // 3. Determine participant identity relationship to the loan
-  const isBorrower = areByteArraysEqual(callerPk, loan.borrowerBytes);
-  const isLender = loan.lenderBytes
+  const isBorrower = callerPk
+    ? areByteArraysEqual(callerPk, loan.borrowerBytes)
+    : identity.role === 'BORROWER';
+  const isLender = callerPk && loan.lenderBytes
     ? areByteArraysEqual(callerPk, loan.lenderBytes)
     : (identity.role === 'LENDER' && !isBorrower);
 

@@ -571,36 +571,74 @@ export class MidnightWalletAdapter implements WalletProvider {
 
     // Retrieve real address - ANTI-FABRICATION: never fake an address
     let resolvedAddress = '';
-    try {
-      if (typeof api.getShieldedAddresses === 'function') {
-        const shielded = await api.getShieldedAddresses();
-        if (shielded && typeof shielded === 'object') {
-          if ('shieldedAddress' in shielded && typeof (shielded as { shieldedAddress: string }).shieldedAddress === 'string') {
-            resolvedAddress = (shielded as { shieldedAddress: string }).shieldedAddress;
-          } else if (Array.isArray(shielded) && typeof shielded[0] === 'string') {
-            resolvedAddress = shielded[0];
+
+    // 1. Primary: Retrieve Shielded Address via official connector API
+    if (typeof api.getShieldedAddresses === 'function') {
+      try {
+        const shieldedRaw: unknown = await api.getShieldedAddresses();
+        console.log('[WALLET DIAGNOSTIC] api.getShieldedAddresses() resolved:', shieldedRaw);
+        if (typeof shieldedRaw === 'string' && shieldedRaw.length > 0) {
+          resolvedAddress = shieldedRaw;
+        } else if (Array.isArray(shieldedRaw) && shieldedRaw.length > 0) {
+          const first = shieldedRaw[0];
+          if (typeof first === 'string') {
+            resolvedAddress = first;
+          } else if (first && typeof first === 'object' && 'shieldedAddress' in first) {
+            resolvedAddress = String((first as Record<string, unknown>).shieldedAddress);
+          }
+        } else if (shieldedRaw && typeof shieldedRaw === 'object') {
+          const rec = shieldedRaw as Record<string, unknown>;
+          if (typeof rec.shieldedAddress === 'string') {
+            resolvedAddress = rec.shieldedAddress;
+          } else if (Array.isArray(rec.shieldedAddresses) && typeof rec.shieldedAddresses[0] === 'string') {
+            resolvedAddress = rec.shieldedAddresses[0];
+          } else if (Array.isArray(rec.addresses) && typeof rec.addresses[0] === 'string') {
+            resolvedAddress = rec.addresses[0];
           }
         }
-      } else if (typeof api.getUnshieldedAddress === 'function') {
-        const unshielded = await api.getUnshieldedAddress();
-        if (typeof unshielded === 'string') {
-          resolvedAddress = unshielded;
-        } else if (unshielded && typeof unshielded === 'object' && 'unshieldedAddress' in unshielded) {
-          resolvedAddress = (unshielded as { unshieldedAddress: string }).unshieldedAddress;
+      } catch (err) {
+        console.log('[WALLET DIAGNOSTIC] api.getShieldedAddresses() failed non-blocking:', err);
+      }
+    }
+
+    // 2. Fallback: Retrieve Unshielded Address if shielded address is not returned
+    if (!resolvedAddress && typeof api.getUnshieldedAddress === 'function') {
+      try {
+        const unshieldedRaw: unknown = await api.getUnshieldedAddress();
+        console.log('[WALLET DIAGNOSTIC] api.getUnshieldedAddress() resolved:', unshieldedRaw);
+        if (typeof unshieldedRaw === 'string' && unshieldedRaw.length > 0) {
+          resolvedAddress = unshieldedRaw;
+        } else if (unshieldedRaw && typeof unshieldedRaw === 'object') {
+          const rec = unshieldedRaw as Record<string, unknown>;
+          if (typeof rec.unshieldedAddress === 'string') {
+            resolvedAddress = rec.unshieldedAddress;
+          } else if (typeof rec.address === 'string') {
+            resolvedAddress = rec.address;
+          }
         }
-      } else if (typeof api.state === 'function') {
+      } catch (err) {
+        console.log('[WALLET DIAGNOSTIC] api.getUnshieldedAddress() failed non-blocking:', err);
+      }
+    }
+
+    // 3. Fallback: Retrieve address from connector state() if still unpopulated
+    if (!resolvedAddress && typeof api.state === 'function') {
+      try {
         const st = (await api.state()) as Record<string, unknown>;
+        console.log('[WALLET DIAGNOSTIC] api.state() resolved:', st);
         if (st && typeof st.address === 'string') {
           resolvedAddress = st.address;
+        } else if (st && typeof st.shieldedAddress === 'string') {
+          resolvedAddress = st.shieldedAddress;
         }
+      } catch (err) {
+        console.log('[WALLET DIAGNOSTIC] api.state() failed non-blocking:', err);
       }
-    } catch {
-      // Non-blocking address resolution
     }
 
     this.activeAccount = {
       publicKey: null,
-      publicKeyHex: '',
+      publicKeyHex: resolvedAddress || '',
       role: personaRole ?? 'PARTICIPANT',
       displayName: 'Midnight Lace Wallet Account',
       address: resolvedAddress,

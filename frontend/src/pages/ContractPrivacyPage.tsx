@@ -429,7 +429,7 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
           <div className="comparison-col col-private">
             <div className="comparison-col-header">
               <span className="col-status-dot dot-success" />
-              <h3 className="col-title font-mono">PRIVATE / OFF-CHAIN</h3>
+              <h3 className="col-title">PRIVATE / OFF-CHAIN</h3>
             </div>
             <div className="comparison-rows font-mono">
               <div className="comparison-row">
@@ -450,7 +450,7 @@ export const ContractPrivacyPage: React.FC<ContractPrivacyPageProps> = ({ onNavi
           <div className="comparison-col col-public">
             <div className="comparison-col-header">
               <span className="col-status-dot dot-accent" />
-              <h3 className="col-title font-mono">PUBLIC / ON-CHAIN</h3>
+              <h3 className="col-title">PUBLIC / ON-CHAIN</h3>
             </div>
             <div className="comparison-rows font-mono">
               <div className="comparison-row">

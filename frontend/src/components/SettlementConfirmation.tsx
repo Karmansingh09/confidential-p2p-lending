@@ -14,7 +14,9 @@ export const SettlementConfirmation: React.FC<SettlementConfirmationProps> = ({
   return (
     <div className="settlement-confirmation-card">
       <div className="confirmation-header">
-        <div className="confirmation-icon-badge settlement-badge">🏁</div>
+        <div className="confirmation-icon-badge settlement-badge" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+        </div>
         <div className="confirmation-header-text">
           <h3>Loan Agreement Concluded &amp; Settled</h3>
           <span className="confirmation-subtitle">
@@ -38,7 +40,9 @@ export const SettlementConfirmation: React.FC<SettlementConfirmationProps> = ({
 
       {/* Terminal Closure Notice */}
       <div className="settlement-terminal-banner">
-        <span className="banner-icon">🔒</span>
+        <span className="banner-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </span>
         <div className="banner-content">
           <strong>Terminal Protocol Closure:</strong> All contractual terms, principal repayments, and simple interest obligations have been successfully concluded. No further state transitions are permitted.
         </div>

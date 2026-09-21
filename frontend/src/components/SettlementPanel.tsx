@@ -79,7 +79,9 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({
       {/* Panel Header */}
       <div className="panel-header">
         <div className="panel-title-wrapper">
-          <span className="panel-icon">🏁</span>
+          <span className="panel-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+          </span>
           <div>
             <h3>Terminal Loan Settlement</h3>
             <span className="panel-subtitle">Agreement ID: <strong>{loanId}</strong></span>
@@ -122,7 +124,9 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({
       {/* Authorization & Role Explanation */}
       <div className="settlement-auth-card">
         <div className="auth-header">
-          <span className="auth-icon">🛡️</span>
+          <span className="auth-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </span>
           <div>
             <h4>Authorized Participants</h4>
             <p>

@@ -218,7 +218,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
             </div>
 
             <div className="capabilities-table-container">
-              <div className="cap-table-header font-mono">
+              <div className="cap-table-header">
                 <span className="col-cap-name">CAPABILITY</span>
                 <span className="col-cap-scope">SCOPE</span>
                 <span className="col-cap-status">STATUS</span>

@@ -109,7 +109,9 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '18px' }}>💳</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent-primary, #9FB8D8)' }} aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+          </span>
           <div>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
               Wallet Connection & Provider Boundary
@@ -125,7 +127,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
             style={{
               padding: '3px 8px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 600,
               letterSpacing: '0.05em',
               background: isPrototype ? '#854d0e' : '#1e3a8a',
@@ -138,7 +140,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
             style={{
               padding: '3px 8px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 600,
               background: detectionBadge.bg,
               color: detectionBadge.color,
@@ -164,15 +166,15 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
               borderRadius: '6px',
               fontSize: '13px',
               fontWeight: 600,
-              border: providerKind === 'LOCAL_PROTOTYPE' ? '2px solid #38bdf8' : '1px solid #475569',
+              border: providerKind === 'LOCAL_PROTOTYPE' ? '2px solid var(--accent-primary)' : '1px solid #475569',
               background: providerKind === 'LOCAL_PROTOTYPE' ? '#0f172a' : '#1e293b',
-              color: providerKind === 'LOCAL_PROTOTYPE' ? '#38bdf8' : '#cbd5e1',
+              color: providerKind === 'LOCAL_PROTOTYPE' ? 'var(--accent-primary)' : '#cbd5e1',
               cursor: 'pointer',
               textAlign: 'left',
             }}
           >
             <div>⚡ Local Prototype Provider</div>
-            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 400 }}>
+            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 400 }}>
               Deterministic in-memory accounts & zero-knowledge circuit testing
             </div>
           </button>
@@ -186,16 +188,16 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
               borderRadius: '6px',
               fontSize: '13px',
               fontWeight: 600,
-              border: providerKind === 'LACE' ? '2px solid #a855f7' : '1px solid #475569',
-              background: providerKind === 'LACE' ? '#0f172a' : '#1e293b',
-              color: providerKind === 'LACE' ? '#c084fc' : '#cbd5e1',
+              border: providerKind === 'LACE' ? '1px solid var(--accent-primary, #9FB8D8)' : '1px solid var(--border-color, rgba(159, 184, 216, 0.14))',
+              background: providerKind === 'LACE' ? 'rgba(159, 184, 216, 0.08)' : 'var(--bg-card-secondary, #111722)',
+              color: providerKind === 'LACE' ? 'var(--accent-ice-bright, #D7E5F5)' : 'var(--text-secondary, #9AA3B2)',
               cursor: 'pointer',
               textAlign: 'left',
             }}
           >
-            <div>🌐 Midnight / Lace Wallet Adapter</div>
-            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 400 }}>
-              Strict adapter boundary for future Lace extension & Midnight.js
+            <div>Midnight / Lace Wallet Adapter</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted, #687386)', fontWeight: 400 }}>
+              Strict adapter boundary for future Lace extension &amp; Midnight.js
             </div>
           </button>
         </div>
@@ -220,7 +222,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
         </div>
         <div>
           <span style={{ color: '#94a3b8' }}>Provider Kind:</span>{' '}
-          <span style={{ fontWeight: 600, color: '#38bdf8' }}>{providerKind}</span>
+          <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{providerKind}</span>
         </div>
         <div>
           <span style={{ color: '#94a3b8' }}>Network Name:</span>{' '}
@@ -253,7 +255,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
 
       {/* Capability Summary */}
       <div style={{ marginBottom: '12px' }}>
-        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
           PROVIDER CAPABILITY MATRIX:
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -261,7 +263,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
             <span
               key={key}
               style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 padding: '2px 8px',
                 borderRadius: '4px',
                 background: isSupported ? '#14532d' : '#334155',
@@ -334,7 +336,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
                 Disconnect Wallet
               </button>
             )}
-            <span style={{ fontSize: '11px', color: '#c084fc' }}>
+            <span style={{ fontSize: '12px', color: '#c084fc' }}>
               Live wallet signing unavailable • Network submission unavailable
             </span>
           </div>
@@ -347,7 +349,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
                 background: '#450a0a',
                 border: '1px solid #991b1b',
                 borderRadius: '4px',
-                fontSize: '11px',
+                fontSize: '12px',
                 color: '#fca5a5',
               }}
             >
@@ -360,12 +362,12 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
       {isPrototype && (
         <div
           style={{
-            fontSize: '11px',
+            fontSize: '12px',
             color: '#cbd5e1',
             background: '#0f172a',
             padding: '8px 12px',
             borderRadius: '4px',
-            borderLeft: '3px solid #38bdf8',
+            borderLeft: '3px solid var(--accent-primary)',
           }}
         >
           ℹ <strong>Local Prototype Mode:</strong> Operating with local deterministic simulation accounts. Zero real blockchain transactions or wallet connections are executed.

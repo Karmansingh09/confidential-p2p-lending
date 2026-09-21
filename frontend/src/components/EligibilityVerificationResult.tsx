@@ -28,7 +28,13 @@ export const EligibilityVerificationResult: React.FC<EligibilityVerificationResu
         </div>
 
         <div className="result-privacy-banner">
-          <span className="privacy-badge">🔒 STRICT PRIVACY PRESERVED</span>
+          <span className="privacy-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            STRICT PRIVACY PRESERVED
+          </span>
           <span className="privacy-callout">
             <strong>PRIVATE VALUE ≠ PUBLIC DATA</strong> — The underlying qualification value was proven inside a zero-knowledge circuit and was never disclosed.
           </span>
@@ -58,7 +64,13 @@ export const EligibilityVerificationResult: React.FC<EligibilityVerificationResu
         </div>
 
         <div className="result-disclaimer">
-          <span className="disclaimer-icon">ℹ️</span>
+          <span className="disclaimer-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </span>
           <span>
             {result.isPrototypeExecution
               ? 'Local prototype proof execution — state updated locally, no live network transaction.'
@@ -100,7 +112,12 @@ export const EligibilityVerificationResult: React.FC<EligibilityVerificationResu
       </div>
 
       <div className="result-privacy-banner">
-        <span className="privacy-badge">🛡️ PRIVACY GUARANTEE</span>
+        <span className="privacy-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          PRIVACY GUARANTEE
+        </span>
         <span className="privacy-callout">
           Your input was evaluated entirely within the local zero-knowledge circuit prover and was not exposed to lenders or the ledger.
         </span>

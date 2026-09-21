@@ -96,7 +96,7 @@
 }
 
 .brand-submark {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -418,7 +418,7 @@
 }
 
 .core-micro-label .micro-label-tag {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -757,7 +757,7 @@
 
 .process-tech-badge {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -817,7 +817,7 @@
 
 .node-category-tag {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #9FB8D8;
@@ -900,7 +900,7 @@
 
 .lifecycle-idx {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #9FB8D8;
 }
@@ -1022,7 +1022,7 @@
 
 .footer-brand-label {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.12em;
   color: #F2F4F7;

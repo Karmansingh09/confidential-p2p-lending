@@ -182,17 +182,29 @@ export const LoanPreview: React.FC<LoanPreviewProps> = ({
           </div>
         </div>
 
-        <div className="assurance-bullet-list font-mono">
+        <div className="assurance-bullet-list">
           <div className="assurance-bullet-item">
-            <span className="bullet-check">✓</span>
-            <span>Private balance and credentials stay strictly on client machine</span>
+            <span className="assurance-item-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </span>
+            <span>Private inputs and credentials stay strictly on client machine</span>
           </div>
           <div className="assurance-bullet-item">
-            <span className="bullet-check">✓</span>
+            <span className="assurance-item-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </span>
             <span>Only cryptographic verification outcomes published on-chain</span>
           </div>
           <div className="assurance-bullet-item">
-            <span className="bullet-check">✓</span>
+            <span className="assurance-item-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </span>
             <span>Deterministic Compact smart contract escrow settlement</span>
           </div>
         </div>

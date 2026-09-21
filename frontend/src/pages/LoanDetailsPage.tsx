@@ -174,7 +174,7 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
               <select
                 id="loan-select"
                 className="form-select font-mono"
-                style={{ padding: '4px 8px', fontSize: '11px', background: 'rgba(159, 184, 216, 0.05)', color: 'var(--text-primary)', border: '1px solid rgba(159, 184, 216, 0.15)' }}
+                style={{ padding: '4px 8px', fontSize: '12px', background: 'rgba(159, 184, 216, 0.05)', color: 'var(--text-primary)', border: '1px solid rgba(159, 184, 216, 0.15)' }}
                 value={effectiveLoanId}
                 onChange={(e) => onSelectLoan(e.target.value)}
               >
@@ -205,7 +205,7 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
         borderTop: '1px solid rgba(159, 184, 216, 0.08)',
         borderBottom: '1px solid rgba(159, 184, 216, 0.08)',
       }}>
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.06em' }} className="font-mono">
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.06em' }} className="font-mono">
           PRINCIPAL BORROWING CAPITAL
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
@@ -234,14 +234,14 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
             <strong style={{ color: 'var(--accent-primary)' }}>
               {formatBasisPoints(currentLoan.interestRateBasisPoints)}
             </strong>
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({currentLoan.interestRateBasisPoints.toString()} bps)</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}> ({currentLoan.interestRateBasisPoints.toString()} bps)</span>
           </div>
           <div>
             <span style={{ color: 'var(--text-muted)' }}>TOTAL REPAYMENT: </span>
             <strong style={{ color: 'var(--text-primary)' }}>
               {formatAmount(totalRepaymentObligation)}
             </strong>
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> (+{formatAmount(interestAmount)} interest)</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}> (+{formatAmount(interestAmount)} interest)</span>
           </div>
           <div>
             <span style={{ color: 'var(--text-muted)' }}>DURATION: </span>

@@ -103,7 +103,11 @@ export const EligibilityVerificationPanel: React.FC<EligibilityVerificationPanel
       {/* Panel Header */}
       <div className="panel-header">
         <div className="panel-title-wrapper">
-          <span className="panel-icon">🛡️</span>
+          <span className="panel-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </span>
           <div>
             <h3>Confidential Eligibility Verification</h3>
             <span className="panel-subtitle">Agreement ID: <strong>{loanId}</strong></span>

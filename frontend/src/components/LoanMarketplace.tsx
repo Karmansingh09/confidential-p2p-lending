@@ -48,7 +48,7 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
           <span className="orderbook-count-badge font-mono">{items.length} OPPORTUNITIES</span>
         </div>
 
-        <div className="orderbook-filter-tabs font-mono" role="tablist" aria-label="Order Book Lifecycle Filters">
+        <div className="orderbook-filter-tabs" role="tablist" aria-label="Order Book Lifecycle Filters">
           {filterOptions.map((opt) => (
             <button
               key={opt.key}
@@ -73,7 +73,7 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
           </svg>
           <input
             type="text"
-            className="orderbook-search-input font-mono"
+            className="orderbook-search-input"
             placeholder="Search by Loan ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -92,11 +92,11 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
         </div>
 
         <div className="orderbook-sort-wrap">
-          <label htmlFor="orderbook-sort-select" className="orderbook-sort-label font-mono">SORT:</label>
+          <label htmlFor="orderbook-sort-select" className="orderbook-sort-label">SORT:</label>
           <div className="orderbook-select-wrapper">
             <select
               id="orderbook-sort-select"
-              className="orderbook-sort-select font-mono"
+              className="orderbook-sort-select"
               value={sortOption}
               onChange={(e) => setSortOption(e.target.value as SortOption)}
               aria-label="Sort order book items"

@@ -283,7 +283,7 @@ export const MyLoansPage: React.FC<MyLoansPageProps> = ({
             <span className="ledger-count-badge font-mono">{currentList.length} AGREEMENTS</span>
           </div>
 
-          <div className="ledger-filter-tabs font-mono" role="tablist" aria-label="Positions Filter">
+          <div className="ledger-filter-tabs" role="tablist" aria-label="Positions Filter">
             <button
               type="button"
               className={`ledger-tab-btn ${activeTab === 'all' ? 'active' : ''}`}

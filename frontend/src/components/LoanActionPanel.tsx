@@ -237,7 +237,13 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
           <h4>{actionTitle}</h4>
           <p>{actionDesc}</p>
           <div className="action-notice-box">
-            <span className="notice-icon">ℹ️</span>
+            <span className="notice-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </span>
             <span className="notice-content">{noticeText}</span>
           </div>
         </div>
@@ -255,7 +261,7 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
             <button
               type="button"
               className="action-btn"
-              style={{ background: '#334155', color: '#60a5fa', border: '1px solid #475569' }}
+              style={{ background: '#1e293b', color: '#9FB8D8', border: '1px solid rgba(159, 184, 216, 0.2)' }}
               onClick={() => {
                 const actionMap: Record<string, LifecycleTransactionAction> = {
                   verify: 'VERIFY_ELIGIBILITY',
@@ -269,7 +275,11 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
               }}
               data-testid="review-readiness-btn"
             >
-              🔍 Review Readiness
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Review Readiness
             </button>
           )}
         </div>

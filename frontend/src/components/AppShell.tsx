@@ -240,7 +240,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
         <div className="sidebar-scroll-content">
           {/* Section: Desk */}
           <div className="sidebar-nav-group">
-            {!sidebarCollapsed && <div className="nav-group-title font-mono">DESK</div>}
+            {!sidebarCollapsed && <div className="nav-group-title">DESK</div>}
             <nav className="nav-group-links">
               {navProduct.map((item) => {
                 const isActive = currentTab === item.id;
@@ -268,7 +268,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
 
           {/* Section: Operations */}
           <div className="sidebar-nav-group">
-            {!sidebarCollapsed && <div className="nav-group-title font-mono">OPERATIONS</div>}
+            {!sidebarCollapsed && <div className="nav-group-title">OPERATIONS</div>}
             <nav className="nav-group-links">
               {navOperations.map((item) => {
                 const isActive = currentTab === item.id;
@@ -293,7 +293,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
 
           {/* Section: System */}
           <div className="sidebar-nav-group">
-            {!sidebarCollapsed && <div className="nav-group-title font-mono">SYSTEM</div>}
+            {!sidebarCollapsed && <div className="nav-group-title">SYSTEM</div>}
             <nav className="nav-group-links">
               <button
                 type="button"
@@ -403,7 +403,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
             </button>
 
             {/* Breadcrumb */}
-            <div className="topbar-breadcrumb font-mono">
+            <div className="topbar-breadcrumb">
               <span className="breadcrumb-root">DESK</span>
               <span className="breadcrumb-separator">/</span>
               <span className="breadcrumb-active">{getBreadcrumbLabel(currentTab)}</span>

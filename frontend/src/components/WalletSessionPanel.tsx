@@ -225,7 +225,9 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '20px' }}>🔐</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent-primary, #9FB8D8)' }} aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
           <div>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
               Wallet Session &amp; Identity Management
@@ -241,7 +243,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             style={{
               padding: '3px 8px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 700,
               letterSpacing: '0.05em',
               background: isPrototype ? '#854d0e' : '#1e3a8a',
@@ -254,7 +256,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             style={{
               padding: '3px 8px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 700,
               background: detectionBadge.bg,
               color: detectionBadge.color,
@@ -266,7 +268,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             style={{
               padding: '3px 8px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 700,
               background: statusBadge.bg,
               color: statusBadge.color,
@@ -332,7 +334,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         data-testid="session-readiness-indicators"
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connected</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connected</div>
           <div
             style={{
               fontSize: '12px',
@@ -346,7 +348,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Matched</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Matched</div>
           <div
             style={{
               fontSize: '12px',
@@ -360,7 +362,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
           <div
             style={{
               fontSize: '12px',
@@ -374,7 +376,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Capable</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Capable</div>
           <div
             style={{
               fontSize: '12px',
@@ -398,7 +400,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         }}
       >
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Contract Configured</div>
           <div
             style={{
               fontSize: '12px',
@@ -411,14 +413,14 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           </div>
         </div>
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>
             {netConfig.environment}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Configuration</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Configuration</div>
           <div
             style={{
               fontSize: '12px',
@@ -432,7 +434,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connector</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Connector</div>
           <div
             style={{
               fontSize: '12px',
@@ -446,7 +448,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Connection Status</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Connection Status</div>
           <div
             style={{
               fontSize: '12px',
@@ -460,14 +462,14 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Expected Network</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Expected Network</div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>
             {handshake.expectedNetwork || netConfig.networkName}
           </div>
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Network</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Wallet Network</div>
           <div
             style={{
               fontSize: '12px',
@@ -481,7 +483,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Compatibility</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Compatibility</div>
           <div
             style={{
               fontSize: '12px',
@@ -500,7 +502,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing Capability</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Signing Capability</div>
           <div
             style={{
               fontSize: '12px',
@@ -514,7 +516,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission Capability</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Submission Capability</div>
           <div
             style={{
               fontSize: '12px',
@@ -528,7 +530,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Readiness</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Transaction Readiness</div>
           <div
             style={{
               fontSize: '12px',
@@ -542,7 +544,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8' }}>CONNECTED PUBLIC IDENTITY</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8' }}>CONNECTED PUBLIC IDENTITY</div>
           <div
             style={{
               fontSize: '12px',
@@ -557,7 +559,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8' }}>NETWORK / ENVIRONMENT</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8' }}>NETWORK / ENVIRONMENT</div>
           <div
             style={{
               fontSize: '12px',
@@ -571,7 +573,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         </div>
 
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
-          <div style={{ fontSize: '11px', color: '#94a3b8' }}>NETWORK SETTLEMENT STATUS</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8' }}>NETWORK SETTLEMENT STATUS</div>
           <div
             style={{
               fontSize: '12px',
@@ -594,7 +596,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           marginBottom: '16px',
         }}
       >
-        <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
           ATOMIC PROVIDER CAPABILITIES
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -602,7 +604,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             <span
               key={cap}
               style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 padding: '3px 8px',
                 borderRadius: '4px',
                 background: supported ? '#14532d' : '#7f1d1d',
@@ -686,7 +688,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           </button>
         )}
 
-        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
           {isPrototype
             ? 'Simulation Only: Local Prototype Wallet (No real wallet transaction is being submitted)'
             : !handshake.isDetected

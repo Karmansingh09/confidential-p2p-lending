@@ -115,7 +115,11 @@ export const LenderEvaluationPanel: React.FC<LenderEvaluationPanelProps> = ({
       {/* Privacy Attestation Section */}
       <div className="privacy-attestation-panel">
         <div className="attestation-header">
-          <span className="attestation-shield">🛡️</span>
+          <span className="attestation-shield">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </span>
           <h4>Zero-Knowledge Underwriting Attestation</h4>
         </div>
         <p className="attestation-statement">
@@ -132,7 +136,24 @@ export const LenderEvaluationPanel: React.FC<LenderEvaluationPanelProps> = ({
           {warnings.map((w) => (
             <div key={w.code} className={`warning-item warning-severity-${w.severity}`}>
               <span className="warning-item-icon">
-                {w.severity === 'critical' ? '🚫' : w.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                {w.severity === 'critical' ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
+                ) : w.severity === 'warning' ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                )}
               </span>
               <span>{w.message}</span>
             </div>
@@ -195,7 +216,13 @@ export const LenderEvaluationPanel: React.FC<LenderEvaluationPanelProps> = ({
           </div>
 
           <div className="prototype-mode-callout">
-            <span className="callout-icon">ℹ️</span>
+            <span className="callout-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </span>
             <p>
               <strong>Prototype Mode Disclaimer:</strong> No real funds are transferred. This action simulates the contract state transition from <code>REQUESTED</code> to <code>FUNDED</code> in local memory. Live Midnight Network transaction dispatch and wallet signing (via Midnight.js / Lace Wallet) will be connected in an upcoming milestone.
             </p>

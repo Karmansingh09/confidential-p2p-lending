@@ -745,8 +745,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLaunchDesk, onEnterD
           <div className="footer-technical-note">
             Built for Midnight Network &bull; Compact Smart Contracts &bull; Zero-Knowledge Underwriting
           </div>
+          <div className="footer-protocol-disclaimer">
+            Non-Custodial Architecture &bull; Client-side zero-knowledge proof generation ensures confidential underwriting parameters never leave the user device. All smart contracts execute deterministically on-chain without custodial intermediaries.
+          </div>
           <div className="footer-env-status">
-            PROTOTYPE ENVIRONMENT &bull; LOCAL MOCK MODE ACTIVE
+            PROTOTYPE ENVIRONMENT &bull; LOCAL SIMULATION MODE ACTIVE
           </div>
         </div>
       </footer>

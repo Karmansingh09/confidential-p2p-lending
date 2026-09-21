@@ -99,7 +99,7 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
       </section>
 
       {/* 2. WIDE MARKETPLACE SUMMARY STRIP */}
-      <section className="marketplace-summary-strip font-mono" aria-label="Marketplace Liquidity Summary">
+      <section className="marketplace-summary-strip" aria-label="Marketplace Liquidity Summary">
         <div className="summary-stat-col">
           <span className="summary-stat-label">TOTAL VOLUME</span>
           <div className="summary-stat-val-row">

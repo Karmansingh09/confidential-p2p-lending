@@ -180,7 +180,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           </div>
 
           {/* Secondary Financial Indicators (5-Metric Stats Rail) */}
-          <div className="financial-secondary-stats font-mono">
+          <div className="financial-secondary-stats">
             <div className="stat-column">
               <span className="stat-label">TOTAL AGREEMENTS</span>
               <span className="stat-value">{totalLoans}</span>

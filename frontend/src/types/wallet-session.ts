@@ -4,6 +4,7 @@ import type {
   WalletAccountIdentity,
   WalletNetworkInfo,
   WalletCapabilitySet,
+  LaceConnectionState,
 } from './wallet-adapter.ts';
 import type { AccountRole } from './account.ts';
 import type { LoanDetailsModel } from './index.ts';
@@ -81,6 +82,8 @@ export interface WalletSession {
   network: WalletNetworkInfo;
   /** Atomic capability matrix supported by active provider in this session */
   capabilities: WalletCapabilitySet;
+  /** Formal 9-state Midnight Lace connection state */
+  laceConnectionState?: LaceConnectionState;
   /** Detailed error descriptor if in an error or rejected state */
   error: WalletSessionError | null;
   /** Epoch millisecond timestamp when session connected, or null */

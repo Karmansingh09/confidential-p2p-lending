@@ -197,7 +197,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
           >
             <div>Midnight / Lace Wallet Adapter</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted, #687386)', fontWeight: 400 }}>
-              Strict adapter boundary for future Lace extension &amp; Midnight.js
+              Midnight Lace DApp Connector v4 extension integration
             </div>
           </button>
         </div>
@@ -251,6 +251,18 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
             {networkContext.isRealNetwork ? 'Midnight Network Target' : 'Local Sandbox'}
           </span>
         </div>
+        <div>
+          <span style={{ color: '#94a3b8' }}>Reported Network ID:</span>{' '}
+          <span style={{ fontWeight: 600, color: '#93c5fd' }}>
+            {provider.getReportedNetworkId ? provider.getReportedNetworkId() ?? 'None' : 'None'}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#94a3b8' }}>Lace State:</span>{' '}
+          <span style={{ fontWeight: 600, color: '#93c5fd' }}>
+            {provider.getLaceConnectionState ? provider.getLaceConnectionState() : (isPrototype ? 'SIMULATION' : 'NOT_DETECTED')}
+          </span>
+        </div>
       </div>
 
       {/* Capability Summary */}
@@ -292,12 +304,12 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
           }}
         >
           <div style={{ fontSize: '13px', fontWeight: 600, color: '#f3e8ff', marginBottom: '4px' }}>
-            Real Midnight / Lace Wallet Integration Boundary
+            Midnight Lace Wallet Integration
           </div>
           <div style={{ fontSize: '12px', color: '#d8b4fe', marginBottom: '10px' }}>
             {detectionStatus === 'NOT_DETECTED'
               ? 'Lace Wallet extension is not detected in this browser. To use real network features, install the Midnight Lace Wallet extension.'
-              : 'Real Midnight wallet connector detected. Live on-chain transaction submission is pending official Midnight dApp connector packages.'}
+              : 'Midnight Lace wallet connector detected. Ready for authentic DApp connector v4 operations.'}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {connectionStatus !== 'CONNECTED' ? (
@@ -322,6 +334,7 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
               <button
                 type="button"
                 onClick={handleDisconnect}
+                disabled={isConnecting}
                 style={{
                   padding: '6px 14px',
                   borderRadius: '4px',
@@ -337,7 +350,9 @@ export const WalletConnectionPanel: React.FC<WalletConnectionPanelProps> = ({
               </button>
             )}
             <span style={{ fontSize: '12px', color: '#c084fc' }}>
-              Live wallet signing unavailable • Network submission unavailable
+              {capabilities.SIGN_TRANSACTION && capabilities.SUBMIT_TRANSACTION
+                ? 'Live wallet signing available • Network submission available'
+                : 'Live wallet signing unavailable • Network submission unavailable'}
             </span>
           </div>
 

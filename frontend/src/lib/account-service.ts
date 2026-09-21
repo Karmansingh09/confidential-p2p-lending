@@ -108,15 +108,17 @@ export function getMockAccount(
     if (session.status === 'CONNECTED' && rawAccount) {
       const pk = rawAccount.publicKey;
       const hex = rawAccount.publicKeyHex || (pk ? bytesToHex(pk) : '');
-      const shortHex = hex ? `${hex.slice(0, 6)}...${hex.slice(-4)}` : 'Adapter Account';
+      const addr = rawAccount.address || hex;
+      const shortAddr = addr ? (addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : addr) : 'Adapter Account';
       return {
         publicKey: pk,
         publicKeyHex: hex,
         connectionStatus: 'CONNECTED',
         displayName: rawAccount.displayName ?? 'Midnight Wallet Account',
-        shortLabel: `Lace (${shortHex})`,
+        shortLabel: `Lace (${shortAddr})`,
         role: rawAccount.role ?? role,
         isPrototype: false,
+        address: rawAccount.address,
       };
     }
 

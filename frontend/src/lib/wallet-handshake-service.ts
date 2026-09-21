@@ -11,7 +11,10 @@ import type {
   WalletHandshakeCapabilities,
 } from '../types/wallet-handshake.ts';
 import { WalletHandshakeError } from '../types/wallet-handshake.ts';
-import { WalletAdapterError } from '../types/wallet-adapter.ts';
+import {
+  WalletAdapterError,
+  type LaceConnectionState,
+} from '../types/wallet-adapter.ts';
 
 export type WalletHandshakeListener = (state: WalletHandshakeState) => void;
 
@@ -141,6 +144,30 @@ export class WalletHandshakeService {
       status = 'CONNECTED';
     }
 
+    const networkCompatible = netComp.isMatch;
+    const networkName = walletNetwork
+      ? `Midnight (${walletNetwork})`
+      : provider.isPrototype
+      ? expectedConfig.networkName
+      : null;
+
+    let laceConnectionState: LaceConnectionState = 'LACE_NOT_DETECTED';
+    if (this.lastError?.code === 'USER_REJECTED') {
+      laceConnectionState = 'CONNECTION_REJECTED';
+    } else if (!isDetected) {
+      laceConnectionState = 'LACE_NOT_DETECTED';
+    } else if (this.isConnecting) {
+      laceConnectionState = 'CONNECTING';
+    } else if (!isConnected) {
+      laceConnectionState = 'LACE_DETECTED';
+    } else if (!networkCompatible && expectedConfig.environment !== 'LOCAL') {
+      laceConnectionState = 'UNSUPPORTED_NETWORK';
+    } else if (!isTransactionCapable) {
+      laceConnectionState = 'CONNECTED_NOT_TRANSACTION_CAPABLE';
+    } else {
+      laceConnectionState = 'READY';
+    }
+
     return {
       status,
       isDetected,
@@ -150,6 +177,9 @@ export class WalletHandshakeService {
       expectedNetwork,
       walletNetwork,
       networkCompatibility,
+      networkCompatible,
+      networkName,
+      laceConnectionState,
       capabilities,
       isTransactionCapable,
       error: this.lastError,

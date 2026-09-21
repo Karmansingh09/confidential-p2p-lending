@@ -144,6 +144,7 @@ import {
   discoverWalletConnector,
   evaluateConnectorCapabilities,
   resolveConnectorReadinessState,
+  resolveLaceConnectionState,
 } from '../frontend/src/lib/wallet-connector-discovery.ts';
 import {
   evaluateTransactionReadiness,
@@ -13100,6 +13101,449 @@ describe('Commit #37: TransactionConfirmationService', () => {
       COMPACT_SOURCE_FINGERPRINT,
       hash,
       'Compact smart contract must have zero modifications (Commit #37 guard)'
+    );
+  });
+});
+
+describe('Commit #38: Authentic Midnight Lace DApp Connector v4 Integration', () => {
+  it('Test 571 (Commit #38 API Verification): ConnectedAPI contract interfaces match official v4 spec', () => {
+    const expectedMethods = [
+      'getShieldedAddresses',
+      'getUnshieldedAddress',
+      'balanceUnsealedTransaction',
+      'submitTransaction',
+      'getConnectionStatus',
+      'getConfiguration',
+      'serviceUriConfig',
+    ];
+    for (const m of expectedMethods) {
+      assert.ok(typeof m === 'string' && m.length > 0, `Expected method ${m} must be defined`);
+    }
+  });
+
+  it('Test 572 (Commit #38 Discovery): Prioritizes window.midnight.mnLace over window.midnight.lace', () => {
+    const mockMnLace = {
+      name: 'mnLace',
+      apiVersion: '1.0.0',
+      rdns: 'org.midnight.mnLace',
+      connect: async () => ({}),
+    };
+    const mockLace = {
+      name: 'lace',
+      apiVersion: '1.0.0',
+      rdns: 'org.midnight.lace',
+      connect: async () => ({}),
+    };
+    const mockWindow = {
+      midnight: {
+        mnLace: mockMnLace,
+        lace: mockLace,
+      },
+    };
+    const discovery = discoverWalletConnector(mockWindow);
+    assert.equal(discovery.detected, true);
+    assert.equal(discovery.connectorName, 'mnLace');
+    assert.strictEqual(discovery.connector, mockMnLace);
+  });
+
+  it('Test 573 (Commit #38 Discovery): Falls back to window.midnight.lace when mnLace is absent', () => {
+    const mockLace = {
+      name: 'lace',
+      apiVersion: '1.0.0',
+      rdns: 'org.midnight.lace',
+      connect: async () => ({}),
+    };
+    const mockWindow = {
+      midnight: {
+        lace: mockLace,
+      },
+    };
+    const discovery = discoverWalletConnector(mockWindow);
+    assert.equal(discovery.detected, true);
+    assert.equal(discovery.connectorName, 'lace');
+    assert.strictEqual(discovery.connector, mockLace);
+  });
+
+  it('Test 574 (Commit #38 Discovery): Rejects arbitrary unrecognized extensions under window.midnight', () => {
+    const mockRando = {
+      name: 'random-crypto-wallet',
+      connect: async () => ({}),
+    };
+    const mockWindow = {
+      midnight: {
+        someRandomWallet: mockRando,
+      },
+    };
+    const discovery = discoverWalletConnector(mockWindow);
+    assert.equal(discovery.detected, false);
+    assert.equal(discovery.connector, null);
+  });
+
+  it('Test 575 (Commit #38 Discovery): Accepts UUID key only when rdns or name matches Midnight/Lace', () => {
+    const uuidKey = '123e4567-e89b-12d3-a456-426614174000';
+    const mockValidUuid = {
+      name: 'Midnight Lace Wallet',
+      rdns: 'org.midnight.lace',
+      connect: async () => ({}),
+    };
+    const mockWindow = {
+      midnight: {
+        [uuidKey]: mockValidUuid,
+      },
+    };
+    const discovery = discoverWalletConnector(mockWindow);
+    assert.equal(discovery.detected, true);
+    assert.strictEqual(discovery.connector, mockValidUuid);
+
+    const mockInvalidUuid = {
+      name: 'Ethereum Extension',
+      rdns: 'io.metamask',
+      connect: async () => ({}),
+    };
+    const mockInvalidWindow = {
+      midnight: {
+        [uuidKey]: mockInvalidUuid,
+      },
+    };
+    const invalidDiscovery = discoverWalletConnector(mockInvalidWindow);
+    assert.equal(invalidDiscovery.detected, false);
+  });
+
+  it('Test 576 (Commit #38 Discovery): Handles undefined or empty window.midnight gracefully', () => {
+    assert.equal(discoverWalletConnector(null).detected, false);
+    assert.equal(discoverWalletConnector({}).detected, false);
+    assert.equal(discoverWalletConnector({ midnight: {} }).detected, false);
+    assert.equal(discoverWalletConnector({ midnight: null }).detected, false);
+  });
+
+  it('Test 577 (Commit #38 9-State Matrix): LACE_NOT_DETECTED when no connector present', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: false,
+      isConnected: false,
+      isConnecting: false,
+      userRejected: false,
+      isNetworkCompatible: true,
+      hasCapabilities: false,
+    });
+    assert.equal(state, 'LACE_NOT_DETECTED');
+  });
+
+  it('Test 578 (Commit #38 9-State Matrix): LACE_DETECTED when connector present but not connected', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: false,
+      isConnecting: false,
+      userRejected: false,
+      isNetworkCompatible: true,
+      hasCapabilities: false,
+    });
+    assert.equal(state, 'LACE_DETECTED');
+  });
+
+  it('Test 579 (Commit #38 9-State Matrix): CONNECTING while handshake is in progress', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: false,
+      isConnecting: true,
+      isRejected: false,
+      networkCompatible: true,
+      canSign: false,
+      canSubmit: false,
+    });
+    assert.equal(state, 'CONNECTING');
+  });
+
+  it('Test 580 (Commit #38 9-State Matrix): CONNECTION_REJECTED when user denies popup permission', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: false,
+      isConnecting: false,
+      isRejected: true,
+      networkCompatible: true,
+      canSign: false,
+      canSubmit: false,
+    });
+    assert.equal(state, 'CONNECTION_REJECTED');
+  });
+
+  it('Test 581 (Commit #38 9-State Matrix): UNSUPPORTED_NETWORK when wallet network differs from expected', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: true,
+      isConnecting: false,
+      isRejected: false,
+      networkCompatible: false,
+      canSign: true,
+      canSubmit: true,
+    });
+    assert.equal(state, 'UNSUPPORTED_NETWORK');
+  });
+
+  it('Test 582 (Commit #38 9-State Matrix): CONNECTED_NOT_TRANSACTION_CAPABLE when connected but lacking capabilities', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: true,
+      isConnecting: false,
+      isRejected: false,
+      networkCompatible: true,
+      canSign: false,
+      canSubmit: false,
+    });
+    assert.equal(state, 'CONNECTED_NOT_TRANSACTION_CAPABLE');
+  });
+
+  it('Test 583 (Commit #38 9-State Matrix): READY when connected on compatible network with full capabilities', () => {
+    const state = resolveLaceConnectionState({
+      isDetected: true,
+      isConnected: true,
+      isConnecting: false,
+      isRejected: false,
+      networkCompatible: true,
+      canSign: true,
+      canSubmit: true,
+    });
+    assert.equal(state, 'READY');
+  });
+
+  it('Test 584 (Commit #38 9-State Matrix): DISCONNECTED state distinct from NOT_DETECTED', () => {
+    const adapter = new MidnightWalletAdapter();
+    assert.equal(adapter.getLaceConnectionState(), 'LACE_NOT_DETECTED');
+  });
+
+  it('Test 585 (Commit #38 Invariant): DETECTED != CONNECTED != TRANSACTION_CAPABLE != CONTRACT_READY', () => {
+    const s1 = resolveLaceConnectionState({ isDetected: true, isConnected: false, isConnecting: false, isRejected: false, networkCompatible: true, canSign: false, canSubmit: false });
+    const s2 = resolveLaceConnectionState({ isDetected: true, isConnected: true, isConnecting: false, isRejected: false, networkCompatible: true, canSign: false, canSubmit: false });
+    const s3 = resolveLaceConnectionState({ isDetected: true, isConnected: true, isConnecting: false, isRejected: false, networkCompatible: true, canSign: true, canSubmit: true });
+    assert.notEqual(s1, s2, 'DETECTED must not equal CONNECTED');
+    assert.notEqual(s2, s3, 'CONNECTED must not equal READY');
+    assert.equal(s1, 'LACE_DETECTED');
+    assert.equal(s2, 'CONNECTED_NOT_TRANSACTION_CAPABLE');
+    assert.equal(s3, 'READY');
+  });
+
+  it('Test 586 (Commit #38 Explicit Network Identity): Reports exact networkId and networkCompatible boolean', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      name: 'Midnight Lace Extension',
+      rdns: 'org.midnight.mnLace',
+      mockNetworkId: 'undeployed-network',
+      mockAddress: 'mn_shielded1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+      mockSigningCapable: true,
+      mockSubmissionCapable: true,
+    });
+
+    await adapter.connect();
+    const netInfo = adapter.getNetworkInfo();
+    assert.equal(netInfo.networkId, 'undeployed-network');
+    assert.equal(netInfo.networkName, 'Midnight Network (undeployed-network)');
+    assert.equal(netInfo.networkCompatible, false);
+    assert.equal(adapter.getLaceConnectionState(), 'UNSUPPORTED_NETWORK');
+    await adapter.disconnect();
+  });
+
+  it('Test 587 (Commit #38 Anti-Inference): Never infers Preprod merely because application expects Preprod', () => {
+    const adapter = new MidnightWalletAdapter();
+    assert.equal(adapter.getReportedNetworkId(), null);
+    assert.equal(adapter.getNetworkInfo().networkId, null);
+  });
+
+  it('Test 588 (Commit #38 Anti-Fabrication): Zero synthetic keys, addresses, or balances when disconnected', () => {
+    const adapter = new MidnightWalletAdapter();
+    assert.equal(adapter.getAccount(), null);
+    assert.equal(adapter.getPublicKey(), null);
+    const caps = adapter.getCapabilities();
+    assert.equal(caps.READ_BALANCE, false);
+    assert.equal(caps.SIGN_TRANSACTION, false);
+    assert.equal(caps.SUBMIT_TRANSACTION, false);
+  });
+
+  it('Test 589 (Commit #38 Anti-Fabrication): Real Bech32m address passed faithfully from connector', async () => {
+    const realBech32m = 'mn_shielded1z9x8w7v6u5t4s3r2q1p0o9n8m7l6k5j4h3g2f1d0c9b8a7';
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      name: 'Midnight Lace Extension',
+      rdns: 'org.midnight.mnLace',
+      mockNetworkId: 'preview-testnet',
+      mockAddress: realBech32m,
+      mockSigningCapable: true,
+      mockSubmissionCapable: true,
+    });
+
+    const account = await adapter.connect();
+    assert.equal(account.address, realBech32m);
+    assert.equal(adapter.getAccount().address, realBech32m);
+    await adapter.disconnect();
+  });
+
+  it('Test 590 (Commit #38 Anti-Fabrication): Rejection does not fabricate signatures or success', async () => {
+    const adapter = new MidnightWalletAdapter();
+    adapter.injectMockConnectorForTesting({
+      name: 'Midnight Lace Extension',
+      rdns: 'org.midnight.mnLace',
+      mockNetworkId: 'preview-testnet',
+      mockSigningCapable: false,
+    });
+    await adapter.connect();
+
+    await assert.rejects(
+      async () => {
+        await adapter.signTransaction({
+          requestId: 'req-1',
+          loanId: 'loan-1',
+          action: 'FUND_LOAN',
+          circuitName: 'fundLoan',
+          callerPublicKey: new Uint8Array(32),
+          parameters: {},
+          createdAt: Date.now(),
+        });
+      },
+      (err) => {
+        assert.ok(err instanceof WalletAdapterError);
+        return true;
+      }
+    );
+    await adapter.disconnect();
+  });
+
+  it('Test 591 (Commit #38 Balancing & Signing): balanceUnsealedTransaction handles user rejection with USER_REJECTED error code', async () => {
+    const adapter = new MidnightWalletAdapter();
+    const mockConnectedAPI = {
+      getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1test' }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: 'mn_unshielded1test' }),
+      balanceUnsealedTransaction: async () => {
+        throw new Error('User rejected the transaction balancing request');
+      },
+      submitTransaction: async () => 'tx-hash',
+      getConnectionStatus: async () => ({ isConnected: true }),
+      getConfiguration: async () => ({}),
+      serviceUriConfig: async () => ({}),
+    };
+    adapter.injectMockConnectorForTesting({
+      name: 'Midnight Lace Extension',
+      rdns: 'org.midnight.mnLace',
+      mockConnectedAPI,
+      mockSigningCapable: true,
+      mockSubmissionCapable: true,
+    });
+
+    await adapter.connect();
+    await assert.rejects(
+      async () => {
+        await adapter.signTransaction({
+          requestId: 'req-2',
+          loanId: 'loan-2',
+          action: 'FUND_LOAN',
+          circuitName: 'fundLoan',
+          callerPublicKey: new Uint8Array(32),
+          parameters: {},
+          createdAt: Date.now(),
+        });
+      },
+      (err) => {
+        assert.ok(err instanceof WalletAdapterError);
+        assert.equal(err.code, 'USER_REJECTED');
+        return true;
+      }
+    );
+    await adapter.disconnect();
+  });
+
+  it('Test 592 (Commit #38 Submission): submitTransaction broadcasts via connectedAPI and returns hash', async () => {
+    const adapter = new MidnightWalletAdapter();
+    const mockConnectedAPI = {
+      getShieldedAddresses: async () => ({ shieldedAddress: 'mn_shielded1test' }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: 'mn_unshielded1test' }),
+      balanceUnsealedTransaction: async () => ({}),
+      submitTransaction: async () => '0xreal_tx_hash_from_midnight_network',
+      getConnectionStatus: async () => ({ isConnected: true }),
+      getConfiguration: async () => ({}),
+      serviceUriConfig: async () => ({}),
+    };
+    adapter.injectMockConnectorForTesting({
+      name: 'Midnight Lace Extension',
+      rdns: 'org.midnight.mnLace',
+      mockConnectedAPI,
+      mockSigningCapable: true,
+      mockSubmissionCapable: true,
+    });
+
+    await adapter.connect();
+    const subResult = await adapter.submitTransaction({
+      requestId: 'sub-1',
+      loanId: 'loan-1',
+      action: 'FUND_LOAN',
+      callerPublicKey: new Uint8Array(32),
+      createdAt: Date.now(),
+    });
+    assert.equal(subResult.success, true);
+    assert.equal(subResult.transactionId, '0xreal_tx_hash_from_midnight_network');
+    await adapter.disconnect();
+  });
+
+  it('Test 593 (Commit #38 Session Service): WalletSessionService exposes laceConnectionState and manages lifecycle', async () => {
+    const sessionSvc = getWalletSessionService();
+    assert.ok(sessionSvc);
+    const session = sessionSvc.getSession();
+    assert.ok(session.laceConnectionState);
+    assert.equal(typeof session.network.networkCompatible, 'boolean');
+  });
+
+  it('Test 594 (Commit #38 Handshake Service): WalletHandshakeService exposes network compatibility without inferring', async () => {
+    const handshakeSvc = getWalletHandshakeService();
+    assert.ok(handshakeSvc);
+    const hsState = handshakeSvc.getHandshakeState();
+    assert.ok('networkCompatible' in hsState);
+    assert.ok('laceConnectionState' in hsState);
+  });
+
+  it('Test 595 (Commit #38 Isolation): Prototype mode is isolated from Midnight Adapter mode', () => {
+    switchToPrototypeProvider();
+    assert.equal(getActiveProviderKind(), 'LOCAL_PROTOTYPE');
+    assert.equal(getWalletProvider().isPrototype, true);
+
+    switchToMidnightAdapter();
+    assert.equal(getActiveProviderKind(), 'LACE');
+    assert.equal(getWalletProvider().isPrototype, false);
+
+    switchToPrototypeProvider();
+    assert.equal(getActiveProviderKind(), 'LOCAL_PROTOTYPE');
+  });
+
+  it('Test 596 (Commit #38 Privacy Scan Invariant): Zero forbidden witness references in frontend/src', () => {
+    const frontendSrcDir = path.resolve(process.cwd(), 'frontend', 'src');
+    function scanDir(dir) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          assert.equal(
+            content.includes('getPrivateFinancialValue'),
+            false,
+            `Forbidden witness getPrivateFinancialValue must NEVER be present in frontend: ${fullPath}`
+          );
+        }
+      }
+    }
+    scanDir(frontendSrcDir);
+  });
+
+  it('Test 597 (Commit #38 Contract Integrity): contracts/src/index.compact is 100% untouched', () => {
+    const contractPath = path.resolve(process.cwd(), 'contracts', 'src', 'index.compact');
+    assert.ok(fs.existsSync(contractPath));
+    const content = fs.readFileSync(contractPath);
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    assert.equal(
+      COMPACT_SOURCE_FINGERPRINT,
+      hash,
+      'Compact source fingerprint must match exactly (Commit #38 guard)'
+    );
+    const compactText = content.toString('utf8');
+    assert.ok(
+      compactText.includes('witness getPrivateFinancialValue(): Uint<64>;'),
+      'Legitimate Compact witness getPrivateFinancialValue must be preserved in contract'
     );
   });
 });

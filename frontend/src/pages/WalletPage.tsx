@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AccountContext, AccountRole } from '../types/account.ts';
 import {
   getWalletProvider,
@@ -6,8 +6,14 @@ import {
   switchToMidnightAdapter,
   getActiveProviderKind,
 } from '../lib/account-service.ts';
+import {
+  getWalletSessionService,
+  subscribeToWalletSession,
+} from '../lib/wallet-session-service.ts';
+import { getWalletHandshakeService } from '../lib/wallet-handshake-service.ts';
 import { AccountSwitcher } from '../components/AccountSwitcher.tsx';
 import type { NavigationTab } from '../types/navigation.ts';
+import type { LaceConnectionState } from '../types/wallet-adapter.ts';
 
 export interface WalletPageProps {
   accountContext: AccountContext;
@@ -24,38 +30,126 @@ export const WalletPage: React.FC<WalletPageProps> = ({
   onConnect,
   onNavigate,
 }) => {
-  const [, setProviderTick] = useState<number>(0);
-  const handleProviderSwitched = () => setProviderTick((t) => t + 1);
+  const sessionService = getWalletSessionService();
+  const handshakeService = getWalletHandshakeService();
 
-  const provider = getWalletProvider();
+  const [session, setSession] = useState(() => sessionService.getSession());
+  const [handshake, setHandshake] = useState(() => handshakeService.getHandshakeState());
+  const [isConnectingLace, setIsConnectingLace] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubSession = subscribeToWalletSession((updated) => {
+      setSession(updated);
+      setHandshake(handshakeService.getHandshakeState());
+    });
+    const unsubHandshake = handshakeService.subscribe((updated) => {
+      setHandshake(updated);
+    });
+    return () => {
+      unsubSession();
+      unsubHandshake();
+    };
+  }, []);
+
+  const provider = sessionService.getProvider();
   const providerKind = getActiveProviderKind();
   const caps = provider.getCapabilities();
-  const isConnected = accountContext.connectionStatus === 'CONNECTED';
+  const isConnected = session.status === 'CONNECTED';
   const isTxCapable = Boolean(caps.SIGN_TRANSACTION && caps.SUBMIT_TRANSACTION);
-  const role = accountContext.selectedRole || 'BORROWER';
+  const role = accountContext.selectedRole || 'NONE';
+  const detectionStatus = session.detectionStatus;
+
+  const laceState: LaceConnectionState =
+    session.laceConnectionState ?? sessionService.getLaceConnectionState();
 
   const handleSelectPrototype = () => {
+    setConnectError(null);
     switchToPrototypeProvider();
-    handleProviderSwitched();
+    setSession(sessionService.getSession());
+    setHandshake(handshakeService.getHandshakeState());
   };
 
   const handleSelectMidnightAdapter = () => {
+    setConnectError(null);
     switchToMidnightAdapter();
-    handleProviderSwitched();
+    setSession(sessionService.getSession());
+    setHandshake(handshakeService.getHandshakeState());
   };
+
+  const handleConnectLace = async () => {
+    setIsConnectingLace(true);
+    setConnectError(null);
+    try {
+      if (provider.isPrototype) {
+        switchToMidnightAdapter();
+      }
+      const result = await sessionService.connect();
+      if (!result.success && result.error) {
+        setConnectError(result.error.message);
+      }
+    } catch (err: unknown) {
+      setConnectError(err instanceof Error ? err.message : 'Connection failed');
+    } finally {
+      setIsConnectingLace(false);
+      setSession(sessionService.getSession());
+      setHandshake(handshakeService.getHandshakeState());
+    }
+  };
+
+  const handleDisconnectLace = async () => {
+    setConnectError(null);
+    try {
+      await sessionService.disconnect();
+      onDisconnect();
+    } finally {
+      setSession(sessionService.getSession());
+      setHandshake(handshakeService.getHandshakeState());
+    }
+  };
+
+  const getLaceBadge = (state: LaceConnectionState) => {
+    switch (state) {
+      case 'READY':
+        return { label: 'LACE READY', colorClass: 'status-completed' };
+      case 'CONNECTED':
+        return { label: 'LACE CONNECTED', colorClass: 'status-completed' };
+      case 'CONNECTED_NOT_TRANSACTION_CAPABLE':
+        return { label: 'READ ONLY (NOT TX CAPABLE)', colorClass: 'status-warning' };
+      case 'CONNECTING':
+        return { label: 'CONNECTING...', colorClass: 'status-warning' };
+      case 'LACE_DETECTED':
+        return { label: 'EXTENSION DETECTED', colorClass: 'status-warning' };
+      case 'LACE_NOT_DETECTED':
+        return { label: 'NOT DETECTED', colorClass: 'status-pending' };
+      case 'CONNECTION_REJECTED':
+        return { label: 'USER REJECTED', colorClass: 'status-pending' };
+      case 'UNSUPPORTED_NETWORK':
+        return { label: 'WRONG NETWORK', colorClass: 'status-pending' };
+      case 'DISCONNECTED':
+      default:
+        return { label: 'DISCONNECTED', colorClass: 'status-pending' };
+    }
+  };
+
+  const laceBadge = getLaceBadge(laceState);
 
   const capabilities = [
     {
       name: 'Account identity',
-      status: isConnected ? 'Available' : 'Disconnected',
-      detail: 'Inspect active simulated persona address and role permissions',
+      status: isConnected ? 'Available' : 'Unavailable',
+      detail: isConnected
+        ? 'Public account address and role permissions verified'
+        : 'Connect wallet to expose authenticated public address',
       statusType: isConnected ? 'success' : 'muted',
     },
     {
       name: 'Network detection',
-      status: 'Available',
-      detail: 'Recognize browser runtime and local mock devnet environment',
-      statusType: 'success',
+      status: detectionStatus === 'DETECTED' ? 'Available' : 'Unavailable',
+      detail: detectionStatus === 'DETECTED'
+        ? 'Midnight DApp connector discovered on window.midnight'
+        : 'Install Midnight Lace browser extension',
+      statusType: detectionStatus === 'DETECTED' ? 'success' : 'muted',
     },
     {
       name: 'ZK proof generation',
@@ -65,21 +159,23 @@ export const WalletPage: React.FC<WalletPageProps> = ({
     },
     {
       name: 'Transaction signing',
-      status: isTxCapable ? 'Available' : 'Read only',
+      status: isTxCapable ? 'Available' : 'Unavailable',
       detail: isTxCapable
-        ? 'Cryptographic signing enabled'
-        : 'Locked to local simulation; external signing keys disabled',
+        ? 'Cryptographic transaction balancing enabled via Lace'
+        : 'Transaction balancing unavailable in current session',
       statusType: isTxCapable ? 'success' : 'warning',
     },
     {
       name: 'Transaction submission',
-      status: isTxCapable ? 'Available' : 'Local prototype',
-      detail: 'Dispatched directly to in-memory ledger; external network RPC disabled',
+      status: isTxCapable ? 'Available' : 'Unavailable',
+      detail: isTxCapable
+        ? 'Dispatched directly to Midnight distributed ledger network'
+        : 'Direct network submission unavailable in current session',
       statusType: isTxCapable ? 'success' : 'warning',
     },
     {
       name: 'Account balance query',
-      status: 'Unsupported',
+      status: 'Shielded (Unavailable)',
       detail: 'Confidential shield prevents arbitrary off-chain balance indexing',
       statusType: 'muted',
     },
@@ -97,7 +193,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
           </div>
           <h1 className="wallet-hero-headline">Wallet &amp; Readiness</h1>
           <p className="wallet-hero-lead">
-            Manage your connected cryptographic identity, persona roles, and atomic transaction execution readiness.
+            Manage your connected Midnight Lace identity, persona roles, and atomic transaction execution readiness.
           </p>
         </div>
 
@@ -106,8 +202,10 @@ export const WalletPage: React.FC<WalletPageProps> = ({
             <div className="wallet-telemetry-header">
               <span className="wallet-telemetry-title">WALLET RUNTIME</span>
               <span className="wallet-telemetry-indicator">
-                <span className="status-dot-sm dot-live" />
-                <span className="status-text-live text-accent">LOCAL ACTIVE</span>
+                <span className={`status-dot-sm ${isConnected ? 'dot-live' : ''}`} />
+                <span className="status-text-live text-accent">
+                  {provider.isPrototype ? 'PROTOTYPE SANDBOX' : laceBadge.label}
+                </span>
               </span>
             </div>
 
@@ -117,12 +215,14 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                 <span className="wallet-telemetry-val text-accent">{provider.name}</span>
               </div>
               <div className="wallet-telemetry-row">
-                <span className="wallet-telemetry-key">ACTIVE PERSONA</span>
-                <span className="wallet-telemetry-val">{role}</span>
+                <span className="wallet-telemetry-key">REPORTED NETWORK</span>
+                <span className="wallet-telemetry-val">
+                  {session.network.networkId || (provider.isPrototype ? 'prototype-local' : 'Unavailable')}
+                </span>
               </div>
               <div className="wallet-telemetry-row">
-                <span className="wallet-telemetry-key">SETTLEMENT</span>
-                <span className="wallet-telemetry-val">ATOMIC LEDGER</span>
+                <span className="wallet-telemetry-key">ACTIVE PERSONA</span>
+                <span className="wallet-telemetry-val">{role}</span>
               </div>
               <div className="wallet-telemetry-row">
                 <span className="wallet-telemetry-key">PRIVACY ENCLAVE</span>
@@ -147,6 +247,72 @@ export const WalletPage: React.FC<WalletPageProps> = ({
       <div className="wallet-grid-layout">
         {/* LEFT COLUMN: IDENTITY, PERSONA, READINESS PIPELINE & CAPABILITIES */}
         <div className="wallet-grid-main">
+          {/* Dedicated Midnight Lace Extension Status Card */}
+          <section className="wallet-card wallet-lace-control-card" aria-label="Midnight Lace Extension Status">
+            <div className="wallet-card-header">
+              <div>
+                <span className="card-kicker font-mono">OFFICIAL DAPP CONNECTOR</span>
+                <h2 className="wallet-card-title">Midnight Lace Wallet Integration</h2>
+              </div>
+              <span className={`card-tag font-mono ${laceBadge.colorClass}`}>{laceBadge.label}</span>
+            </div>
+
+            <div style={{ padding: '16px 20px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '8px', border: '1px solid rgba(159, 184, 216, 0.12)', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 600, color: 'var(--text-primary, #F1F5F9)' }}>
+                    {laceState === 'LACE_NOT_DETECTED' && 'Midnight Lace Extension Not Detected'}
+                    {laceState === 'LACE_DETECTED' && 'Midnight Lace Extension Discovered'}
+                    {laceState === 'CONNECTING' && 'Connecting to Midnight Lace...'}
+                    {(laceState === 'CONNECTED' || laceState === 'READY') && 'Midnight Lace Connected'}
+                    {laceState === 'CONNECTION_REJECTED' && 'Connection Rejected by User'}
+                    {laceState === 'UNSUPPORTED_NETWORK' && 'Unsupported Network Detected'}
+                    {laceState === 'CONNECTED_NOT_TRANSACTION_CAPABLE' && 'Connected (Read Only)'}
+                    {laceState === 'DISCONNECTED' && 'Lace Wallet Disconnected'}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary, #94A3B8)' }}>
+                    {laceState === 'LACE_NOT_DETECTED' && 'Install the official Midnight Lace extension from Chrome Web Store to interact with confidential contracts.'}
+                    {laceState === 'LACE_DETECTED' && 'Extension found on window.midnight.mnLace. Click Connect to initiate handshake.'}
+                    {laceState === 'CONNECTING' && 'Please approve the connection prompt in your Lace extension window.'}
+                    {(laceState === 'CONNECTED' || laceState === 'READY') && `Public address: ${accountContext.identity?.address || 'Shielded Keyring Active'}`}
+                    {laceState === 'CONNECTION_REJECTED' && 'The connection request was declined in Lace. You may retry whenever ready.'}
+                    {laceState === 'UNSUPPORTED_NETWORK' && `Wallet is connected to network "${session.network.networkId || 'unknown'}", but desk expects "${handshake.expectedNetwork}".`}
+                    {laceState === 'CONNECTED_NOT_TRANSACTION_CAPABLE' && 'Wallet connected, but lacks cryptographic transaction balancing or submission capability.'}
+                    {laceState === 'DISCONNECTED' && 'No active wallet session. Connect to access shielded micro-lending features.'}
+                  </p>
+                  {connectError && (
+                    <div style={{ marginTop: '8px', color: '#fca5a5', fontSize: '12px' }}>
+                      Error: {connectError}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {isConnected ? (
+                    <button
+                      type="button"
+                      className="btn-desk-nav font-mono"
+                      onClick={handleDisconnectLace}
+                      style={{ padding: '8px 16px', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                    >
+                      Disconnect Lace
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-desk-nav font-mono"
+                      onClick={handleConnectLace}
+                      disabled={isConnectingLace}
+                      style={{ padding: '8px 16px', background: 'rgba(159, 184, 216, 0.2)', color: 'var(--accent-primary, #9FB8D8)', border: '1px solid rgba(159, 184, 216, 0.4)' }}
+                    >
+                      {isConnectingLace ? 'Connecting...' : (laceState === 'CONNECTION_REJECTED' ? 'Retry Connect Lace' : 'Connect Midnight Lace')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Identity & Persona Console */}
           <AccountSwitcher
             accountContext={accountContext}
@@ -171,10 +337,16 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                 <div className="step-num-badge font-mono">01</div>
                 <div className="step-content">
                   <span className="step-label font-mono">DISCOVERY</span>
-                  <strong className="step-title">Wallet Detected</strong>
-                  <p className="step-desc">Local Prototype Adapter</p>
+                  <strong className="step-title">
+                    {provider.isPrototype ? 'Prototype Simulator' : (detectionStatus === 'DETECTED' ? 'Lace Detected' : 'Lace Missing')}
+                  </strong>
+                  <p className="step-desc">
+                    {provider.isPrototype ? 'Offline Mock Harness' : (detectionStatus === 'DETECTED' ? 'Discovered on window.midnight' : 'Extension Not Detected')}
+                  </p>
                 </div>
-                <span className="step-badge status-completed font-mono">AVAILABLE</span>
+                <span className={`step-badge ${detectionStatus === 'DETECTED' || provider.isPrototype ? 'status-completed' : 'status-pending'} font-mono`}>
+                  {detectionStatus === 'DETECTED' || provider.isPrototype ? 'AVAILABLE' : 'UNAVAILABLE'}
+                </span>
               </div>
 
               {/* Stage 2 */}
@@ -182,9 +354,9 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                 <div className="step-num-badge font-mono">02</div>
                 <div className="step-content">
                   <span className="step-label font-mono">IDENTITY</span>
-                  <strong className="step-title">Identity Connected</strong>
+                  <strong className="step-title">{isConnected ? 'Identity Connected' : 'Identity Disconnected'}</strong>
                   <p className="step-desc">
-                    {isConnected ? 'Active Persona Authenticated' : 'No Account Connected'}
+                    {isConnected ? (accountContext.identity?.displayName || 'Authenticated Public Identity') : 'No Account Connected'}
                   </p>
                 </div>
                 <span className={`step-badge ${isConnected ? 'status-completed' : 'status-pending'} font-mono`}>
@@ -197,8 +369,10 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                 <div className="step-num-badge font-mono">03</div>
                 <div className="step-content">
                   <span className="step-label font-mono">CONSENSUS</span>
-                  <strong className="step-title">Transactions</strong>
-                  <p className="step-desc">Atomic Execution Engine</p>
+                  <strong className="step-title">{isTxCapable ? 'Transaction Authorized' : 'Read Only'}</strong>
+                  <p className="step-desc">
+                    {isTxCapable ? 'Cryptographic Signing & Network Broadcast' : (provider.isPrototype ? 'Simulated Ledger In-Memory' : 'Transaction Submission Inactive')}
+                  </p>
                 </div>
                 <span className={`step-badge ${isTxCapable ? 'status-completed' : 'status-warning'} font-mono`}>
                   {isTxCapable ? 'AUTHORIZED' : 'READ ONLY'}
@@ -268,23 +442,39 @@ export const WalletPage: React.FC<WalletPageProps> = ({
             <div className="provider-specs-list font-mono">
               <div className="spec-row">
                 <span className="spec-key">PROVIDER ID</span>
-                <span className="spec-val text-accent">prototype-local</span>
+                <span className="spec-val text-accent">{provider.id}</span>
               </div>
               <div className="spec-row">
                 <span className="spec-key">ADAPTER TYPE</span>
-                <span className="spec-val">In-Memory Simulation</span>
+                <span className="spec-val">
+                  {provider.isPrototype ? 'In-Memory Simulation' : 'Official Midnight Lace Extension'}
+                </span>
               </div>
               <div className="spec-row">
-                <span className="spec-key">NETWORK RPC</span>
-                <span className="spec-val">in-memory://ledger</span>
+                <span className="spec-key">REPORTED NETWORK</span>
+                <span className="spec-val">
+                  {session.network.networkId || (provider.isPrototype ? 'prototype-local' : 'Unavailable')}
+                </span>
               </div>
               <div className="spec-row">
-                <span className="spec-key">CONSENSUS</span>
-                <span className="spec-val">Mock DevNet (Instant)</span>
+                <span className="spec-key">NETWORK STATUS</span>
+                <span className="spec-val">
+                  {provider.isPrototype
+                    ? 'Sandbox Mode'
+                    : (handshake.networkCompatibility === 'MATCH' ? 'Compatible (MATCH)' : 'Mismatch / Unsupported')}
+                </span>
+              </div>
+              <div className="spec-row">
+                <span className="spec-key">AUTHENTICATED ADDRESS</span>
+                <span className="spec-val" style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {accountContext.identity?.address || (isConnected && accountContext.identity?.publicKeyHex ? accountContext.identity.publicKeyHex : 'Unavailable')}
+                </span>
               </div>
               <div className="spec-row">
                 <span className="spec-key">KEY MANAGEMENT</span>
-                <span className="spec-val">Deterministic Ephemeral</span>
+                <span className="spec-val">
+                  {provider.isPrototype ? 'Deterministic Ephemeral' : 'Lace Shielded Keyring'}
+                </span>
               </div>
             </div>
           </section>

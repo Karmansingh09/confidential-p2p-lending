@@ -11,6 +11,7 @@ import type {
   WalletNetworkInfo,
   WalletCapabilitySet,
   WalletProviderKind,
+  LaceConnectionState,
 } from '../types/wallet-adapter.ts';
 import { WalletAdapterError } from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
@@ -77,10 +78,17 @@ export class WalletSessionService {
       ? 'UNSUPPORTED'
       : 'NOT_DETECTED';
 
+    const reportedNetId = provider.getReportedNetworkId ? provider.getReportedNetworkId() : null;
+    const expectedConfig = this.getNetworkConfig();
+    const expectedNetId = expectedConfig.networkId ?? null;
+    const netCompatible = isProto ? true : (reportedNetId && expectedNetId ? reportedNetId.trim().toLowerCase() === expectedNetId.trim().toLowerCase() : false);
+
     const netContext = provider.getNetworkContext();
     const network: WalletNetworkInfo = {
       environment: netContext.environment,
-      networkName: netContext.networkName,
+      networkId: isProto ? (expectedNetId ?? 'prototype-local') : reportedNetId,
+      networkName: isProto ? netContext.networkName : (reportedNetId ? `Midnight Network (${reportedNetId})` : null),
+      networkCompatible: netCompatible,
       isPrototype: netContext.isPrototype,
       isRealNetwork: netContext.isRealNetwork,
     };
@@ -104,6 +112,12 @@ export class WalletSessionService {
         ? 'CONNECTED'
         : 'DISCONNECTED';
 
+    const laceConnectionState: LaceConnectionState = provider.getLaceConnectionState
+      ? provider.getLaceConnectionState()
+      : isProto
+      ? 'READY'
+      : (detectionStatus === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED');
+
     return {
       status,
       providerKind: kind,
@@ -111,6 +125,7 @@ export class WalletSessionService {
       account,
       network,
       capabilities,
+      laceConnectionState,
       error: null,
       connectedAt: status === 'CONNECTED' ? Date.now() : null,
     };
@@ -133,6 +148,19 @@ export class WalletSessionService {
       network: { ...this.currentSession.network },
       account: this.currentSession.account ? { ...this.currentSession.account } : null,
     };
+  }
+
+  /**
+   * Returns current 9-state Lace connection lifecycle state.
+   */
+  getLaceConnectionState(): LaceConnectionState {
+    if (this.activeProvider.getLaceConnectionState) {
+      return this.activeProvider.getLaceConnectionState();
+    }
+    if (this.currentSession.laceConnectionState) {
+      return this.currentSession.laceConnectionState;
+    }
+    return this.currentSession.detectionStatus === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
   }
 
   /**
@@ -331,6 +359,7 @@ export class WalletSessionService {
     this.currentSession = {
       ...this.currentSession,
       status: 'CONNECTING',
+      laceConnectionState: 'CONNECTING',
       error: null,
     };
     this.notifyListeners();
@@ -342,6 +371,22 @@ export class WalletSessionService {
       const netContext = provider.getNetworkContext();
       const capabilities = evaluateConnectorCapabilities(provider);
 
+      const reportedNetId = provider.getReportedNetworkId ? provider.getReportedNetworkId() : null;
+      const expectedConfig = this.getNetworkConfig();
+      const expectedNetId = expectedConfig.networkId ?? null;
+      const netCompatible = provider.isPrototype
+        ? true
+        : !!(reportedNetId && expectedNetId && reportedNetId.trim().toLowerCase() === expectedNetId.trim().toLowerCase());
+
+      const network: WalletNetworkInfo = {
+        environment: netContext.environment,
+        networkId: provider.isPrototype ? (expectedNetId ?? 'prototype-local') : reportedNetId,
+        networkName: provider.isPrototype ? netContext.networkName : (reportedNetId ? `Midnight Network (${reportedNetId})` : null),
+        networkCompatible: netCompatible,
+        isPrototype: netContext.isPrototype,
+        isRealNetwork: netContext.isRealNetwork,
+      };
+
       const account: WalletAccountIdentity = {
         address: netAccount.address ?? netAccount.publicKeyHex ?? '',
         publicKey: netAccount.publicKey,
@@ -350,18 +395,20 @@ export class WalletSessionService {
         displayName: netAccount.displayName,
       };
 
+      const laceConnectionState: LaceConnectionState = provider.getLaceConnectionState
+        ? provider.getLaceConnectionState()
+        : provider.isPrototype
+        ? 'READY'
+        : 'READY';
+
       this.currentSession = {
         status: 'CONNECTED',
         providerKind: provider.kind ?? (provider.isPrototype ? 'LOCAL_PROTOTYPE' : 'MIDNIGHT'),
         detectionStatus: this.getDetectionStatus(),
         account,
-        network: {
-          environment: netContext.environment,
-          networkName: netContext.networkName,
-          isPrototype: netContext.isPrototype,
-          isRealNetwork: netContext.isRealNetwork,
-        },
+        network,
         capabilities,
+        laceConnectionState,
         error: null,
         connectedAt: Date.now(),
       };
@@ -371,10 +418,12 @@ export class WalletSessionService {
     } catch (err: unknown) {
       let sessionStatus: WalletSessionStatus = 'FAILED';
       let sessionError: WalletSessionError;
+      let laceConnectionState: LaceConnectionState = 'LACE_NOT_DETECTED';
 
       if (err instanceof WalletAdapterError) {
         if (err.code === 'WALLET_NOT_DETECTED') {
           sessionStatus = 'UNSUPPORTED';
+          laceConnectionState = 'LACE_NOT_DETECTED';
           sessionError = new WalletSessionError(
             'WALLET_NOT_DETECTED',
             'Lace Wallet extension is not installed or detected in this browser.',
@@ -382,13 +431,23 @@ export class WalletSessionService {
           );
         } else if (err.code === 'USER_REJECTED') {
           sessionStatus = 'REJECTED';
+          laceConnectionState = 'CONNECTION_REJECTED';
           sessionError = new WalletSessionError(
             'USER_REJECTED',
             'Wallet connection request was declined by the user.',
             err.details
           );
+        } else if (err.code === 'UNSUPPORTED_NETWORK') {
+          sessionStatus = 'FAILED';
+          laceConnectionState = 'UNSUPPORTED_NETWORK';
+          sessionError = new WalletSessionError(
+            'UNSUPPORTED_PROVIDER',
+            err.message,
+            err.details
+          );
         } else if (err.code === 'UNSUPPORTED_OPERATION') {
           sessionStatus = 'UNSUPPORTED';
+          laceConnectionState = this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
           sessionError = new WalletSessionError(
             'UNSUPPORTED_PROVIDER',
             err.message,
@@ -396,6 +455,7 @@ export class WalletSessionService {
           );
         } else {
           sessionStatus = 'FAILED';
+          laceConnectionState = this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
           sessionError = new WalletSessionError(
             'CONNECTION_FAILED',
             err.message,
@@ -404,12 +464,14 @@ export class WalletSessionService {
         }
       } else if (err instanceof Error) {
         sessionStatus = 'FAILED';
+        laceConnectionState = this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
         sessionError = new WalletSessionError(
           'CONNECTION_FAILED',
           err.message
         );
       } else {
         sessionStatus = 'FAILED';
+        laceConnectionState = this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED';
         sessionError = new WalletSessionError(
           'CONNECTION_FAILED',
           'An unknown error occurred while establishing wallet session.'
@@ -420,6 +482,7 @@ export class WalletSessionService {
         ...this.currentSession,
         status: sessionStatus,
         account: null,
+        laceConnectionState,
         error: sessionError,
         connectedAt: null,
       };
@@ -439,7 +502,27 @@ export class WalletSessionService {
       // Ignore disconnect provider errors
     }
 
+    const isProto = this.activeProvider.isPrototype;
     const netContext = this.activeProvider.getNetworkContext();
+    const reportedNetId = this.activeProvider.getReportedNetworkId ? this.activeProvider.getReportedNetworkId() : null;
+    const expectedConfig = this.getNetworkConfig();
+    const expectedNetId = expectedConfig.networkId ?? null;
+
+    const network: WalletNetworkInfo = {
+      environment: netContext.environment,
+      networkId: isProto ? (expectedNetId ?? 'prototype-local') : reportedNetId,
+      networkName: isProto ? netContext.networkName : (reportedNetId ? `Midnight Network (${reportedNetId})` : null),
+      networkCompatible: false,
+      isPrototype: netContext.isPrototype,
+      isRealNetwork: netContext.isRealNetwork,
+    };
+
+    const laceConnectionState: LaceConnectionState = this.activeProvider.getLaceConnectionState
+      ? this.activeProvider.getLaceConnectionState()
+      : isProto
+      ? 'READY'
+      : (this.getDetectionStatus() === 'DETECTED' ? 'LACE_DETECTED' : 'LACE_NOT_DETECTED');
+
     this.currentSession = {
       status: 'DISCONNECTED',
       providerKind:
@@ -447,13 +530,9 @@ export class WalletSessionService {
         (this.activeProvider.isPrototype ? 'LOCAL_PROTOTYPE' : 'MIDNIGHT'),
       detectionStatus: this.getDetectionStatus(),
       account: null,
-      network: {
-        environment: netContext.environment,
-        networkName: netContext.networkName,
-        isPrototype: netContext.isPrototype,
-        isRealNetwork: netContext.isRealNetwork,
-      },
+      network,
       capabilities: evaluateConnectorCapabilities(this.activeProvider),
+      laceConnectionState,
       error: null,
       connectedAt: null,
     };

@@ -6,6 +6,7 @@ import {
   connectMockAccount,
   disconnectMockAccount,
   switchMockRole,
+  getWalletProvider,
 } from './lib/account-service.js';
 import { subscribeToWalletSession } from './lib/wallet-session-service.ts';
 import { createDefaultLoanRegistry } from './lib/application-store.js';
@@ -33,10 +34,12 @@ export const App: React.FC = () => {
     createDefaultLoanRegistry()
   );
 
-  // Global Account State Abstraction (Commit #20)
-  const [selectedRole, setSelectedRole] = useState<AccountRole>('BORROWER');
+  // Global Account State Abstraction - Honest Initial State
+  const initialProvider = getWalletProvider();
+  const initialRole: AccountRole = initialProvider.isPrototype ? 'BORROWER' : 'NONE';
+  const [selectedRole, setSelectedRole] = useState<AccountRole>(initialRole);
   const [accountContext, setAccountContext] = useState<AccountContext>(() =>
-    connectMockAccount('BORROWER')
+    connectMockAccount(initialRole)
   );
 
   // Reset scroll to top on any view transition
@@ -65,6 +68,9 @@ export const App: React.FC = () => {
       if (session.status === 'DISCONNECTED') {
         setSelectedRole('NONE');
         setAccountContext(connectMockAccount('NONE'));
+      } else if (session.status === 'CONNECTED' && session.account) {
+        setSelectedRole(session.account.role ?? 'PARTICIPANT');
+        setAccountContext(connectMockAccount(session.account.role ?? 'PARTICIPANT'));
       }
     });
     return unsubscribe;

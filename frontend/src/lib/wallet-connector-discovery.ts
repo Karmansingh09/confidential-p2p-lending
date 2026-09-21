@@ -6,23 +6,31 @@ import type {
   ConnectorReadinessState,
   NetworkConfigurationStatus,
 } from '../types/network-config.ts';
+import type {
+  LaceConnectionState,
+  MidnightInitialAPI,
+  MidnightConnectedAPI,
+} from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 
 /**
  * Expected Midnight window connector interface representation.
+ * Kept for backward compatibility with testing harnesses.
  */
 export interface MidnightLaceConnector {
-  enable?: () => Promise<unknown>;
+  enable?: () => Promise<MidnightConnectedAPI | unknown>;
   isEnabled?: () => Promise<boolean>;
   apiVersion?: string;
   name?: string;
+  connect?: (networkId: string) => Promise<MidnightConnectedAPI>;
   signTransaction?: (tx: unknown) => Promise<unknown>;
   submitTransaction?: (tx: unknown) => Promise<unknown>;
 }
 
 export interface MidnightBrowserWindow {
   midnight?: {
-    lace?: MidnightLaceConnector;
+    mnLace?: MidnightInitialAPI | MidnightLaceConnector;
+    lace?: MidnightInitialAPI | MidnightLaceConnector;
     [key: string]: unknown;
   };
 }
@@ -34,32 +42,40 @@ export interface ConnectorDiscoveryResult {
   connectorName?: string;
   apiVersion?: string;
   description: string;
+  connector?: MidnightInitialAPI | MidnightLaceConnector | unknown;
 }
 
 /**
  * Safely inspects the execution environment for a Midnight/Lace wallet connector.
  *
- * SSR & NODE.JS SAFETY:
- * - Checks `typeof window !== 'undefined'` before accessing window properties.
- * - Never throws runtime ReferenceError in Node.js or server-side rendering contexts.
+ * CONSERVATIVE DISCOVERY INVARIANT:
+ * - Prefers officially documented Midnight Lace injection on `window.midnight.mnLace`.
+ * - Falls back to `window.midnight.lace`.
+ * - Strictly avoids treating arbitrary objects as wallets: any additional key must
+ *   explicitly identify itself via `rdns` or `name` matching Midnight / Lace and
+ *   provide the standard `connect` or `enable` interface.
  * - Supports mock injection for hermetic unit testing without global pollution.
  */
 export function discoverWalletConnector(
   mockConnector?: unknown
 ): ConnectorDiscoveryResult {
-  if (mockConnector !== undefined) {
+  const isMockWindow = mockConnector && typeof mockConnector === 'object' && ('midnight' in mockConnector);
+
+  if (mockConnector !== undefined && !isMockWindow) {
     if (mockConnector && typeof mockConnector === 'object') {
       const mockObj = mockConnector as Record<string, unknown>;
-      const hasLace = !!mockObj.lace || Object.keys(mockObj).length > 0;
+      const hasLace = !!mockObj.lace || !!mockObj.mnLace || typeof mockObj.connect === 'function' || typeof mockObj.enable === 'function' || Object.keys(mockObj).length > 0;
+      const innerConnector = mockObj.mnLace || mockObj.lace || mockObj;
       return {
         isBrowser: true,
-        detected: true,
+        detected: hasLace,
         compatible: hasLace,
-        connectorName: (mockObj.name as string) || 'Midnight / Lace Mock Connector',
+        connectorName: (mockObj.name as string) || (mockObj.connectorName as string) || 'Midnight / Lace Mock Connector',
         apiVersion: (mockObj.apiVersion as string) || '1.0.0',
         description: hasLace
           ? 'Midnight connector detected via injected mock harness.'
           : 'Injected mock connector is missing expected Lace properties.',
+        connector: hasLace ? innerConnector : null,
       };
     }
     return {
@@ -67,49 +83,100 @@ export function discoverWalletConnector(
       detected: false,
       compatible: false,
       description: 'Injected mock connector is empty, null, or unavailable.',
+      connector: null,
     };
   }
 
-  if (typeof window === 'undefined') {
+  const win = isMockWindow
+    ? (mockConnector as unknown as MidnightBrowserWindow)
+    : (typeof window !== 'undefined' ? (window as unknown as MidnightBrowserWindow) : null);
+
+  if (!win) {
     return {
       isBrowser: false,
       detected: false,
       compatible: false,
       description: 'Connector API unavailable in current workspace (SSR/Node.js environment).',
+      connector: null,
     };
   }
 
   try {
-    const win = window as unknown as MidnightBrowserWindow;
-    if (!win.midnight) {
+    if (!win.midnight || typeof win.midnight !== 'object' || Object.keys(win.midnight).length === 0) {
       return {
         isBrowser: true,
         detected: false,
         compatible: false,
         description: 'No Midnight wallet extension detected on window.midnight.',
+        connector: null,
       };
     }
 
-    const lace = win.midnight.lace;
-    if (lace && typeof lace === 'object') {
-      const isCompatible = typeof lace.enable === 'function' || typeof lace.isEnabled === 'function';
+    // 1. Primary official Midnight Lace injection path: window.midnight.mnLace
+    const mnLace = win.midnight.mnLace;
+    if (mnLace && typeof mnLace === 'object') {
+      const candidate = mnLace as MidnightInitialAPI | MidnightLaceConnector;
+      const isCompatible = typeof candidate.connect === 'function' || typeof candidate.enable === 'function' || typeof candidate.isEnabled === 'function';
       return {
         isBrowser: true,
         detected: true,
         compatible: isCompatible,
-        connectorName: lace.name || 'Midnight Lace Wallet',
-        apiVersion: lace.apiVersion || 'unknown',
+        connectorName: candidate.name || 'mnLace',
+        apiVersion: candidate.apiVersion || 'unknown',
         description: isCompatible
-          ? 'Compatible Midnight Lace wallet connector discovered.'
-          : 'Midnight Lace connector object present but lacks standard enable interface.',
+          ? 'Official Midnight Lace connector (window.midnight.mnLace) discovered.'
+          : 'window.midnight.mnLace present but missing connect/enable method.',
+        connector: candidate,
       };
+    }
+
+    // 2. Secondary/legacy injection path: window.midnight.lace
+    const lace = win.midnight.lace;
+    if (lace && typeof lace === 'object') {
+      const candidate = lace as MidnightInitialAPI | MidnightLaceConnector;
+      const isCompatible = typeof candidate.connect === 'function' || typeof candidate.enable === 'function' || typeof candidate.isEnabled === 'function';
+      return {
+        isBrowser: true,
+        detected: true,
+        compatible: isCompatible,
+        connectorName: candidate.name || 'lace',
+        apiVersion: candidate.apiVersion || 'unknown',
+        description: isCompatible
+          ? 'Compatible Midnight Lace wallet connector (window.midnight.lace) discovered.'
+          : 'window.midnight.lace connector object present but lacks standard connect/enable interface.',
+        connector: candidate,
+      };
+    }
+
+    // 3. Conservative UUID discovery: only accept objects that explicitly identify as Midnight/Lace
+    for (const [key, val] of Object.entries(win.midnight)) {
+      if (val && typeof val === 'object') {
+        const candidate = val as Record<string, unknown>;
+        const name = typeof candidate.name === 'string' ? candidate.name.toLowerCase() : '';
+        const rdns = typeof candidate.rdns === 'string' ? candidate.rdns.toLowerCase() : '';
+        const isLaceOrMidnight = name.includes('lace') || name.includes('midnight') || rdns.includes('lace') || rdns.includes('midnight');
+        const hasConnect = typeof candidate.connect === 'function' || typeof candidate.enable === 'function';
+
+        if (isLaceOrMidnight && hasConnect) {
+          return {
+            isBrowser: true,
+            detected: true,
+            compatible: true,
+            connectorName: (candidate.name as string) || `Midnight Wallet (${key})`,
+            apiVersion: (candidate.apiVersion as string) || 'unknown',
+            description: `Compatible Midnight wallet connector discovered at window.midnight.${key}.`,
+            connector: candidate,
+          };
+        }
+      }
     }
 
     return {
       isBrowser: true,
-      detected: true,
+      detected: false,
       compatible: false,
-      description: 'window.midnight is present but lace connector object was not found.',
+      description: 'window.midnight is present but no valid Midnight Lace wallet connector was identified.',
+      connector: null,
     };
   } catch (err) {
     return {
@@ -222,3 +289,47 @@ export function resolveConnectorReadinessState(
 
   return 'CONNECTED';
 }
+
+export interface LaceStateEvaluationParams {
+  isDetected: boolean;
+  isConnecting?: boolean;
+  isConnected: boolean;
+  isRejected?: boolean;
+  networkCompatible?: boolean;
+  canSign?: boolean;
+  canSubmit?: boolean;
+}
+
+/**
+ * Resolves the formal 9-state LaceConnectionState.
+ *
+ * CRITICAL DISCRIMINATIONS:
+ * 1. DETECTED != CONNECTED
+ * 2. CONNECTED != TRANSACTION_CAPABLE
+ * 3. TRANSACTION_CAPABLE != CONTRACT_READY
+ * 4. NEVER collapse the 9 states into a single boolean.
+ */
+export function resolveLaceConnectionState(
+  params: LaceStateEvaluationParams
+): LaceConnectionState {
+  if (params.isRejected) {
+    return 'CONNECTION_REJECTED';
+  }
+  if (!params.isDetected) {
+    return 'LACE_NOT_DETECTED';
+  }
+  if (params.isConnecting) {
+    return 'CONNECTING';
+  }
+  if (!params.isConnected) {
+    return 'LACE_DETECTED';
+  }
+  if (params.networkCompatible === false) {
+    return 'UNSUPPORTED_NETWORK';
+  }
+  if (!params.canSign || !params.canSubmit) {
+    return 'CONNECTED_NOT_TRANSACTION_CAPABLE';
+  }
+  return 'READY';
+}
+

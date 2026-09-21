@@ -30,6 +30,7 @@ export interface AccountIdentity {
   shortLabel: string;
   role: AccountRole;
   isPrototype: boolean;
+  address?: string;
 }
 
 /**

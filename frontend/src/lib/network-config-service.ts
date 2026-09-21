@@ -141,6 +141,13 @@ export class NetworkConfigService {
   }
 
   /**
+   * Alias for getNetworkConfig.
+   */
+  getConfig(): NetworkConfig {
+    return this.getNetworkConfig();
+  }
+
+  /**
    * Returns the validation status of the active network configuration.
    */
   getNetworkConfigurationStatus(): NetworkConfigurationStatus {

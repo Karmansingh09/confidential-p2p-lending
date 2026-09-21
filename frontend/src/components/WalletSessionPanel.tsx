@@ -13,6 +13,7 @@ import type {
 import type {
   WalletDetectionStatus,
   WalletProviderKind,
+  LaceConnectionState,
 } from '../types/wallet-adapter.ts';
 import type { WalletHandshakeState } from '../types/wallet-handshake.ts';
 
@@ -144,8 +145,33 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
     }
   };
 
+  const getLaceBadge = (state?: LaceConnectionState) => {
+    switch (state) {
+      case 'READY':
+        return { text: 'READY (CONTRACT CAPABLE)', bg: '#14532d', color: '#86efac' };
+      case 'CONNECTED_NOT_TRANSACTION_CAPABLE':
+        return { text: 'CONNECTED (NOT TX CAPABLE)', bg: '#854d0e', color: '#fef08a' };
+      case 'CONNECTED':
+        return { text: 'CONNECTED', bg: '#1e3a8a', color: '#93c5fd' };
+      case 'UNSUPPORTED_NETWORK':
+        return { text: 'UNSUPPORTED NETWORK', bg: '#7f1d1d', color: '#fca5a5' };
+      case 'CONNECTION_REJECTED':
+        return { text: 'USER REJECTED', bg: '#7f1d1d', color: '#fca5a5' };
+      case 'CONNECTING':
+        return { text: 'CONNECTING...', bg: '#1e3a8a', color: '#93c5fd' };
+      case 'DISCONNECTED':
+        return { text: 'DISCONNECTED', bg: '#334155', color: '#94a3b8' };
+      case 'LACE_DETECTED':
+        return { text: 'LACE DETECTED', bg: '#1e3a8a', color: '#93c5fd' };
+      case 'LACE_NOT_DETECTED':
+      default:
+        return { text: 'LACE NOT DETECTED', bg: '#334155', color: '#94a3b8' };
+    }
+  };
+
   const detectionBadge = getDetectionBadge(session.detectionStatus);
   const statusBadge = getStatusBadge(session.status);
+  const laceBadge = getLaceBadge(session.laceConnectionState);
 
   const accountDisplay = session.account
     ? session.account.address || session.account.publicKeyHex || 'Connected'
@@ -251,6 +277,19 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             }}
           >
             {isPrototype ? 'LOCAL PROTOTYPE' : 'MIDNIGHT/LACE ADAPTER'}
+          </span>
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: 700,
+              background: laceBadge.bg,
+              color: laceBadge.color,
+            }}
+            data-testid="session-lace-badge"
+          >
+            {laceBadge.text}
           </span>
           <span
             style={{
@@ -572,6 +611,51 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
           </div>
         </div>
 
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }} data-testid="session-lace-state-card">
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Lace Connection State</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: laceBadge.color,
+              marginTop: '4px',
+            }}
+            data-testid="session-lace-connection-state"
+          >
+            {session.laceConnectionState ?? 'LACE_NOT_DETECTED'}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }} data-testid="session-network-id-card">
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Reported Network ID</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: session.network.networkId ? '#93c5fd' : '#94a3b8',
+              marginTop: '4px',
+            }}
+            data-testid="session-reported-network-id"
+          >
+            {session.network.networkId ?? 'None'}
+          </div>
+        </div>
+
+        <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }} data-testid="session-network-compatible-card">
+          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Network Compatible</div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: session.network.networkCompatible ? '#4ade80' : '#f87171',
+              marginTop: '4px',
+            }}
+            data-testid="session-network-compatible"
+          >
+            {session.network.networkCompatible ? 'YES' : 'NO'}
+          </div>
+        </div>
+
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
           <div style={{ fontSize: '12px', color: '#94a3b8' }}>NETWORK SETTLEMENT STATUS</div>
           <div
@@ -693,7 +777,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
             ? 'Simulation Only: Local Prototype Wallet (No real wallet transaction is being submitted)'
             : !handshake.isDetected
             ? 'Browser wallet connector was not detected. Please install the Lace / Midnight wallet browser extension.'
-            : 'Adapter boundary active: Live signing requires future installed dApp connector SDK.'}
+            : 'Midnight Lace Wallet integration active: extension connector bridge ready.'}
         </span>
       </div>
     </div>

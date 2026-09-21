@@ -1,6 +1,10 @@
 import type { AccountRole } from './account.ts';
 import type { NetworkAccount } from './network.ts';
-import type { WalletAccountIdentity, WalletProviderKind } from './wallet-adapter.ts';
+import type {
+  WalletAccountIdentity,
+  WalletProviderKind,
+  LaceConnectionState,
+} from './wallet-adapter.ts';
 import type { LoanDetailsModel } from './index.ts';
 
 /**
@@ -116,6 +120,12 @@ export interface WalletHandshakeState {
   walletNetwork: string | null;
   /** Compatibility evaluation between expected and reported networks */
   networkCompatibility: NetworkCompatibilityStatus;
+  /** Boolean indicating whether reported network is strictly compatible */
+  networkCompatible: boolean;
+  /** Human-readable display label for reported network */
+  networkName: string | null;
+  /** Formal 9-state Midnight Lace connection state */
+  laceConnectionState: LaceConnectionState;
   /** Verified atomic capabilities */
   capabilities: WalletHandshakeCapabilities;
   /** Whether the wallet is fully ready to sign and broadcast on-chain transactions */

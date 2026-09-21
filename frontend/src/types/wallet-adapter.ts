@@ -30,6 +30,81 @@ export type WalletAdapterStatus =
   | 'ERROR';
 
 /**
+ * Formal 9-state lifecycle model for Midnight Lace Wallet connection.
+ * STRICT INVARIANT: Never collapse into a single boolean.
+ */
+export type LaceConnectionState =
+  | 'LACE_NOT_DETECTED'
+  | 'LACE_DETECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'DISCONNECTED'
+  | 'CONNECTION_REJECTED'
+  | 'UNSUPPORTED_NETWORK'
+  | 'CONNECTED_NOT_TRANSACTION_CAPABLE'
+  | 'READY';
+
+/**
+ * Official Midnight DApp Connector Initial API representation (injected on window.midnight).
+ * Conforms to @midnight-ntwrk/dapp-connector-api specification.
+ */
+export interface MidnightInitialAPI {
+  name: string;
+  icon: string;
+  apiVersion: string;
+  rdns?: string;
+  connect: (networkId: string) => Promise<MidnightConnectedAPI>;
+  enable?: () => Promise<MidnightConnectedAPI>;
+  isEnabled?: () => Promise<boolean>;
+}
+
+/**
+ * Shielded address structure returned by Midnight wallet connector.
+ */
+export interface MidnightShieldedAddresses {
+  shieldedAddress: string;
+  shieldedCoinPublicKey?: string;
+  shieldedEncryptionPublicKey?: string;
+}
+
+/**
+ * Connection status reported by the connected wallet.
+ */
+export interface MidnightConnectionStatus {
+  status: 'connected' | 'disconnected';
+  networkId?: string;
+}
+
+/**
+ * Service URI and network configuration provided by Midnight wallet connector.
+ */
+export interface MidnightServiceUriConfig {
+  indexerUri?: string;
+  indexerWsUri?: string;
+  proverServerUri?: string;
+  substrateNodeUri?: string;
+  networkId?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Official Midnight DApp Connector Connected API representation (returned from connect()).
+ * Conforms to @midnight-ntwrk/dapp-connector-api WalletConnectedAPI specification.
+ */
+export interface MidnightConnectedAPI {
+  getShieldedAddresses?: () => Promise<MidnightShieldedAddresses | string[]>;
+  getUnshieldedAddress?: () => Promise<string>;
+  getDustAddress?: () => Promise<string>;
+  balanceUnsealedTransaction?: (tx: unknown) => Promise<{ tx: unknown; [key: string]: unknown }>;
+  balanceSealedTransaction?: (tx: unknown) => Promise<{ tx: unknown; [key: string]: unknown }>;
+  submitTransaction?: (tx: unknown) => Promise<string | { txHash?: string; id?: string }>;
+  getConnectionStatus?: () => Promise<MidnightConnectionStatus>;
+  getConfiguration?: () => Promise<MidnightServiceUriConfig>;
+  serviceUriConfig?: () => Promise<MidnightServiceUriConfig>;
+  state?: () => Promise<unknown>;
+}
+
+/**
  * Public network account identity provided by a connected wallet.
  * STRICT PRIVACY GUARANTEE: Contains exclusively public identifiers.
  * No private cryptographic credentials, seed material, or financial data exist here.
@@ -44,11 +119,15 @@ export interface WalletAccountIdentity {
 
 /**
  * Structured network environment information provided by the wallet connector.
+ * ANTI-FABRICATION GUARANTEE:
+ * networkId and networkName are the ACTUAL reported values, or null if unavailable.
+ * Never infers Preprod merely because application expects Preprod.
  */
 export interface WalletNetworkInfo {
   environment: NetworkEnvironment;
-  networkId?: string;
-  networkName: string;
+  networkId: string | null;
+  networkName: string | null;
+  networkCompatible: boolean;
   isPrototype: boolean;
   isRealNetwork: boolean;
 }
@@ -64,6 +143,7 @@ export type WalletCapabilitySet = ProviderCapabilities;
 export interface WalletConnectionResult {
   success: boolean;
   status: WalletAdapterStatus;
+  laceState?: LaceConnectionState;
   account?: WalletAccountIdentity;
   error?: WalletAdapterError;
   message?: string;
@@ -101,6 +181,7 @@ export type WalletAdapterErrorCode =
   | 'CONNECTION_FAILED'
   | 'UNSUPPORTED_OPERATION'
   | 'NETWORK_UNAVAILABLE'
+  | 'UNSUPPORTED_NETWORK'
   | 'SIGNATURE_FAILED'
   | 'SUBMISSION_FAILED'
   | 'UNKNOWN_PROVIDER_ERROR';

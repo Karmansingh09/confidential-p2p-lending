@@ -246,9 +246,16 @@ export class LocalPrototypeWalletProvider implements WalletProvider {
   }
 }
 
+import { createMidnightWalletAdapter } from './midnight-wallet-adapter.ts';
+
 /**
  * Factory creating the default wallet provider for the current environment.
+ * - Browser: Defaults to MidnightWalletAdapter (honest disconnected state, awaiting Lace connection).
+ * - Tests / Node.js: Defaults to LocalPrototypeWalletProvider to ensure hermetic offline test suites pass.
  */
 export function createDefaultWalletProvider(): WalletProvider {
+  if (typeof window !== 'undefined') {
+    return createMidnightWalletAdapter();
+  }
   return new LocalPrototypeWalletProvider();
 }

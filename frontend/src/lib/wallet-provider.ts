@@ -13,6 +13,7 @@ import type {
 import type {
   WalletProviderKind,
   WalletDetectionStatus,
+  LaceConnectionState,
 } from '../types/wallet-adapter.ts';
 import type { TransactionReceipt } from '../types/transaction-execution.ts';
 import type {
@@ -57,6 +58,9 @@ export interface WalletProvider {
 
   /** Returns current connection status of the provider */
   getConnectionStatus(): WalletConnectionStatus;
+
+  /** Optional method to query the 9-state Midnight Lace connection lifecycle */
+  getLaceConnectionState?(): LaceConnectionState;
 
   /** Returns the active network context (environment, network name, connection status) */
   getNetworkContext(): NetworkContext;

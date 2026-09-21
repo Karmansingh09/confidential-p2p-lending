@@ -11,6 +11,7 @@
     "compile:contracts": "npm run compile --workspace=contracts",
     "build:contracts": "npm run build --workspace=contracts",
     "typecheck:contracts": "npm run typecheck --workspace=contracts",
+    "deploy:preprod": "node --experimental-strip-types scripts/deploy-preprod.ts",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend",
     "typecheck:frontend": "npm run typecheck --workspace=frontend",

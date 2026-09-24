@@ -159,7 +159,7 @@ export async function executeSettlementPrototype(
   );
 
   const callerAddress =
-    settledBy === 'LENDER' ? (loan.lender ?? '0xLender') : loan.borrower;
+    settledBy === 'LENDER' ? (loan.lender ?? 'Unassigned') : loan.borrower;
 
   const result: SettlementResult = {
     success: true,

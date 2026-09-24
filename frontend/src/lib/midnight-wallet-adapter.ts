@@ -29,6 +29,7 @@ import {
   type MidnightConnectedAPI,
   type WalletNetworkInfo,
   type SafeDustDiagnosticReport,
+  type DustProviderState,
 } from '../types/wallet-adapter.ts';
 import type { WalletProvider } from './wallet-provider.ts';
 import type {
@@ -209,9 +210,16 @@ export class MidnightWalletAdapter implements WalletProvider {
    * Returns network environment details without fabricating faux testnet identifiers.
    */
   getNetworkContext(): NetworkContext {
+    const reportedId = this.getReportedNetworkId();
+    let env: NetworkEnvironment = 'LOCAL';
+    if (reportedId) {
+      const norm = reportedId.toLowerCase();
+      if (norm.includes('mainnet')) env = 'MAINNET';
+      else if (norm.includes('testnet') || norm.includes('preprod') || norm.includes('preview')) env = 'TESTNET';
+    }
     return {
-      environment: 'LOCAL',
-      networkName: 'Midnight Network (Adapter Boundary)',
+      environment: env,
+      networkName: reportedId ? `Midnight Preprod (${reportedId})` : 'Midnight Network',
       connectionStatus: this.status,
       isConnected: this.status === 'CONNECTED',
       isPrototype: false,
@@ -305,7 +313,7 @@ export class MidnightWalletAdapter implements WalletProvider {
     const expectedConfig = getNetworkConfigService().getNetworkConfig();
     const netEval = evaluateNetworkCompatibility(expectedConfig, reportedId);
 
-    let env: NetworkEnvironment = 'LOCAL';
+    let env: NetworkEnvironment = 'TESTNET';
     if (reportedId) {
       const norm = reportedId.toLowerCase();
       if (norm.includes('mainnet')) env = 'MAINNET';
@@ -1076,8 +1084,11 @@ export class MidnightWalletAdapter implements WalletProvider {
     let dustAddress: string | null = null;
     let dustBalance: string | null = null;
     let dustCapacity: string | null = null;
-    let readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR' = 'NOT_AVAILABLE';
+    let readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR' | DustProviderState = 'NOT_AVAILABLE';
+    let providerState: DustProviderState = 'DISCONNECTED';
     let details = '';
+    let lockReason: string | undefined = undefined;
+    let actionRequired: string | undefined = undefined;
 
     if (isConnected && api) {
       try {
@@ -1113,20 +1124,35 @@ export class MidnightWalletAdapter implements WalletProvider {
         }
 
         if (dustAddress && dustBalance !== null) {
+          providerState = 'AVAILABLE';
           readStatus = 'SUCCESS';
           details = `DUST address and balance retrieved: balance=${dustBalance}, cap=${dustCapacity ?? 'N/A'}`;
         } else if (dustAddress || dustBalance !== null) {
+          providerState = 'AVAILABLE';
           readStatus = 'PARTIAL';
           details = `Partial DUST info retrieved: address=${dustAddress ? 'Retrieved' : 'Unavailable'}, balance=${dustBalance !== null ? dustBalance : 'Unavailable'}`;
         } else {
+          providerState = 'UNAVAILABLE';
           readStatus = 'NOT_AVAILABLE';
           details = 'Connected API does not expose getDustAddress or getDustBalance methods, or returned empty state.';
         }
       } catch (err: unknown) {
-        readStatus = 'ERROR';
-        details = `Error querying DUST state from connected API: ${err instanceof Error ? err.message : String(err)}`;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (/lock/i.test(errMsg)) {
+          providerState = 'PROVIDER_LOCKED';
+          readStatus = 'PROVIDER_LOCKED';
+          lockReason = 'Lace reports that the wallet is locked.';
+          actionRequired = 'Open Lace and unlock the wallet, then retry.';
+          details = 'DUST STATE UNAVAILABLE: Lace reports that the wallet is locked. Open Lace and unlock the wallet, then retry.';
+        } else {
+          providerState = 'PROVIDER_ERROR';
+          readStatus = 'PROVIDER_ERROR';
+          details = `Error querying DUST state from connected API: ${errMsg}`;
+        }
       }
     } else {
+      providerState = 'DISCONNECTED';
+      readStatus = 'DISCONNECTED';
       details = 'Wallet is not connected. Connect Lace to Midnight Preprod first to inspect live API.';
     }
 
@@ -1170,7 +1196,10 @@ export class MidnightWalletAdapter implements WalletProvider {
         dustBalance,
         dustCapacity,
         readStatus,
+        providerState,
         details,
+        lockReason,
+        actionRequired,
       },
       networkEndpoints,
     };

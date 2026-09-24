@@ -56,12 +56,16 @@ export const LoanActionPanel: React.FC<LoanActionPanelProps> = ({
     canExecute = defaultDescriptor.canExecute;
     actionKind = defaultDescriptor.actionType as any;
   } else if (!isConnected) {
+    const isProto = accountContext.isPrototype ?? true;
     roleBadge = 'Account Disconnected';
-    actionTitle = 'Connect Prototype Account';
-    actionDesc =
-      'Connect a local prototype account persona (Borrower, Lender, or Third-Party) to evaluate lifecycle transitions.';
-    buttonLabel = 'Connect Prototype Account';
-    noticeText = 'Select a prototype account persona to execute contract-guarded actions.';
+    actionTitle = isProto ? 'Connect Prototype Account' : 'Connect Wallet';
+    actionDesc = isProto
+      ? 'Connect a local prototype account persona (Borrower, Lender, or Third-Party) to evaluate lifecycle transitions.'
+      : 'Connect your Midnight Lace wallet or select an account persona to evaluate lifecycle transitions.';
+    buttonLabel = isProto ? 'Connect Prototype Account' : 'Connect Wallet';
+    noticeText = isProto
+      ? 'Select a prototype account persona to execute contract-guarded actions.'
+      : 'Connect your Midnight Lace wallet to execute contract-guarded actions.';
     canExecute = true;
     actionKind = 'connect';
   } else if (loan.status === LoanStatus.settled) {

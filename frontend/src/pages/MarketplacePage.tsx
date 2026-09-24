@@ -121,7 +121,7 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
             <span className="summary-stat-num">{totalCount}</span>
             <span className="summary-stat-tag">ACTIVE</span>
           </div>
-          <span className="summary-stat-sub">{verifiedCount} ZK Verified ({Math.round((verifiedCount / Math.max(1, totalCount)) * 100)}%)</span>
+          <span className="summary-stat-sub">{verifiedCount} Demo eligibility verified ({Math.round((verifiedCount / Math.max(1, totalCount)) * 100)}%)</span>
         </div>
 
         <div className="summary-stat-col">
@@ -157,7 +157,7 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
             <span className="summary-stat-num text-success">{counts.settled}</span>
             <span className="summary-stat-tag tag-success">FINAL</span>
           </div>
-          <span className="summary-stat-sub">Terminal State</span>
+          <span className="summary-stat-sub">Terminal Demo State</span>
         </div>
       </section>
 

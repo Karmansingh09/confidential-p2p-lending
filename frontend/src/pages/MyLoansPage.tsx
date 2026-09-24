@@ -267,9 +267,9 @@ export const MyLoansPage: React.FC<MyLoansPageProps> = ({
               <span className="stage-status-dot dot-green" />
             </div>
             <h3 className="stage-card-title">SETTLEMENT</h3>
-            <span className="stage-card-subtitle">ON-CHAIN ATOMIC</span>
+            <span className="stage-card-subtitle">DETERMINISTIC ESCROW</span>
             <p className="stage-card-desc font-sans">
-              Terminal state finalized. Escrow funds disbursed to lender, collateral freed, position closed.
+              Terminal state reached. Capital disbursed, position closed.
             </p>
           </div>
         </div>
@@ -313,6 +313,20 @@ export const MyLoansPage: React.FC<MyLoansPageProps> = ({
             </button>
           </div>
         </div>
+
+        {loanRegistry.hasUnconfirmedMockLoans() && (
+          <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="font-mono text-xs" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                LOCAL DEMO DATA · NOT ON-CHAIN
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)' }}>
+                Sample loan agreements for protocol lifecycle demonstration. Not confirmed on the Midnight Preprod blockchain.
+              </span>
+            </div>
+            <span className="font-mono text-xs text-muted">Offline Mock State</span>
+          </div>
+        )}
 
         {currentList.length === 0 ? (
           <div className="ledger-empty-state">
@@ -374,7 +388,14 @@ export const MyLoansPage: React.FC<MyLoansPageProps> = ({
                       onClick={() => handleOpenDetails(loanId)}
                     >
                       <td>
-                        <span className="ledger-loan-id font-mono">{loanId}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="ledger-loan-id font-mono">{loanId}</span>
+                          {!loan.isConfirmedOnChain && (
+                            <span className="font-mono" style={{ fontSize: '9px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(245, 158, 11, 0.3)' }} title="Sample loan data for interface demonstration. Not verified on-chain.">
+                              DEMO
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <span className={`ledger-role-tag font-mono ${isBorrower ? 'role-borrower' : 'role-lender'}`}>

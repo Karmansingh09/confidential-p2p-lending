@@ -140,12 +140,12 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
         <div className="meta-cell">
           <span className="meta-label">PUBLIC IDENTITY</span>
           <div className="meta-value-row">
-            <span className="meta-value font-mono" title={identity?.publicKeyHex ?? identity?.address ?? 'No account'}>
+            <span className="meta-value font-mono" title={identity?.publicKeyHex ?? identity?.address ?? 'Unavailable'}>
               {identity?.address
                 ? (identity.address.length > 16 ? `${identity.address.slice(0, 10)}...${identity.address.slice(-8)}` : identity.address)
                 : identity?.publicKeyHex
                 ? `${identity.publicKeyHex.slice(0, 10)}...${identity.publicKeyHex.slice(-8)}`
-                : '0x0000...0000'}
+                : 'Unavailable'}
             </span>
             {(identity?.publicKeyHex || identity?.address) && (
               <button
@@ -162,12 +162,12 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
 
         <div className="meta-cell">
           <span className="meta-label">NETWORK</span>
-          <span className="meta-value">{accountContext.networkName || (isProto ? 'Local Prototype' : 'Midnight Preprod')}</span>
+          <span className="meta-value">{isProto ? 'Local Prototype' : 'MIDNIGHT PREPROD'}</span>
         </div>
 
         <div className="meta-cell">
           <span className="meta-label">ENVIRONMENT</span>
-          <span className="meta-value">{isProto ? 'Local Sandbox' : 'Distributed Ledger'}</span>
+          <span className="meta-value">{isProto ? 'Local Sandbox' : 'Midnight Preprod · Testnet'}</span>
         </div>
 
         <div className="meta-cell">
@@ -180,8 +180,8 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
       <div className="persona-selector-card">
         <div className="persona-selector-header">
           <div>
-            <span className="card-kicker font-mono">ACCOUNT PERSONA</span>
-            <h3 className="card-title">Active Persona &amp; Permissions</h3>
+            <span className="card-kicker font-mono">{isProto ? 'ACCOUNT PERSONA' : 'DESK PERSPECTIVE'}</span>
+            <h3 className="card-title">{isProto ? 'Active Persona & Permissions' : 'Active Desk Persona (Evaluation Lens)'}</h3>
           </div>
           <div className="persona-segmented-control" role="group" aria-label="Account personas">
             <button
@@ -212,9 +212,12 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
           <div className="persona-role-banner">
             <div className="role-heading">
               <span className="role-title">{roleDisplayNames[selectedRole]}</span>
-              <span className="role-badge font-mono">{isProto ? 'SIMULATION PERSONA' : 'AUTHENTICATED PERSONA'}</span>
+              <span className="role-badge font-mono">{isProto ? 'SIMULATION PERSONA' : 'DESK EVALUATION LENS'}</span>
             </div>
-            <p className="role-desc">{roleDescriptions[selectedRole]}</p>
+            <p className="role-desc">
+              {roleDescriptions[selectedRole]}
+              {!isProto && ' (Evaluation perspective only; does not alter underlying Lace wallet keys.)'}
+            </p>
           </div>
 
           <div className="persona-permissions-grid">

@@ -44,6 +44,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const verificationService = getContractVerificationService();
   const verificationResult = verificationService.getVerificationResult();
   const isContractVerified = verificationResult.status === 'VERIFIED';
+  const hasDemoLoans = loanRegistry.hasUnconfirmedMockLoans();
 
   const requestedPct = totalLoans > 0 ? (requestedCount / totalLoans) * 100 : 0;
   const fundedPct = totalLoans > 0 ? (fundedCount / totalLoans) * 100 : 0;
@@ -167,7 +168,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <div className="financial-workspace-top">
           {/* Dominant Primary Metric */}
           <div className="financial-primary-metric">
-            <span className="metric-eyebrow font-mono">PRINCIPAL IN DESK</span>
+            <span className="metric-eyebrow font-mono">
+              {hasDemoLoans ? 'DEMO PRINCIPAL' : 'PRINCIPAL IN DESK'}
+            </span>
             <div className="metric-value-row">
               <span className="metric-value-huge">
                 <AnimatedNumber value={totalPrincipal} />
@@ -175,16 +178,18 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
               <span className="metric-unit-tag font-mono">MICRO-UNITS</span>
             </div>
             <p className="metric-subtext">
-              Total capital commitments across canonical loan agreements on this node.
+              {hasDemoLoans
+                ? 'Total capital commitments across local demo loan agreements.'
+                : 'Total capital commitments across canonical loan agreements on this node.'}
             </p>
           </div>
 
           {/* Secondary Financial Indicators (5-Metric Stats Rail) */}
           <div className="financial-secondary-stats">
             <div className="stat-column">
-              <span className="stat-label">TOTAL AGREEMENTS</span>
+              <span className="stat-label">{hasDemoLoans ? 'DEMO AGREEMENTS' : 'TOTAL AGREEMENTS'}</span>
               <span className="stat-value">{totalLoans}</span>
-              <span className="stat-micro">Active Registry</span>
+              <span className="stat-micro">{hasDemoLoans ? 'Local Demo Registry' : 'Active Registry'}</span>
             </div>
             <div className="stat-column">
               <span className="stat-label">QUEUED REQUESTS</span>
@@ -204,7 +209,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             <div className="stat-column">
               <span className="stat-label">SETTLED</span>
               <span className="stat-value text-success">{settledCount}</span>
-              <span className="stat-micro">Terminal State</span>
+              <span className="stat-micro">{hasDemoLoans ? 'Terminal Demo State' : 'Terminal State'}</span>
             </div>
           </div>
         </div>
@@ -214,7 +219,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           <div className="lifecycle-header-row font-mono">
             <div className="lifecycle-title-group">
               <span className="lifecycle-kicker font-mono">AGREEMENT WORKFLOW</span>
-              <h3 className="lifecycle-title">CANONICAL LIFECYCLE</h3>
+              <h3 className="lifecycle-title">{hasDemoLoans ? 'DEMO LIFECYCLE' : 'CANONICAL LIFECYCLE'}</h3>
             </div>
             <div className="lifecycle-metrics-summary font-mono">
               <span className="summary-pill"><span className="dot dot-requested" /> {requestedCount} Queued</span>
@@ -281,7 +286,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                 <span className="step-count font-sans">{settledCount}</span>
                 <span className="step-pct font-mono">{settledPct.toFixed(0)}%</span>
               </div>
-              <p className="step-desc">Terminal state finalized on-chain</p>
+              <p className="step-desc">
+                {hasDemoLoans ? 'Demo lifecycle complete' : 'Terminal state finalized on-chain'}
+              </p>
             </div>
           </div>
         </div>
@@ -292,7 +299,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <div className="active-lending-header">
           <div className="active-lending-title-group">
             <h2>ACTIVE LENDING</h2>
-            <span className="active-lending-count font-mono">{totalLoans} AGREEMENTS</span>
+            <span className="active-lending-count font-mono">
+              {totalLoans} {hasDemoLoans ? 'DEMO AGREEMENTS' : 'AGREEMENTS'}
+            </span>
           </div>
 
           <div className="editorial-text-tabs" role="tablist">
@@ -322,6 +331,20 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             })}
           </div>
         </div>
+
+        {loanRegistry.hasUnconfirmedMockLoans() && (
+          <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="font-mono text-xs" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                LOCAL DEMO DATA · NOT ON-CHAIN
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)' }}>
+                Sample loan agreements for protocol lifecycle demonstration. Not confirmed on the Midnight Preprod blockchain.
+              </span>
+            </div>
+            <span className="font-mono text-xs text-muted">Offline Mock State</span>
+          </div>
+        )}
 
         {filteredIds.length === 0 ? (
           <div className="table-empty">
@@ -353,7 +376,14 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                       onClick={() => handleOpenLoan(loanId)}
                     >
                       <td>
-                        <span className="agreement-id">{loanId}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="agreement-id">{loanId}</span>
+                          {!loan.isConfirmedOnChain && (
+                            <span className="font-mono" style={{ fontSize: '9px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(245, 158, 11, 0.3)' }} title="Sample loan data for interface demonstration. Not verified on-chain.">
+                              DEMO
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <span className="agreement-role">
@@ -373,11 +403,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
                         <span className={`underwriting-attestation-tag font-mono ${loan.isEligibilityVerified ? 'attested' : 'unverified'}`}>
                           {loan.isEligibilityVerified ? (
                             <>
-                              <span className="attest-mark">✓</span> ZK VERIFIED
+                              <span className="attest-mark">✓</span> {loan.isConfirmedOnChain ? 'ACTUAL ZK PROOF VERIFIED' : 'DEMO ELIGIBILITY VERIFIED'}
                             </>
                           ) : (
                             <>
-                              <span className="unverified-mark">—</span> UNVERIFIED
+                              <span className="unverified-mark">—</span> ZK PROOF PENDING
                             </>
                           )}
                         </span>
@@ -480,7 +510,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
               </div>
               <div className="spec-row">
                 <span className="spec-key">NETWORK LEDGER</span>
-                <span className="spec-val">{netConfig.networkName || 'Local Prototype (In-Memory)'}</span>
+                <span className="spec-val">{provider.isPrototype ? 'Local Prototype (In-Memory)' : (accountContext.networkName || 'MIDNIGHT PREPROD')}</span>
               </div>
               <div className="spec-row">
                 <span className="spec-key">EXECUTION ADAPTER</span>

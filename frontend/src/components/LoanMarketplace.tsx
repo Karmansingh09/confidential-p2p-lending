@@ -48,21 +48,31 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
           <h2 className="orderbook-title">ORDER BOOK</h2>
           <span className="orderbook-count-badge font-mono">{items.length} OPPORTUNITIES</span>
           {hasDemoLoans && (
-            <span
-              className="orderbook-demo-pill font-mono"
-              style={{
-                fontSize: '11px',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                background: 'rgba(255, 180, 0, 0.12)',
-                color: '#d48800',
-                border: '1px solid rgba(255, 180, 0, 0.3)',
-                marginLeft: '10px',
-              }}
-              title="These opportunities are local prototype simulations and are not confirmed on the Midnight Preprod ledger."
+            <div
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '10px', flexWrap: 'wrap' }}
+              data-indicator="PROTOTYPE PREVIEW • NOT ON-CHAIN LEDGER"
             >
-              PROTOTYPE PREVIEW • NOT ON-CHAIN LEDGER
-            </span>
+              <span
+                className="orderbook-demo-pill font-mono"
+                style={{
+                  fontSize: '11px',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: 'rgba(255, 180, 0, 0.12)',
+                  color: '#d48800',
+                  border: '1px solid rgba(255, 180, 0, 0.3)',
+                }}
+                title="Prototype records shown for workflow demonstration."
+              >
+                LOCAL DEMO DATA · NOT ON-CHAIN
+              </span>
+              <span
+                className="font-mono"
+                style={{ fontSize: '11px', color: 'var(--text-muted)' }}
+              >
+                Prototype records shown for workflow demonstration.
+              </span>
+            </div>
           )}
         </div>
 
@@ -224,11 +234,12 @@ export const LoanMarketplace: React.FC<LoanMarketplaceProps> = ({
                       <span className={`orderbook-zk-badge font-mono ${verified ? 'zk-proven' : 'zk-pending'}`}>
                         {verified ? (
                           <>
-                            <span className="zk-icon-proven">✓</span> ZK PROVEN
+                            <span className="zk-icon-proven">✓</span>{' '}
+                            {loan.isConfirmedOnChain ? 'ACTUAL ZK PROOF VERIFIED' : 'DEMO ELIGIBILITY VERIFIED'}
                           </>
                         ) : (
                           <>
-                            <span className="zk-icon-pending">—</span> PROOF PENDING
+                            <span className="zk-icon-pending">—</span> ZK PROOF PENDING
                           </>
                         )}
                       </span>

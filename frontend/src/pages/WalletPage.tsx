@@ -361,6 +361,86 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                       READ-ONLY // ZERO CREDENTIALS ACCESSED
                     </span>
                   </div>
+
+                  {/* Provider State Banner */}
+                  {diagnosticReport.dustState.providerState === 'PROVIDER_LOCKED' && (
+                    <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', padding: '12px 14px', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ color: '#fbbf24', fontSize: '13px', letterSpacing: '0.04em' }}>DUST STATE UNAVAILABLE</strong>
+                        <span className="font-mono" style={{ fontSize: '11px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 8px', borderRadius: '4px' }}>
+                          PROVIDER LOCKED
+                        </span>
+                      </div>
+                      <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#e2e8f0' }}>
+                        Lace reports that the wallet is locked.
+                      </p>
+                      <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#94a3b8' }}>
+                        Unlock required in Midnight Lace · DApps cannot unlock the vault.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-desk-nav font-mono"
+                        onClick={handleRunDiagnostic}
+                        disabled={isRunningDiagnostic}
+                        style={{ padding: '6px 12px', fontSize: '12px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', cursor: 'pointer' }}
+                      >
+                        {isRunningDiagnostic ? 'Checking...' : 'Retry DUST Check'}
+                      </button>
+                    </div>
+                  )}
+
+                  {diagnosticReport.dustState.providerState === 'AVAILABLE' && (
+                    <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '6px', padding: '10px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ color: '#4ade80', fontSize: '13px' }}>DUST STATE AVAILABLE</strong>
+                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>Live Preprod DUST address and balance verified from unlocked Lace vault.</div>
+                      </div>
+                      <span className="font-mono" style={{ fontSize: '11px', background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', padding: '2px 8px', borderRadius: '4px' }}>
+                        AVAILABLE
+                      </span>
+                    </div>
+                  )}
+
+                  {diagnosticReport.dustState.providerState === 'UNAVAILABLE' && (
+                    <div style={{ background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)', borderRadius: '6px', padding: '10px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ color: '#cbd5e1', fontSize: '13px' }}>DUST STATE UNAVAILABLE</strong>
+                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>Lace is connected, but DUST methods returned empty state.</div>
+                      </div>
+                      <span className="font-mono" style={{ fontSize: '11px', background: 'rgba(148, 163, 184, 0.2)', color: '#cbd5e1', padding: '2px 8px', borderRadius: '4px' }}>
+                        UNAVAILABLE
+                      </span>
+                    </div>
+                  )}
+
+                  {diagnosticReport.dustState.providerState === 'PROVIDER_ERROR' && (
+                    <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', padding: '10px 14px', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ color: '#f87171', fontSize: '13px' }}>PROVIDER ERROR</strong>
+                        <span className="font-mono" style={{ fontSize: '11px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', padding: '2px 8px', borderRadius: '4px' }}>
+                          ERROR
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#fca5a5', marginBottom: '8px' }}>{diagnosticReport.dustState.details}</div>
+                      <button
+                        type="button"
+                        className="btn-desk-nav font-mono"
+                        onClick={handleRunDiagnostic}
+                        disabled={isRunningDiagnostic}
+                        style={{ padding: '6px 12px', fontSize: '12px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)', cursor: 'pointer' }}
+                      >
+                        {isRunningDiagnostic ? 'Checking...' : 'Retry DUST Check'}
+                      </button>
+                    </div>
+                  )}
+
+                  {diagnosticReport.dustState.providerState === 'DISCONNECTED' && (
+                    <div style={{ background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)', borderRadius: '6px', padding: '10px 14px', marginBottom: '14px' }}>
+                      <strong style={{ color: '#cbd5e1', fontSize: '13px' }}>PROVIDER DISCONNECTED</strong>
+                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>Connect Lace to Midnight Preprod first to inspect live API.</div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', fontSize: '13px', fontFamily: 'monospace' }}>
                     <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
                       <div style={{ color: '#94a3b8', fontSize: '11px' }}>NETWORK ID</div>
@@ -397,19 +477,19 @@ export const WalletPage: React.FC<WalletPageProps> = ({
                     <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px', gridColumn: 'span 2' }}>
                       <div style={{ color: '#94a3b8', fontSize: '11px' }}>SHIELDED DUST ADDRESS</div>
                       <div style={{ color: '#f8fafc', wordBreak: 'break-all', fontSize: '12px' }}>
-                        {diagnosticReport.dustState.dustAddress || 'Not returned by wallet'}
+                        {diagnosticReport.dustState.dustAddress || (diagnosticReport.dustState.providerState === 'PROVIDER_LOCKED' ? 'Unavailable (Wallet Locked)' : 'Not returned by provider')}
                       </div>
                     </div>
                     <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
                       <div style={{ color: '#94a3b8', fontSize: '11px' }}>CURRENT DUST BALANCE</div>
                       <div style={{ color: '#f8fafc', fontWeight: 600 }}>
-                        {diagnosticReport.dustState.dustBalance !== null ? `${diagnosticReport.dustState.dustBalance} tDUST` : 'Unreported'}
+                        {diagnosticReport.dustState.dustBalance !== null ? `${diagnosticReport.dustState.dustBalance} tDUST` : 'Unavailable'}
                       </div>
                     </div>
                     <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px' }}>
                       <div style={{ color: '#94a3b8', fontSize: '11px' }}>DUST GENERATION CAP</div>
                       <div style={{ color: '#f8fafc', fontWeight: 600 }}>
-                        {diagnosticReport.dustState.dustCapacity !== null ? `${diagnosticReport.dustState.dustCapacity} tDUST` : 'Unreported'}
+                        {diagnosticReport.dustState.dustCapacity !== null ? `${diagnosticReport.dustState.dustCapacity} tDUST` : 'Unavailable'}
                       </div>
                     </div>
                   </div>

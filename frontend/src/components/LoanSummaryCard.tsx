@@ -42,7 +42,9 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan, loanId }
         <div className="card-header-badges">
           <LoanStatusBadge statusText={loan.statusText} />
           {isVerified && (
-            <span className="badge-verified-attestation">ZK Verified</span>
+            <span className="badge-verified-attestation">
+              {loan.isConfirmedOnChain ? 'Actual ZK Verified' : 'Demo Eligibility Verified'}
+            </span>
           )}
         </div>
       </div>
@@ -89,11 +91,13 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ loan, loanId }
         <div className="summary-metric-card">
           <span className="metric-label">Eligibility Status</span>
           <span className={`metric-value-lg ${loan.isEligibilityVerified ? 'verified-text' : 'pending-text'}`}>
-            {loan.isEligibilityVerified ? 'Verified in ZK' : 'Not Verified'}
+            {loan.isEligibilityVerified
+              ? (loan.isConfirmedOnChain ? 'Actual ZK Proof Verified' : 'Demo Eligibility Verified')
+              : 'ZK Proof Pending'}
           </span>
           <span className="metric-subtext">
             {loan.isEligibilityVerified
-              ? (loan.isConfirmedOnChain ? 'Off-chain proof accepted by contract' : 'Local prototype ZK proof simulated (Off-Chain)')
+              ? (loan.isConfirmedOnChain ? 'Off-chain proof accepted by contract' : 'Local demo ZK proof simulated (Off-Chain)')
               : 'Borrower proof submission pending'}
           </span>
         </div>

@@ -20,7 +20,7 @@ export const AccountStatusPanel: React.FC<AccountStatusPanelProps> = ({
   const auth = getAccountAuthorization(loan, accountContext);
 
   const formatPk = (hex?: string) => {
-    if (!hex) return '0x0000... (Disconnected)';
+    if (!hex) return 'Unavailable (Disconnected)';
     return `${hex.slice(0, 10)}...${hex.slice(-8)}`;
   };
 

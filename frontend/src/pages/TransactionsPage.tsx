@@ -2,6 +2,8 @@ import React from 'react';
 import type { LoanRegistry } from '../lib/loan-registry.ts';
 import { TransactionHistoryPanel } from '../components/TransactionHistoryPanel.tsx';
 import type { NavigationTab } from '../types/navigation.ts';
+import { getWalletProvider } from '../lib/account-service.ts';
+import { getWalletSessionService } from '../lib/wallet-session-service.ts';
 
 export interface TransactionsPageProps {
   loanRegistry?: LoanRegistry;
@@ -14,6 +16,19 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   onRegistryUpdated,
   onNavigate,
 }) => {
+  const provider = getWalletProvider();
+  const session = getWalletSessionService().getSession();
+  const isProto = provider.isPrototype;
+  const isConnected = session.status === 'CONNECTED';
+  const executionModeLabel = isProto
+    ? 'LOCAL PROTOTYPE'
+    : session.network.networkName || 'MIDNIGHT PREPROD';
+  const systemStateLabel = isProto
+    ? 'SANDBOX ACTIVE'
+    : isConnected
+    ? 'PREPROD CONNECTED'
+    : 'AWAITING WALLET';
+
   return (
     <div className="transactions-workspace">
       {/* 1. WORKSPACE HEADER & SYSTEM TELEMETRY ENCLAVE (60% / 40%) */}
@@ -35,15 +50,15 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             <div className="tx-telemetry-header">
               <span className="tx-telemetry-title">SYSTEM STATE</span>
               <span className="tx-telemetry-indicator">
-                <span className="status-dot-sm dot-live" />
-                <span className="status-text-live text-accent">LOCAL ACTIVE</span>
+                <span className={`status-dot-sm ${isProto || isConnected ? 'dot-live' : ''}`} />
+                <span className="status-text-live text-accent">{systemStateLabel}</span>
               </span>
             </div>
 
             <div className="tx-telemetry-body">
               <div className="tx-telemetry-row">
                 <span className="tx-telemetry-key">EXECUTION MODE</span>
-                <span className="tx-telemetry-val text-accent">LOCAL PROTOTYPE</span>
+                <span className="tx-telemetry-val text-accent">{executionModeLabel}</span>
               </div>
               <div className="tx-telemetry-row">
                 <span className="tx-telemetry-key">SETTLEMENT</span>

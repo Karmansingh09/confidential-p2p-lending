@@ -26,6 +26,13 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
 
   const isConnected = accountContext.connectionStatus === 'CONNECTED';
   const isContractVerified = verificationResult.status === 'VERIFIED';
+  const isProto = provider.isPrototype;
+  const networkNameDisplay = isProto
+    ? 'Local Prototype (In-Memory)'
+    : 'MIDNIGHT PREPROD';
+  const environmentDisplay = isProto
+    ? 'Local Sandbox'
+    : 'Midnight Preprod · Testnet';
 
   return (
     <div className="network-workspace" data-testid="network-page">
@@ -41,9 +48,9 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
           {/* Primary Network Status Area */}
           <div className="network-primary-status">
             <div className="status-heading-row">
-              <span className="status-kicker font-mono">NETWORK</span>
+              <span className="status-kicker font-mono">BLOCKCHAIN NETWORK</span>
               <div className="status-network-name-row">
-                <span className="network-name-display">{netConfig.networkName || 'Local Prototype'}</span>
+                <span className="network-name-display">{networkNameDisplay}</span>
                 <div className="status-badge-inline">
                   <span className={`status-dot ${netConfig.status === 'CONFIGURED' ? 'dot-success' : 'dot-warning'}`} />
                   <span className="status-badge-text">
@@ -56,11 +63,11 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
             <div className="status-sub-grid">
               <div className="sub-grid-item">
                 <span className="sub-item-label">Environment</span>
-                <span className="sub-item-val">{netConfig.environment || 'Local'}</span>
+                <span className="sub-item-val">{environmentDisplay}</span>
               </div>
               <div className="sub-grid-item">
-                <span className="sub-item-label">Transport</span>
-                <span className="sub-item-val">{netConfig.status === 'CONFIGURED' ? 'Configured' : 'Unconfigured'}</span>
+                <span className="sub-item-label">DApp Host</span>
+                <span className="sub-item-val font-mono" style={{ fontSize: '11px' }}>Local App</span>
               </div>
               <div className="sub-grid-item">
                 <span className="sub-item-label">Wallet</span>
@@ -91,7 +98,7 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
                 <div className="node-icon-dot dot-network" />
                 <div className="node-info">
                   <span className="node-label">Network</span>
-                  <span className="node-sub font-mono">{netConfig.networkName || 'Local Prototype'}</span>
+                  <span className="node-sub font-mono">{networkNameDisplay}</span>
                 </div>
                 <span className="node-status-tag status-tag-success">ONLINE</span>
               </div>

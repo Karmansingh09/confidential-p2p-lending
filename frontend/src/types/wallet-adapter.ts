@@ -108,6 +108,13 @@ export interface MidnightConnectedAPI {
   state?: () => Promise<unknown>;
 }
 
+export type DustProviderState =
+  | 'AVAILABLE'
+  | 'UNAVAILABLE'
+  | 'PROVIDER_LOCKED'
+  | 'PROVIDER_ERROR'
+  | 'DISCONNECTED';
+
 /**
  * Safe, read-only diagnostic report for inspecting Midnight Preprod Lace connection and DUST state.
  * STRICT PRIVACY INVARIANT: Never contains sensitive credentials or confidential underwriting data.
@@ -139,8 +146,11 @@ export interface SafeDustDiagnosticReport {
     dustAddress: string | null;
     dustBalance: string | null;
     dustCapacity: string | null;
-    readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR';
+    readStatus: 'SUCCESS' | 'PARTIAL' | 'NOT_AVAILABLE' | 'ERROR' | DustProviderState;
+    providerState: DustProviderState;
     details: string;
+    lockReason?: string;
+    actionRequired?: string;
   };
   networkEndpoints: {
     indexerUri?: string;

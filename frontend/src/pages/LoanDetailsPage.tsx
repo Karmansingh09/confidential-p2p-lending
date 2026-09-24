@@ -151,7 +151,14 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
             <span className="kicker-sep">//</span>
             <span>{effectiveLoanId}</span>
           </div>
-          <h1 className="overview-headline">Agreement {effectiveLoanId}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h1 className="overview-headline">Agreement {effectiveLoanId}</h1>
+            {!currentLoan.isConfirmedOnChain && (
+              <span className="font-mono text-xs" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                LOCAL DEMO DATA · NOT ON-CHAIN
+              </span>
+            )}
+          </div>
           <p className="overview-lead">
             Cryptographic audit, public ledger parameters, and contract-guarded lifecycle controls.
           </p>
@@ -166,7 +173,9 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
             <div className="meta-item">
               <span className="meta-label">ATTESTATION</span>
               <span className={`meta-val ${currentLoan.isEligibilityVerified ? 'text-success' : 'text-warning'}`}>
-                {currentLoan.isEligibilityVerified ? 'ZK PROVEN' : 'PROOF PENDING'}
+                {currentLoan.isEligibilityVerified
+                  ? (currentLoan.isConfirmedOnChain ? 'ACTUAL ZK PROOF VERIFIED' : 'DEMO ELIGIBILITY VERIFIED')
+                  : 'ZK PROOF PENDING'}
               </span>
             </div>
             <div className="meta-item">
@@ -258,7 +267,9 @@ export const LoanDetailsPage: React.FC<LoanDetailsPageProps> = ({
           <div>
             <span style={{ color: 'var(--text-muted)' }}>ZK STATUS: </span>
             <strong className={currentLoan.isEligibilityVerified ? 'text-success' : 'text-warning'}>
-              {currentLoan.isEligibilityVerified ? 'VERIFIED' : 'PENDING'}
+              {currentLoan.isEligibilityVerified
+                ? (currentLoan.isConfirmedOnChain ? 'ACTUAL ZK VERIFIED' : 'DEMO VERIFIED')
+                : 'PROOF PENDING'}
             </strong>
           </div>
         </div>

@@ -1,0 +1,637 @@
+import fs from 'fs';
+import path from 'path';
+
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1720" width="100%" height="100%" style="background-color: #ffffff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#64748b" />
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#2563eb" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#16a34a" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#7c3aed" />
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#d97706" />
+    </marker>
+
+    
+    <filter id="card-shadow" x="-2%" y="-1%" width="104%" height="103%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.06" />
+    </filter>
+  </defs>
+
+  <style>
+    .title-main { font-size: 24px; font-weight: 700; fill: #0f172a; letter-spacing: -0.5px; }
+    .title-sub { font-size: 13px; font-weight: 400; fill: #475569; }
+    .section-title { font-size: 13px; font-weight: 700; fill: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .section-sub { font-size: 11px; font-weight: 500; fill: #64748b; }
+    .card-title { font-size: 13px; font-weight: 600; fill: #0f172a; }
+    .card-desc { font-size: 11px; font-weight: 400; fill: #475569; }
+    .card-item { font-size: 11px; font-weight: 500; fill: #1e293b; }
+    .code-text { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 11px; fill: #0f172a; }
+    .badge-text { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 10px; font-weight: 600; }
+    .flow-label { font-size: 10px; font-weight: 600; fill: #475569; }
+    .tag-text { font-size: 9.5px; font-weight: 600; }
+  </style>
+
+  
+  <rect x="0" y="0" width="1200" height="1720" fill="#ffffff" />
+  <rect x="15" y="15" width="1170" height="1690" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" />
+
+  
+  
+  
+  <g transform="translate(35, 30)">
+    <rect x="0" y="0" width="1130" height="85" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+    
+    
+    <rect x="20" y="14" width="186" height="20" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1" />
+    <text x="28" y="28" class="badge-text" fill="#1d4ed8">MIDNIGHT NETWORK · PREPROD</text>
+
+    <text x="20" y="58" class="title-main">Confidential P2P Micro-Lending Desk</text>
+    <text x="500" y="58" class="title-sub">End-to-End System Architecture &amp; Cryptographic Privacy Boundary Specification</text>
+
+    
+    <rect x="850" y="14" width="120" height="20" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1" />
+    <text x="858" y="28" class="badge-text" fill="#334155">Compact 0.5.1</text>
+
+    <rect x="980" y="14" width="130" height="20" rx="4" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1" />
+    <text x="988" y="28" class="badge-text" fill="#047857">Block: 2706926</text>
+  </g>
+
+  
+  
+  
+
+  
+  
+  
+  <g transform="translate(35, 135)">
+    
+    <rect x="0" y="0" width="355" height="520" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <rect x="0" y="0" width="355" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="14" y="22" class="section-title">1. Client / User Layer</text>
+    <text x="210" y="22" class="section-sub">Browser Execution</text>
+
+    
+    <rect x="18" y="48" width="319" height="44" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+    <text x="32" y="68" class="card-title">User Web Browser</text>
+    <text x="32" y="82" class="card-desc">Evaluator, Borrower, or Lender Client Environment</text>
+
+    
+    <line x1="177" y1="92" x2="177" y2="114" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+    <rect x="135" y="96" width="85" height="15" rx="3" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="140" y="107" class="flow-label">User Actions</text>
+
+    
+    <rect x="18" y="115" width="319" height="235" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2" filter="url(#card-shadow)" />
+    <rect x="18" y="115" width="319" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2" />
+    <text x="28" y="132" class="card-title" fill="#1e3a8a">React 18 + TypeScript Frontend</text>
+    <text x="260" y="132" class="code-text" font-size="9" fill="#2563eb">frontend/src</text>
+
+    
+    <g transform="translate(28, 150)">
+      <rect x="0" y="0" width="299" height="28" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="18" class="card-item">• Loan Desk UI &amp; Marketplace</text>
+      <text x="215" y="18" class="card-desc">(MarketplacePage)</text>
+
+      <rect x="0" y="34" width="299" height="28" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="52" class="card-item">• Loan Lifecycle State Machines</text>
+      <text x="215" y="52" class="card-desc">(5 Phases)</text>
+
+      <rect x="0" y="68" width="299" height="28" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="86" class="card-item">• Wallet &amp; System Readiness</text>
+      <text x="215" y="86" class="card-desc">(ReadinessBadge)</text>
+
+      <rect x="0" y="102" width="299" height="28" rx="4" fill="#fff7ed" stroke="#fed7aa" stroke-width="1" />
+      <text x="10" y="120" class="card-item" fill="#9a3412">• Privacy / Eligibility Input</text>
+      <text x="215" y="120" class="card-desc" fill="#c2410c">(Ephemeral RAM)</text>
+
+      <rect x="0" y="136" width="299" height="28" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="154" class="card-item">• Transaction Review &amp; Recovery UI</text>
+      <text x="215" y="154" class="card-desc">(Reconciliation)</text>
+    </g>
+
+    
+    <g transform="translate(18, 360)">
+      <line x1="100" y1="0" x2="100" y2="40" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow-blue)" />
+      <line x1="220" y1="40" x2="220" y2="0" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrow-green)" />
+      <rect x="22" y="12" width="95" height="15" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1" />
+      <text x="25" y="23" class="flow-label" fill="#1d4ed8">Wallet Connection</text>
+      <rect x="180" y="12" width="112" height="15" rx="3" fill="#ffffff" stroke="#bbf7d0" stroke-width="1" />
+      <text x="184" y="23" class="flow-label" fill="#15803d">Transaction Approval</text>
+    </g>
+
+    
+    <rect x="18" y="410" width="319" height="92" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" filter="url(#card-shadow)" />
+    <rect x="18" y="410" width="319" height="26" rx="5" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1" />
+    <text x="30" y="427" class="card-title">Midnight Lace Wallet</text>
+    <text x="225" y="427" class="code-text" font-size="9.5" fill="#475569">window.midnight</text>
+    <text x="30" y="452" class="card-item">• Authentic DApp Connector API v4</text>
+    <text x="30" y="468" class="card-item">• Shielded Keyring &amp; Network Identification (Preprod)</text>
+    <text x="30" y="484" class="card-desc">• Authorizes Proof Dispatch &amp; UTXO Fee Balancing</text>
+  </g>
+
+  
+  
+  
+  <g transform="translate(410, 135)">
+    
+    <rect x="0" y="0" width="355" height="520" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <rect x="0" y="0" width="355" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="14" y="22" class="section-title">2. Application / SDK Layer</text>
+    <text x="225" y="22" class="section-sub">State &amp; Adapters</text>
+
+    
+    <rect x="18" y="48" width="319" height="180" rx="5" fill="#ffffff" stroke="#99f6e4" stroke-width="1.2" filter="url(#card-shadow)" />
+    <rect x="18" y="48" width="319" height="26" rx="5" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1" />
+    <text x="28" y="65" class="card-title" fill="#115e59">LoanDesk SDK</text>
+    <text x="200" y="65" class="code-text" font-size="9" fill="#0d9488">@midnight-p2p/contracts</text>
+    
+    <g transform="translate(28, 84)">
+      <rect x="0" y="0" width="299" height="26" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="17" class="card-item">• TypeScript Client Facade</text>
+      <text x="210" y="17" class="code-text" font-size="9" fill="#475569">LoanDesk API</text>
+
+      <rect x="0" y="32" width="299" height="26" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="49" class="card-item">• TanStack Query &amp; Application State</text>
+      <text x="225" y="49" class="card-desc">(Sync Cache)</text>
+
+      <rect x="0" y="64" width="299" height="26" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="81" class="card-item">• Contract State Inspection Service</text>
+      <text x="235" y="81" class="code-text" font-size="9" fill="#475569">v4 Reader</text>
+
+      <rect x="0" y="96" width="299" height="26" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+      <text x="10" y="113" class="card-item">• Transaction Reconciliation Service</text>
+      <text x="228" y="113" class="card-desc">(Safe Guard)</text>
+    </g>
+
+    
+    <line x1="177" y1="228" x2="177" y2="258" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+    <rect x="105" y="236" width="145" height="15" rx="3" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="110" y="247" class="flow-label">Circuit Interaction &amp; Proofs</text>
+
+    
+    <rect x="18" y="258" width="319" height="85" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+    <rect x="18" y="258" width="319" height="24" rx="5" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" />
+    <text x="28" y="274" class="card-title">Contract Interaction Service</text>
+    <text x="28" y="298" class="card-desc">• Circuit argument encoding &amp; witness orchestration</text>
+    <text x="28" y="314" class="card-desc">• Proof server interaction &amp; ZKIR constraint generation</text>
+    <text x="28" y="330" class="card-desc">• Fee balancing &amp; DUST transaction submission pipeline</text>
+
+    
+    <line x1="177" y1="343" x2="177" y2="385" stroke="#94a3b8" stroke-dasharray="3,3" stroke-width="1.2" marker-end="url(#arrow)" />
+    <rect x="120" y="356" width="115" height="15" rx="3" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="125" y="367" class="flow-label">Optional Off-Chain Sync</text>
+
+    
+    <rect x="18" y="385" width="319" height="117" rx="5" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" filter="url(#card-shadow)" />
+    <rect x="18" y="385" width="319" height="24" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+    <text x="28" y="401" class="card-title">Optional Express Backend API</text>
+    
+    
+    <rect x="28" y="415" width="299" height="20" rx="3" fill="#fffbeb" stroke="#fde68a" stroke-width="1" />
+    <text x="34" y="429" class="badge-text" fill="#b45309">Off-Chain Helper Only · NOT Blockchain Source of Truth</text>
+    
+    <text x="28" y="452" class="card-desc">• Optional indexing helpers &amp; agreement metadata cache</text>
+    <text x="28" y="468" class="card-desc">• Does NOT control smart contract or execute private circuits</text>
+    <text x="28" y="484" class="card-desc">• Canonical truth is determined strictly on-chain by Midnight</text>
+  </g>
+
+  
+  
+  
+  <g transform="translate(785, 135)">
+    
+    <rect x="0" y="0" width="380" height="520" rx="6" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.4" />
+    <rect x="0" y="0" width="380" height="34" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.4" />
+    <text x="14" y="22" class="section-title">3. Midnight Network — Preprod</text>
+    <text x="250" y="22" class="section-sub">Consensus &amp; Ledger</text>
+
+    
+    <rect x="18" y="46" width="344" height="344" rx="5" fill="#ffffff" stroke="#c084fc" stroke-width="1.2" filter="url(#card-shadow)" />
+    <rect x="18" y="46" width="344" height="42" rx="5" fill="#faf5ff" stroke="#c084fc" stroke-width="1" />
+    <text x="28" y="64" class="card-title" fill="#6b21a8">ConfidentialP2PLending</text>
+    <text x="28" y="79" class="code-text" font-size="10" fill="#7c3aed">Compact Smart Contract · Deployed On-Chain</text>
+    
+    <rect x="220" y="52" width="134" height="18" rx="3" fill="#f3e8ff" stroke="#d8b4fe" stroke-width="1" />
+    <text x="225" y="65" class="code-text" font-size="9" fill="#6b21a8">0xa0238d35...a0b8af</text>
+
+    
+    <g transform="translate(28, 98)">
+      <rect x="0" y="0" width="324" height="106" rx="4" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1" />
+      <text x="10" y="16" class="section-title" font-size="10" fill="#6b21a8">Contract Circuits — Compact (6 Circuits)</text>
+      
+      
+      <g transform="translate(8, 24)">
+        <rect x="0" y="0" width="148" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="15" class="code-text" font-size="9.5" font-weight="600">verifyEligibility()</text>
+        
+        <rect x="0" y="26" width="148" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="41" class="code-text" font-size="9.5" font-weight="600">fundLoan()</text>
+
+        <rect x="0" y="52" width="148" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="67" class="code-text" font-size="9.5" font-weight="600">repayLoan()</text>
+      </g>
+      
+      <g transform="translate(164, 24)">
+        <rect x="0" y="0" width="150" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="15" class="code-text" font-size="9.5" font-weight="600">settleLoan()</text>
+        
+        <rect x="0" y="26" width="150" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="41" class="code-text" font-size="9.5" font-weight="600">getLoanStatus()</text>
+
+        <rect x="0" y="52" width="150" height="22" rx="3" fill="#ffffff" stroke="#d8b4fe" stroke-width="1" />
+        <text x="6" y="67" class="code-text" font-size="9.5" font-weight="600">getLoanDetails()</text>
+      </g>
+    </g>
+
+    
+    <g transform="translate(28, 214)">
+      <rect x="0" y="0" width="324" height="166" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" />
+      <text x="10" y="17" class="section-title" font-size="10" fill="#334155">Public Ledger State (Consensus Fields)</text>
+      
+      <g transform="translate(10, 26)">
+        <text x="0" y="13" class="code-text" font-size="9.5">• borrower: Bytes&lt;32&gt;</text>
+        <text x="160" y="13" class="code-text" font-size="9.5">• lender: Maybe&lt;Bytes&lt;32&gt;&gt;</text>
+
+        <text x="0" y="31" class="code-text" font-size="9.5">• amount: Uint&lt;64&gt;</text>
+        <text x="160" y="31" class="code-text" font-size="9.5">• interestRateBasisPoints: Uint&lt;16&gt;</text>
+
+        <text x="0" y="49" class="code-text" font-size="9.5">• durationBlocks: Uint&lt;32&gt;</text>
+        <text x="160" y="49" class="code-text" font-size="9.5">• eligibilityThreshold: Uint&lt;64&gt;</text>
+
+        <text x="0" y="67" class="code-text" font-size="9.5">• isEligibilityVerified: Boolean</text>
+        <text x="160" y="67" class="code-text" font-size="9.5">• status: LoanStatus</text>
+      </g>
+
+      
+      <rect x="10" y="103" width="304" height="52" rx="3" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+      <text x="18" y="119" class="badge-text" fill="#475569">LOAN STATUS LIFECYCLE:</text>
+      <text x="18" y="138" class="code-text" font-size="9.5" font-weight="600" fill="#2563eb">Requested → Funded → Repaid → Settled</text>
+    </g>
+
+    
+    <g transform="translate(18, 400)">
+      <rect x="0" y="0" width="344" height="108" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="0" y="0" width="344" height="22" rx="5" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1" />
+      <text x="10" y="15" class="section-title" font-size="9.5" fill="#334155">Supporting Infrastructure</text>
+
+      <g transform="translate(8, 28)">
+        
+        <rect x="0" y="0" width="98" height="70" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="6" y="16" class="card-item" font-size="10">Midnight RPC</text>
+        <text x="6" y="30" class="card-desc" font-size="8.5">Preprod Node</text>
+        <text x="6" y="44" class="code-text" font-size="7.2" fill="#64748b">rpc.preprod</text>
+        <text x="6" y="56" class="code-text" font-size="7.2" fill="#64748b">.midnight.network</text>
+
+        
+        <rect x="104" y="0" width="122" height="70" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="110" y="16" class="card-item" font-size="10">Midnight Indexer</text>
+        <text x="110" y="30" class="card-desc" font-size="8.5">GraphQL v4 Endpoint</text>
+        <text x="110" y="44" class="code-text" font-size="7.2" fill="#2563eb">indexer.preprod.midnight.network</text>
+        <text x="110" y="56" class="code-text" font-size="7.2" fill="#2563eb">/api/v4/graphql</text>
+
+        
+        <rect x="232" y="0" width="96" height="70" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="238" y="16" class="card-item" font-size="10">Proof Server</text>
+        <text x="238" y="30" class="card-desc" font-size="8.5">ZKIR Constraints</text>
+        <text x="238" y="44" class="code-text" font-size="7.2" fill="#64748b">localhost:6300</text>
+        <text x="238" y="56" class="code-text" font-size="7.2" fill="#64748b">Docker Prover</text>
+      </g>
+    </g>
+  </g>
+
+  
+  
+  <line x1="390" y1="230" x2="425" y2="230" stroke="#0d9488" stroke-width="1.8" marker-end="url(#arrow)" />
+  <rect x="375" y="210" width="55" height="15" rx="3" fill="#ffffff" stroke="#99f6e4" stroke-width="1" />
+  <text x="380" y="221" class="flow-label" fill="#0f766e">SDK Calls</text>
+
+  
+  <line x1="765" y1="285" x2="800" y2="285" stroke="#2563eb" stroke-width="1.8" marker-end="url(#arrow-blue)" />
+  <rect x="745" y="265" width="80" height="15" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1" />
+  <text x="750" y="276" class="flow-label" fill="#1d4ed8">RPC Invocations</text>
+
+  
+  <line x1="800" y1="565" x2="765" y2="565" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" />
+  <rect x="715" y="545" width="135" height="15" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" />
+  <text x="720" y="556" class="flow-label">Read State (/api/v4/graphql)</text>
+
+  
+  
+  
+  <g transform="translate(35, 675)">
+    
+    <rect x="0" y="0" width="1130" height="340" rx="6" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" />
+    <rect x="0" y="0" width="1130" height="34" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" />
+    <text x="16" y="22" class="section-title">4. Privacy Boundary &amp; Zero-Knowledge Underwriting</text>
+    <text x="470" y="22" class="section-sub">Off-Chain Private State Isolation vs. On-Chain Consensus Verification</text>
+
+    
+    <g transform="translate(18, 48)">
+      <rect x="0" y="0" width="515" height="274" rx="6" fill="#fff5f5" stroke="#f87171" stroke-width="2" stroke-dasharray="6,4" />
+      
+      
+      <rect x="1" y="1" width="513" height="32" rx="5" fill="#fee2e2" />
+      <text x="14" y="22" class="section-title" fill="#991b1b">🔒 PRIVATE / OFF-CHAIN DOMAIN (Client Local Memory)</text>
+      
+      
+      <g transform="translate(16, 44)">
+        <rect x="0" y="0" width="483" height="84" rx="4" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2" filter="url(#card-shadow)" />
+        <text x="14" y="22" class="card-title" fill="#991b1b">Private Financial Value (Client Witness)</text>
+        <text x="14" y="42" class="card-desc">• Borrower net annual income or debt-capacity metric (e.g. $85,000 / Uint&lt;64&gt;)</text>
+        <text x="14" y="58" class="card-desc">• Evaluated strictly inside ephemeral memory in client-side witness provider</text>
+        <text x="14" y="74" class="card-desc">• NEVER written to public ledger, never signed, never sent over the wire</text>
+      </g>
+
+      
+      <g transform="translate(245, 128)">
+        <line x1="0" y1="0" x2="0" y2="28" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrow)" />
+        <rect x="-105" y="6" width="210" height="15" rx="3" fill="#ffffff" stroke="#fca5a5" stroke-width="1" />
+        <text x="-98" y="17" class="flow-label" fill="#b91c1c">Private witness → ZK eligibility proof</text>
+      </g>
+
+      
+      <g transform="translate(16, 160)">
+        <rect x="0" y="0" width="483" height="98" rx="4" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2" filter="url(#card-shadow)" />
+        <text x="14" y="22" class="card-title" fill="#991b1b">Compact Zero-Knowledge Circuit Prover</text>
+        <text x="14" y="42" class="card-desc">• Circuit: verifyEligibility() executes against local prover key</text>
+        <text x="14" y="58" class="card-desc">• Cryptographic constraint check: assert(privateFinancialValue &gt;= eligibilityThreshold)</text>
+        <text x="14" y="74" class="card-desc">• Generates zk-SNARK proof of solvency without revealing secret numeric input</text>
+        <text x="14" y="90" class="card-item" fill="#b91c1c">• Ephemeral secret value is wiped from memory immediately after proving</text>
+      </g>
+    </g>
+
+    
+    <g transform="translate(535, 175)">
+      
+      <line x1="0" y1="35" x2="60" y2="35" stroke="#16a34a" stroke-width="2.2" marker-end="url(#arrow-green)" />
+      
+      
+      <rect x="-45" y="0" width="150" height="24" rx="4" fill="#ffffff" stroke="#86efac" stroke-width="1.5" filter="url(#card-shadow)" />
+      <text x="-38" y="16" class="badge-text" fill="#15803d">ZK Proof Only (No Data)</text>
+      
+      <rect x="-55" y="48" width="170" height="18" rx="3" fill="#fef2f2" stroke="#fecaca" stroke-width="1" />
+      <text x="-48" y="61" class="flow-label" fill="#dc2626">Only eligibility result is committed</text>
+    </g>
+
+    
+    <g transform="translate(597, 48)">
+      <rect x="0" y="0" width="515" height="274" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="2" />
+      
+      
+      <rect x="1" y="1" width="513" height="32" rx="5" fill="#dcfce7" />
+      <text x="14" y="22" class="section-title" fill="#166534">🌐 PUBLIC / ON-CHAIN DOMAIN (Midnight Preprod Consensus)</text>
+
+      
+      <g transform="translate(16, 44)">
+        <rect x="0" y="0" width="483" height="84" rx="4" fill="#ffffff" stroke="#86efac" stroke-width="1.2" filter="url(#card-shadow)" />
+        <text x="14" y="22" class="card-title" fill="#166534">Eligibility Verification &amp; Public Attestation</text>
+        <text x="14" y="42" class="card-desc">• Ledger asserts: isEligibilityVerified = true (strictly via ZK proof verification)</text>
+        <text x="14" y="58" class="card-desc">• Consensus verifies zk-SNARK proof against on-chain verification key</text>
+        <text x="14" y="74" class="card-desc">• Public observers &amp; lenders learn ONLY that borrower qualifies (Threshold met)</text>
+      </g>
+
+      
+      <g transform="translate(245, 128)">
+        <line x1="0" y1="0" x2="0" y2="28" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrow-green)" />
+        <rect x="-85" y="6" width="170" height="15" rx="3" fill="#ffffff" stroke="#bbf7d0" stroke-width="1" />
+        <text x="-80" y="17" class="flow-label" fill="#15803d">Unlocks Lender Funding Gate</text>
+      </g>
+
+      
+      <g transform="translate(16, 160)">
+        <rect x="0" y="0" width="483" height="98" rx="4" fill="#ffffff" stroke="#86efac" stroke-width="1.2" filter="url(#card-shadow)" />
+        <text x="14" y="22" class="card-title" fill="#166534">Public Loan Agreement Terms</text>
+        <text x="14" y="42" class="card-desc">• Public Parameters: Borrower PK, Principal Amount, Rate Basis Points, Duration</text>
+        <text x="14" y="58" class="card-desc">• Lifecycle State: Status advances to FUNDED once lender calls fundLoan()</text>
+        <text x="14" y="74" class="card-desc">• Repayment: Exactly enforced by contract math (Principal + Interest integer division)</text>
+        <text x="14" y="90" class="card-item" fill="#15803d">• Zero confidential financial documents, income figures, or bank records on ledger</text>
+      </g>
+    </g>
+  </g>
+
+  
+  
+  
+  
+  
+  <g transform="translate(35, 1030)">
+    <rect x="0" y="0" width="1130" height="145" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <rect x="0" y="0" width="1130" height="32" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="16" y="21" class="section-title">5. Wallet &amp; Transaction Readiness Progression</text>
+    
+    
+    <rect x="420" y="6" width="695" height="20" rx="3" fill="#fffbeb" stroke="#fde68a" stroke-width="1" />
+    <text x="430" y="20" class="badge-text" fill="#b45309">INVARIANT: DETECTED ≠ CONNECTED ≠ TRANSACTION CAPABLE ≠ NETWORK COMPATIBLE ≠ CONTRACT READY</text>
+
+    
+    <g transform="translate(18, 46)">
+      
+      <rect x="0" y="0" width="160" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="8" y="8" width="85" height="16" rx="3" fill="#f1f5f9" />
+      <text x="12" y="20" class="badge-text" fill="#475569">01 · DETECTED</text>
+      <text x="8" y="42" class="card-title" font-size="11.5">Lace Injected</text>
+      <text x="8" y="58" class="card-desc" font-size="10">window.midnight</text>
+      <text x="8" y="70" class="card-desc" font-size="10">connector present</text>
+
+      <line x1="165" y1="41" x2="185" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="190" y="0" width="160" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="198" y="8" width="95" height="16" rx="3" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.8" />
+      <text x="202" y="20" class="badge-text" fill="#1d4ed8">02 · CONNECTED</text>
+      <text x="198" y="42" class="card-title" font-size="11.5">Identity Handshake</text>
+      <text x="198" y="58" class="card-desc" font-size="10">Read public address</text>
+      <text x="198" y="70" class="card-desc" font-size="10">&amp; account role</text>
+
+      <line x1="355" y1="41" x2="375" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="380" y="0" width="160" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="388" y="8" width="95" height="16" rx="3" fill="#f0fdfa" stroke="#99f6e4" stroke-width="0.8" />
+      <text x="392" y="20" class="badge-text" fill="#0f766e">03 · TX CAPABLE</text>
+      <text x="388" y="42" class="card-title" font-size="11.5">Permissions Granted</text>
+      <text x="388" y="58" class="card-desc" font-size="10">Signing &amp; coin selection</text>
+      <text x="388" y="70" class="card-desc" font-size="10">capabilities unlocked</text>
+
+      <line x1="545" y1="41" x2="565" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="570" y="0" width="160" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="578" y="8" width="115" height="16" rx="3" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.8" />
+      <text x="582" y="20" class="badge-text" fill="#6d28d9">04 · NET COMPATIBLE</text>
+      <text x="578" y="42" class="card-title" font-size="11.5">Network Matched</text>
+      <text x="578" y="58" class="card-desc" font-size="10">Target: Midnight</text>
+      <text x="578" y="70" class="card-desc" font-size="10">Preprod (networkId)</text>
+
+      <line x1="735" y1="41" x2="755" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="760" y="0" width="160" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="768" y="8" width="115" height="16" rx="3" fill="#fdf2f8" stroke="#fbcfe8" stroke-width="0.8" />
+      <text x="772" y="20" class="badge-text" fill="#be185d">05 · CONTRACT READY</text>
+      <text x="768" y="42" class="card-title" font-size="11.5">Contract Verified</text>
+      <text x="768" y="58" class="card-desc" font-size="10">0xa0238d35... confirmed</text>
+      <text x="768" y="70" class="card-desc" font-size="10">on Preprod indexer</text>
+
+      <line x1="925" y1="41" x2="945" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="950" y="0" width="144" height="82" rx="4" fill="#ffffff" stroke="#86efac" stroke-width="1.4" filter="url(#card-shadow)" />
+      <rect x="958" y="8" width="110" height="16" rx="3" fill="#f0fdf4" stroke="#86efac" stroke-width="0.8" />
+      <text x="962" y="20" class="badge-text" fill="#15803d">06 · TX EXECUTION</text>
+      <text x="958" y="42" class="card-title" font-size="11.5">Action Ready</text>
+      <text x="958" y="58" class="card-desc" font-size="10">ZK proof generation,</text>
+      <text x="958" y="70" class="card-desc" font-size="10">fee balance &amp; submit</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(35, 1190)">
+    <rect x="0" y="0" width="1130" height="145" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <rect x="0" y="0" width="1130" height="32" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="16" y="21" class="section-title">6. Canonical Agreement Transaction Lifecycle</text>
+    <text x="460" y="21" class="section-sub">5-Phase Agreement State Progression with Strict Euclidean Math Obligation Guarantees</text>
+
+    
+    <g transform="translate(18, 46)">
+      
+      <rect x="0" y="0" width="200" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <text x="12" y="22" class="card-title" font-size="12">1. Connect &amp; Propose</text>
+      <text x="12" y="38" class="card-desc">• Borrower connects Lace</text>
+      <text x="12" y="52" class="card-desc">• Proposes principal &amp; terms</text>
+      <text x="12" y="68" class="code-text" font-size="9" fill="#64748b">Status: REQUESTED (unverified)</text>
+
+      <line x1="205" y1="41" x2="225" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="230" y="0" width="200" height="82" rx="4" fill="#ffffff" stroke="#93c5fd" stroke-width="1" filter="url(#card-shadow)" />
+      <text x="12" y="22" class="card-title" font-size="12" fill="#1e40af" transform="translate(230,0)">2. Verify Eligibility</text>
+      <text x="12" y="38" class="card-desc" transform="translate(230,0)">• Borrower runs ZK circuit</text>
+      <text x="12" y="52" class="card-desc" transform="translate(230,0)">• Income remains off-chain</text>
+      <text x="12" y="68" class="code-text" font-size="9" fill="#1d4ed8" transform="translate(230,0)">Status: REQUESTED (verified)</text>
+
+      <line x1="435" y1="41" x2="455" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="460" y="0" width="200" height="82" rx="4" fill="#ffffff" stroke="#86efac" stroke-width="1" filter="url(#card-shadow)" />
+      <text x="12" y="22" class="card-title" font-size="12" fill="#166534" transform="translate(460,0)">3. Lender Funds Loan</text>
+      <text x="12" y="38" class="card-desc" transform="translate(460,0)">• Lender validates verified flag</text>
+      <text x="12" y="52" class="card-desc" transform="translate(460,0)">• Commits loan capital</text>
+      <text x="12" y="68" class="code-text" font-size="9" fill="#15803d" transform="translate(460,0)">Status: FUNDED (active)</text>
+
+      <line x1="665" y1="41" x2="685" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="690" y="0" width="200" height="82" rx="4" fill="#ffffff" stroke="#fde047" stroke-width="1" filter="url(#card-shadow)" />
+      <text x="12" y="22" class="card-title" font-size="12" fill="#854d0e" transform="translate(690,0)">4. Borrower Repays</text>
+      <text x="12" y="38" class="card-desc" transform="translate(690,0)">• Principal + Integer Interest</text>
+      <text x="12" y="52" class="card-desc" transform="translate(690,0)">• Floor division math check</text>
+      <text x="12" y="68" class="code-text" font-size="9" fill="#854d0e" transform="translate(690,0)">Status: REPAID (obligation met)</text>
+
+      <line x1="895" y1="41" x2="915" y2="41" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      
+      <rect x="920" y="0" width="174" height="82" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <text x="12" y="22" class="card-title" font-size="12" fill="#334155" transform="translate(920,0)">5. Settle Agreement</text>
+      <text x="12" y="38" class="card-desc" transform="translate(920,0)">• Either party settles</text>
+      <text x="12" y="52" class="card-desc" transform="translate(920,0)">• Debt extinguished</text>
+      <text x="12" y="68" class="code-text" font-size="9" fill="#475569" transform="translate(920,0)">Status: SETTLED (terminal)</text>
+    </g>
+  </g>
+
+  
+  
+  
+  <g transform="translate(35, 1350)">
+    <rect x="0" y="0" width="1130" height="230" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <rect x="0" y="0" width="1130" height="32" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="16" y="21" class="section-title">7. Developer Delivery &amp; Confirmed Preprod Deployment</text>
+    <text x="520" y="21" class="section-sub">Automated CI/CD Validation Pipeline &amp; Verified On-Chain Contract Metadata</text>
+
+    
+    <g transform="translate(18, 46)">
+      <rect x="0" y="0" width="540" height="168" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="0" y="0" width="540" height="26" rx="5" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" />
+      <text x="14" y="18" class="card-title">GitHub Repository &amp; Actions CI/CD</text>
+      <text x="360" y="18" class="code-text" font-size="9.5" fill="#64748b">.github/workflows/ci.yml</text>
+
+      <g transform="translate(14, 38)">
+        
+        <rect x="0" y="0" width="160" height="32" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5">1. npm ci (clean install)</text>
+
+        <rect x="175" y="0" width="160" height="32" rx="3" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5" fill="#047857" transform="translate(175,0)">2. npm test (682 passed)</text>
+
+        <rect x="350" y="0" width="160" height="32" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5" transform="translate(350,0)">3. contract typecheck</text>
+
+        <rect x="0" y="40" width="160" height="32" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5">4. contract build (TS)</text>
+
+        <rect x="175" y="40" width="160" height="32" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5" transform="translate(175,0)">5. frontend typecheck</text>
+
+        <rect x="350" y="40" width="160" height="32" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+        <text x="8" y="20" class="code-text" font-size="9.5" transform="translate(350,0)">6. frontend build (Vite)</text>
+      </g>
+
+      
+      <rect x="14" y="122" width="510" height="34" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1" />
+      <text x="24" y="137" class="card-desc" font-size="10" fill="#1e40af">Clean Runner Guarantee: Runs on standard ubuntu-latest runners without requiring deployer seed,</text>
+      <text x="24" y="149" class="card-desc" font-size="10" fill="#1e40af">private credentials, or local wallet state. CI validates code; deployment is deliberate via CLI.</text>
+    </g>
+
+    
+    <g transform="translate(572, 46)">
+      <rect x="0" y="0" width="540" height="168" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#card-shadow)" />
+      <rect x="0" y="0" width="540" height="26" rx="5" fill="#faf5ff" stroke="#cbd5e1" stroke-width="1" />
+      <text x="14" y="18" class="card-title" fill="#6b21a8">Confirmed Midnight Preprod Deployment</text>
+      <text x="360" y="18" class="code-text" font-size="9.5" fill="#7c3aed">deployments/compact/preprod.json</text>
+
+      <g transform="translate(14, 36)">
+        <text x="0" y="16" class="code-text" font-size="10" font-weight="600">Contract Name:</text>
+        <text x="120" y="16" class="code-text" font-size="10">ConfidentialP2PLending</text>
+
+        <text x="0" y="34" class="code-text" font-size="10" font-weight="600">Network ID:</text>
+        <text x="120" y="34" class="code-text" font-size="10">preprod (Midnight Preprod)</text>
+
+        <text x="0" y="52" class="code-text" font-size="10" font-weight="600">Contract Address:</text>
+        <text x="120" y="52" class="code-text" font-size="9.5" fill="#2563eb">0xa0238d3594e1d74b3d5e85254239a34749bb9d4c7957f52b96e4c5a88fa0b8af</text>
+
+        <text x="0" y="70" class="code-text" font-size="10" font-weight="600">Confirmed Block:</text>
+        <text x="120" y="70" class="code-text" font-size="10">2706926</text>
+
+        <text x="0" y="88" class="code-text" font-size="10" font-weight="600">Deployment Tx:</text>
+        <text x="120" y="88" class="code-text" font-size="9" fill="#475569">00a38d58b70c59fe828211a095c6ecdc4ae407b41f344f518bb4f03cb563975240</text>
+      </g>
+
+      
+      <rect x="14" y="132" width="510" height="24" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1" />
+      <text x="24" y="148" class="badge-text" fill="#166534">VERIFIED ON-CHAIN · Midnight Explorer: preprod.midnightexplorer.com/contracts/0xa0238d35...</text>
+    </g>
+  </g>
+
+  
+  
+  
+  <g transform="translate(35, 1600)">
+    <rect x="0" y="0" width="1130" height="50" rx="5" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1" />
+    <text x="20" y="22" class="badge-text" fill="#334155">ARCHITECTURAL HONESTY &amp; INTEGRITY GUARANTEES:</text>
+    <text x="20" y="38" class="card-desc" font-size="10.5">LOCAL DEMO DATA ≠ ON-CHAIN LEDGER · LOCAL TRANSACTION RECORD ≠ PROVIDER-CONFIRMED STATE · WITNESS IS EPHEMERAL &amp; CLIENT-ONLY</text>
+  </g>
+
+</svg>`;
+
+const outputPath = path.resolve('docs', 'assets', 'system-architecture.svg');
+fs.writeFileSync(outputPath, svg, 'utf8');
+console.log(`Generated architecture SVG at: ${outputPath} (${svg.length} bytes)`);

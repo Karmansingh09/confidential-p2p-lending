@@ -40,36 +40,11 @@ Traditional uncollateralized lending presents an unavoidable privacy dilemma:
 2. **Data Leakage Risk**: Surrendered documents are vulnerable to data breaches, identity theft, predatory pricing, and public blockchain surveillance.
 3. **The Midnight ZK Solution**: By leveraging Midnight's dual-state architecture (private off-chain state + public ledger state), borrowers generate client-side cryptographic zero-knowledge proofs. Lenders verify that the borrower meets the required creditworthiness threshold without ever seeing the underlying private financial figures.
 
-```
-+-------------------------------------------------------------------------+
-|                          BORROWER LOCAL MACHINE                         |
-|                                                                         |
-|  [ Private Financial Witness ]             [ Public Loan Request ]      |
-|    Annual Income: $85,000                   Required Threshold: $50,000 |
-|    (Kept in local memory only)              (Published on ledger)       |
-|                 \                                 /                     |
-|                  \                               /                      |
-|                   v                             v                       |
-|           +--------------------------------------------+                |
-|           |   Compact Zero-Knowledge Circuit Prover    |                |
-|           |    assert(privateValue >= threshold)       |                |
-|           +--------------------------------------------+                |
-|                                  |                                      |
-|                                  v                                      |
-|                       [ Zero-Knowledge Proof ]                          |
-+-------------------------------------------------------------------------+
-                                   |
-                     Submits ZK Proof (No Secret Data)
-                                   |
-                                   v
-+-------------------------------------------------------------------------+
-|                        MIDNIGHT PREPROD LEDGER                          |
-|                                                                         |
-|   * Verifies proof against verification key in consensus                |
-|   * Transitions status to REQUESTED (isEligibilityVerified = true)      |
-|   * Public visibility: Verification Boolean ONLY (No Income Figure)     |
-+-------------------------------------------------------------------------+
-```
+---
+
+## System Architecture
+
+![Confidential P2P Micro-Lending Desk System Architecture](docs/assets/system-architecture.svg)
 
 ---
 

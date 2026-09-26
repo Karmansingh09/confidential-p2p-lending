@@ -1,0 +1,23 @@
+[profile]
+default_network = "preprod"
+artifacts_dir   = "contracts/managed"
+deployments_dir = "deployments/compact"
+
+# ---------- Networks ----------
+[networks.preprod]
+network_id      = "preprod"
+indexer         = "https://indexer.preprod.midnight.network/api/v4/graphql"
+indexer_ws      = "wss://indexer.preprod.midnight.network/api/v4/graphql/ws"
+node            = "https://rpc.preprod.midnight.network"
+node_ws         = "wss://rpc.preprod.midnight.network"
+proof_server    = "auto"
+explorer        = "https://preprod.midnightexplorer.com"
+sync_timeout    = 5400   # seconds
+sync_batch_size = 5000   # dust/shielded sync batch size
+
+# ---------- Contracts ----------
+[contracts.ConfidentialP2PLending]
+artifact         = "contracts/managed"
+signing_key_file = "./deploy/ConfidentialP2PLending.signingkey"
+args             = { module = "./deploy/args.js", export = "default" }
+witnesses        = { module = "./deploy/witnesses.js", export = "default" }

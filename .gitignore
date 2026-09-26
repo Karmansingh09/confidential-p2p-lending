@@ -27,6 +27,8 @@ lerna-debug.log*
 *.key
 *.pkcs12
 *.pfx
+*.signingkey
+*.seed
 *.keystore
 secrets/
 keys/
@@ -34,11 +36,18 @@ credentials*.json
 *private_key*
 *privatekey*
 wallet.json
+.states/
+deployments/*
+!deployments/compact/
+deployments/compact/*
+!deployments/compact/*.json
+.compact/
 
 # Midnight / ZK / Compiler artifacts
 zk-proofs/
 managed/
 contract/managed/
+midnight-level-db/
 
 # Editor and OS
 .DS_Store

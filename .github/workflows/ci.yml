@@ -8,8 +8,38 @@ on:
 
 jobs:
   validate:
-    name: Validate Repository
+    name: Build, Typecheck & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Test Suite (npm test)
+        run: npm test
+
+      - name: Contract Typecheck
+        run: npm run typecheck:contracts
+
+      - name: Contract Build
+        run: |
+          if command -v compact >/dev/null 2>&1; then
+            npm run build:contracts
+          else
+            echo "Compact CLI not found in PATH; compiling TypeScript contract bindings from managed artifacts..."
+            npx tsc --project contracts/tsconfig.json
+          fi
+
+      - name: Frontend Typecheck
+        run: npm run typecheck:frontend
+
+      - name: Frontend Build
+        run: npm run build:frontend

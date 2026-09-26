@@ -1,0 +1,12 @@
+{
+  "ConfidentialP2PLending": {
+    "status": "confirmed",
+    "address": "a0238d3594e1d74b3d5e85254239a34749bb9d4c7957f52b96e4c5a88fa0b8af",
+    "txId": "00a38d58b70c59fe828211a095c6ecdc4ae407b41f344f518bb4f03cb563975240",
+    "deployer": "3cd20baf49d3a2156ab48985cc4de72c1b52a2a6c228cb4616190b7d4e44f532",
+    "artifact": "contracts/managed",
+    "txHash": "489ea6d715d9a06c4cf3c0e658b4267d6d784e7657bc1609ccc78de904627eaa",
+    "blockHeight": 2706926,
+    "timestamp": "2026-09-25T18:00:44.915Z"
+  }
+}

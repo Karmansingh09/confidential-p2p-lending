@@ -26,7 +26,7 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
 
   const isConnected = accountContext.connectionStatus === 'CONNECTED';
   const isContractVerified = verificationResult.status === 'VERIFIED';
-  const isProto = provider.isPrototype;
+  const isProto = provider.isPrototype || netConfig.isPrototype;
   const networkNameDisplay = isProto
     ? 'Local Prototype (In-Memory)'
     : 'MIDNIGHT PREPROD';
@@ -127,7 +127,9 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
                     <div className="node-icon-dot dot-contract" />
                     <div className="node-info">
                       <span className="node-label">Contract</span>
-                      <span className="node-sub font-mono">Compact Facade</span>
+                      <span className="node-sub font-mono">
+                        {isProto ? 'Compact Facade' : 'ConfidentialP2PLending'}
+                      </span>
                     </div>
                     <span className={`node-status-tag ${isContractVerified ? 'status-tag-success' : 'status-tag-warning'}`}>
                       {isContractVerified ? 'VERIFIED' : 'NOT VERIFIED'}

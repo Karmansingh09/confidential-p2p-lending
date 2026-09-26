@@ -251,16 +251,25 @@ export class NetworkConfigService {
   private activeConfig: NetworkConfig;
   private listeners: Set<ConfigListener> = new Set();
 
-  constructor(initialConfig: NetworkConfig = { ...DEFAULT_LOCAL_NETWORK_CONFIG }) {
-    const validation = validateNetworkConfig(initialConfig);
+  constructor(initialConfig?: NetworkConfig) {
+    let resolvedConfig: NetworkConfig;
+    if (initialConfig) {
+      resolvedConfig = initialConfig;
+    } else if (typeof window !== 'undefined') {
+      resolvedConfig = { ...OFFICIAL_PREPROD_NETWORK_CONFIG };
+    } else {
+      resolvedConfig = { ...DEFAULT_LOCAL_NETWORK_CONFIG };
+    }
+
+    const validation = validateNetworkConfig(resolvedConfig);
     if (!validation.valid) {
       this.activeConfig = {
-        ...initialConfig,
+        ...resolvedConfig,
         status: 'INVALID',
       };
     } else {
       this.activeConfig = {
-        ...initialConfig,
+        ...resolvedConfig,
         status: 'CONFIGURED',
       };
     }
@@ -331,10 +340,13 @@ export class NetworkConfigService {
   }
 
   /**
-   * Resets active configuration back to default Local Prototype configuration.
+   * Resets active configuration back to default configuration (Preprod in browser, Local Prototype in Node/tests).
    */
   resetNetworkConfig(): void {
-    this.activeConfig = { ...DEFAULT_LOCAL_NETWORK_CONFIG };
+    const defaultCfg = typeof window !== 'undefined'
+      ? { ...OFFICIAL_PREPROD_NETWORK_CONFIG }
+      : { ...DEFAULT_LOCAL_NETWORK_CONFIG };
+    this.activeConfig = { ...defaultCfg };
     this.notifyListeners();
   }
 

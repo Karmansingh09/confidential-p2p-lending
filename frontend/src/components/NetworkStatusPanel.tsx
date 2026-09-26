@@ -53,6 +53,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
   const isWalletConnected = isConnected || session.status === 'CONNECTED';
   const isWalletDetected = session.detectionStatus === 'DETECTED' || connectorDiscovery.detected || provider.isPrototype;
   const isConnectorSupported = session.detectionStatus !== 'UNSUPPORTED' && connectorDiscovery.compatible;
+  const isProto = provider.isPrototype || netConfig.isPrototype;
 
   const configStatusText =
     netConfig.status === 'CONFIGURED' ? 'VALID' : netConfig.status === 'INVALID' ? 'INVALID' : 'NOT CONFIGURED';
@@ -66,6 +67,22 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
       : netContext.isPrototype || readinessState === 'NOT_DETECTED' || readinessState === 'INCOMPATIBLE'
       ? 'UNSUPPORTED'
       : 'BLOCKED';
+
+  const accountAddress = session.account?.address || accountContext?.identity?.address;
+  const accountDisplayText = isProto
+    ? (accountContext?.identity?.displayName ?? 'Mock Borrower Account')
+    : isWalletConnected
+    ? (accountAddress
+        ? (accountAddress.length > 20
+            ? `${accountAddress.slice(0, 10)}...${accountAddress.slice(-8)}`
+            : accountAddress)
+        : 'Connected')
+    : 'Disconnected';
+  const accountTitle = isProto
+    ? 'Mock Borrower Account'
+    : isWalletConnected
+    ? (accountAddress || 'Connected')
+    : 'Disconnected';
 
   const verificationService = getContractVerificationService();
   const verificationResult = verificationService.getVerificationResult();
@@ -163,7 +180,10 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
       ? stateSnapshot.blockHeight.toString()
       : 'None (Unconfirmed / Prototype)';
   const stateAvailabilityText = stateSnapshot.stateAvailable ? 'Available' : 'Unavailable';
-  const stateReasonText = stateSnapshot.reason;
+  const stateReasonText =
+    deployment.contractAddress && stateSnapshot.reason === 'CONTRACT_NOT_CONFIGURED'
+      ? null
+      : stateSnapshot.reason;
 
   return (
     <div className="network-panels-container" data-testid="network-status-panel">
@@ -202,8 +222,8 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
             </div>
             <div className="infra-table-row">
               <span className="infra-key">Account</span>
-              <span className="infra-val font-mono">
-                {accountContext?.identity?.displayName ?? 'Mock Borrower Account'}
+              <span className="infra-val font-mono" title={accountTitle}>
+                {accountDisplayText}
               </span>
             </div>
           </div>
@@ -229,7 +249,9 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
             </div>
             <div className="infra-table-row">
               <span className="infra-key">On-chain transactions</span>
-              <span className="infra-val text-muted">Unavailable in Prototype Mode</span>
+              <span className="infra-val text-muted">
+                {isProto ? 'Unavailable in Prototype Mode' : (isWalletConnected ? 'Ready for Submissions' : 'Awaiting Lace Connection')}
+              </span>
             </div>
             <div className="infra-table-row">
               <span className="infra-key">Configuration</span>
@@ -291,44 +313,87 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
                       : a
                   )
                   .join(', ')}{' '}
-                (Requires Live Midnight Provider)
+                ({isProto ? 'Requires Live Midnight Provider' : 'Requires Connected Lace Wallet'})
               </span>
             </div>
           </div>
         </div>
 
-        {/* Honest Prototype Notice */}
-        <div className="honest-notice-strip font-mono">
-          <div className="notice-content">
-            <span className="notice-badge">SIMULATION ONLY</span>
-            <span className="notice-badge">
-              {isConnected ? 'PROTOTYPE ACCOUNT ACTIVE' : 'PROVIDER NOT CONNECTED'}
-            </span>
-            <span className="notice-text">
-              Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active.
-            </span>
+        {/* Honest Notice Strip */}
+        {isProto ? (
+          <div className="honest-notice-strip font-mono">
+            <div className="notice-content">
+              <span className="notice-badge">SIMULATION ONLY</span>
+              <span className="notice-badge">
+                {isConnected ? 'PROTOTYPE ACCOUNT ACTIVE' : 'PROVIDER NOT CONNECTED'}
+              </span>
+              <span className="notice-text">
+                Operating with a local prototype provider. Live Midnight Network nodes and Lace Wallet signatures are not active.
+              </span>
+            </div>
+            <div className="notice-actions">
+              {isConnected && onDisconnect && (
+                <button
+                  type="button"
+                  className="btn-notice-disconnect"
+                  onClick={onDisconnect}
+                >
+                  Disconnect Provider
+                </button>
+              )}
+              {!isConnected && onConnect && (
+                <button
+                  type="button"
+                  className="btn-notice-connect"
+                  onClick={() => onConnect()}
+                >
+                  Connect Prototype
+                </button>
+              )}
+            </div>
           </div>
-          <div className="notice-actions">
-            {isConnected && onDisconnect && (
-              <button
-                type="button"
-                className="btn-notice-disconnect"
-                onClick={onDisconnect}
-              >
-                Disconnect Provider
-              </button>
-            )}
-            {!isConnected && onConnect && (
-              <button
-                type="button"
-                className="btn-notice-connect"
-                onClick={onConnect}
-              >
-                Connect Prototype
-              </button>
-            )}
+        ) : (
+          <div className="honest-notice-strip font-mono">
+            <div className="notice-content">
+              <span className="notice-badge badge-accent">MIDNIGHT PREPROD</span>
+              <span className="notice-badge">
+                {isWalletConnected ? 'LACE WALLET CONNECTED' : 'PROVIDER NOT CONNECTED'}
+              </span>
+              <span className="notice-text">
+                {isWalletConnected
+                  ? 'Connected to Midnight Preprod with Midnight Lace. Contract address is configured (unverified on-chain); client ZK proof circuits are active.'
+                  : 'Targeting Midnight Preprod network with Midnight Lace adapter. Connect your Lace wallet to interact with on-chain contracts.'}
+              </span>
+            </div>
+            <div className="notice-actions">
+              {isWalletConnected && onDisconnect && (
+                <button
+                  type="button"
+                  className="btn-notice-disconnect"
+                  onClick={onDisconnect}
+                >
+                  Disconnect Lace
+                </button>
+              )}
+              {!isWalletConnected && (
+                <button
+                  type="button"
+                  className="btn-notice-connect"
+                  onClick={async () => {
+                    try {
+                      await sessionService.connect();
+                    } catch {
+                      // Handled in session status
+                    }
+                    if (onConnect) onConnect();
+                  }}
+                >
+                  Connect Lace
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {/* 2. CONTRACT READINESS SECTION */}
@@ -361,7 +426,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
             </div>
             <div className="spec-item">
               <span className="spec-label">Address</span>
-              <span className="spec-value font-mono">
+              <span className="spec-value font-mono" title={deployment.contractAddress ?? undefined}>
                 {deployment.contractAddress
                   ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
                   : 'UNCONFIGURED'}
@@ -394,7 +459,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           <div className="contract-specs-grid">
             <div className="spec-item">
               <span className="spec-label">Contract Address:</span>
-              <span className="spec-value font-mono">
+              <span className="spec-value font-mono" title={deployment.contractAddress ?? undefined}>
                 {deployment.contractAddress
                   ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
                   : 'Not Configured'}
@@ -448,7 +513,7 @@ export const NetworkStatusPanel: React.FC<NetworkStatusPanelProps> = ({
           <div className="contract-specs-grid">
             <div className="spec-item">
               <span className="spec-label">Contract Address:</span>
-              <span className="spec-value font-mono">
+              <span className="spec-value font-mono" title={deployment.contractAddress ?? undefined}>
                 {deployment.contractAddress
                   ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
                   : 'Not Configured'}

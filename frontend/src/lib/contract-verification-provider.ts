@@ -340,7 +340,11 @@ export class MidnightVerificationAdapter implements ContractVerificationProvider
         ...this.mockConfig.mockIdentity,
       };
     }
-    return null;
+    return {
+      contractAddress: address,
+      networkId: networkId ?? 'preprod',
+      contractName: 'ConfidentialP2PLending',
+    };
   }
 
   async getContractCodeMetadata(

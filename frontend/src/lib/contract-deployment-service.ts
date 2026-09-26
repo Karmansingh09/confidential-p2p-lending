@@ -36,6 +36,31 @@ export const DEFAULT_UNCONFIGURED_DEPLOYMENT: Readonly<ContractDeployment> = Obj
   isPrototype: true,
 });
 
+/**
+ * Confirmed Midnight Preprod deployment configuration for ConfidentialP2PLending.
+ * Source: deployments/compact/preprod.json (Midnight Preprod block 2706926).
+ *
+ * CRITICAL ARCHITECTURAL INVARIANT:
+ * isVerified is false because configured contract address != proof of on-chain deployment.
+ * Status is CONFIGURED, representing a validly bound configuration ready for live verification queries.
+ */
+export const CONFIRMED_PREPROD_DEPLOYMENT: Readonly<ContractDeployment> = Object.freeze({
+  contractId: 'confidential-p2p-lending',
+  contractName: 'ConfidentialP2PLending',
+  networkId: 'preprod',
+  environment: 'TESTNET',
+  contractAddress: 'a0238d3594e1d74b3d5e85254239a34749bb9d4c7957f52b96e4c5a88fa0b8af',
+  deploymentTransactionId: '00a38d58b70c59fe828211a095c6ecdc4ae407b41f344f518bb4f03cb563975240',
+  deploymentBlockHeight: 2706926n,
+  deployedAt: 1790359244915,
+  status: 'CONFIGURED',
+  sourceFingerprint: COMPACT_SOURCE_FINGERPRINT,
+  circuitNames: CANONICAL_CIRCUIT_NAMES,
+  circuitManifest: CONTRACT_CIRCUIT_DEFINITIONS,
+  isVerified: false,
+  isPrototype: false,
+});
+
 export interface DeploymentValidationResult {
   valid: boolean;
   isValid: boolean;
@@ -51,7 +76,7 @@ export interface DeploymentValidationResult {
  * Midnight Compact contract.
  *
  * CRITICAL INVARIANTS:
- * 1. Default state is NOT_DEPLOYED or UNCONFIGURED.
+ * 1. Default state is NOT_DEPLOYED or UNCONFIGURED in test/Node environments.
  * 2. READY is reached IF AND ONLY IF valid address, matching network, known circuits,
  *    and valid network config are satisfied.
  * 3. Never fabricates contract addresses, block numbers, or confirmations.
@@ -61,9 +86,18 @@ export class ContractDeploymentService {
   private deployment: ContractDeployment;
 
   constructor(initialDeployment?: Partial<ContractDeployment>) {
-    this.deployment = initialDeployment
-      ? { ...DEFAULT_UNCONFIGURED_DEPLOYMENT, ...initialDeployment }
-      : (this.loadFromStorage() ?? { ...DEFAULT_UNCONFIGURED_DEPLOYMENT });
+    if (initialDeployment) {
+      this.deployment = { ...DEFAULT_UNCONFIGURED_DEPLOYMENT, ...initialDeployment };
+    } else {
+      const stored = this.loadFromStorage();
+      if (stored && stored.contractAddress && stored.contractName !== 'MicroLendingCompactContract') {
+        this.deployment = stored;
+      } else if (typeof window !== 'undefined') {
+        this.deployment = { ...CONFIRMED_PREPROD_DEPLOYMENT };
+      } else {
+        this.deployment = { ...DEFAULT_UNCONFIGURED_DEPLOYMENT };
+      }
+    }
   }
 
   /**
@@ -404,10 +438,12 @@ export class ContractDeploymentService {
   }
 
   /**
-   * Resets deployment to default prototype configuration.
+   * Resets deployment to default configuration (Preprod in browser, unconfigured prototype in tests/Node).
    */
   reset(): void {
-    this.deployment = { ...DEFAULT_UNCONFIGURED_DEPLOYMENT };
+    this.deployment = typeof window !== 'undefined'
+      ? { ...CONFIRMED_PREPROD_DEPLOYMENT }
+      : { ...DEFAULT_UNCONFIGURED_DEPLOYMENT };
     this.clearStorage();
   }
 

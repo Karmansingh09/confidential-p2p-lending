@@ -45,8 +45,7 @@ deployments/compact/*
 
 # Midnight / ZK / Compiler artifacts
 zk-proofs/
-managed/
-contract/managed/
+!contracts/managed/
 midnight-level-db/
 
 # Editor and OS

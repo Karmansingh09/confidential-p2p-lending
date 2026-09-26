@@ -14,7 +14,7 @@
     "deploy:preprod": "node --experimental-strip-types scripts/deploy-preprod.ts",
     "diagnose:dust": "node --experimental-strip-types scripts/diagnose-dust-api.ts",
     "dev:frontend": "npm run dev --workspace=frontend",
-    "build:frontend": "npm run build --workspace=frontend",
+    "build:frontend": "tsc --project contracts/tsconfig.json && npm run build --workspace=frontend",
     "typecheck:frontend": "npm run typecheck --workspace=frontend",
     "test": "node --experimental-strip-types --test tests/*.test.js"
   }

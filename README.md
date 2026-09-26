@@ -388,6 +388,7 @@ The repository includes a clean, production-grade GitHub Actions CI workflow ([`
 - **Project**: Confidential P2P Micro-Lending Desk
 - **Track**: Midnight Network Zero-Knowledge dApp
 - **Network**: Midnight Preprod
+- **Live Demo**: https://confidential-p2p-lending-frontend.vercel.app/
 - **Deployed Contract Address**: `0xa0238d3594e1d74b3d5e85254239a34749bb9d4c7957f52b96e4c5a88fa0b8af`
 - **Explorer URL**: https://preprod.midnightexplorer.com/contracts/0xa0238d3594e1d74b3d5e85254239a34749bb9d4c7957f52b96e4c5a88fa0b8af
 - **Deployment Transaction Hash**: `489ea6d715d9a06c4cf3c0e658b4267d6d784e7657bc1609ccc78de904627eaa`

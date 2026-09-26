@@ -167,7 +167,7 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
 
         <div className="meta-cell">
           <span className="meta-label">ENVIRONMENT</span>
-          <span className="meta-value">{isProto ? 'Local Sandbox' : 'Midnight Preprod · Testnet'}</span>
+          <span className="meta-value">{isProto ? 'Local Sandbox' : 'Midnight Preprod'}</span>
         </div>
 
         <div className="meta-cell">

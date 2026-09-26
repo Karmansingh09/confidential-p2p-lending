@@ -74,7 +74,7 @@ export const SystemReadinessBadge: React.FC<SystemReadinessBadgeProps> = ({
                     <span className={`item-badge ${isNetworkConfigured ? 'badge-success' : 'badge-danger'}`}>{networkStatusLabel}</span>
                   </div>
                   <p className="item-desc">
-                    Target: {netConfig.networkName || 'Midnight Local'} ({netConfig.environment})
+                    Target: {netConfig.networkName || 'Midnight Local'} ({netConfig.environment === 'TESTNET' ? 'PREPROD' : netConfig.environment})
                   </p>
                 </div>
                 <div className="readiness-item-card">

@@ -454,7 +454,7 @@ export const WalletSessionPanel: React.FC<WalletSessionPanelProps> = ({
         <div style={{ background: '#0f172a', padding: '10px 12px', borderRadius: '6px' }}>
           <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase' }}>Network</div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>
-            {netConfig.environment}
+            {netConfig.environment === 'TESTNET' ? 'PREPROD' : netConfig.environment}
           </div>
         </div>
 

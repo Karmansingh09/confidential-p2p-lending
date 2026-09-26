@@ -326,7 +326,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
               <div className="enclave-card-body">
                 <div className="enclave-card-row">
                   <span className="enclave-key">NETWORK</span>
-                  <span className="enclave-val text-accent">{netConfig.environment || 'LOCAL'}</span>
+                  <span className="enclave-val text-accent">{netConfig.environment === 'TESTNET' ? 'PREPROD' : (netConfig.environment || 'LOCAL')}</span>
                 </div>
                 <div className="enclave-card-row">
                   <span className="enclave-key">CIRCUITS</span>
@@ -436,7 +436,7 @@ const AppShellInner: React.FC<AppShellProps> = ({
               title="Inspect Network State"
             >
               <span className={`net-dot ${netConfig.status === 'CONFIGURED' ? 'net-dot-active' : 'net-dot-warn'}`} />
-              <span className="net-label font-mono">{netConfig.environment || 'MOCK'}</span>
+              <span className="net-label font-mono">{netConfig.environment === 'TESTNET' ? 'PREPROD' : (netConfig.environment || 'MOCK')}</span>
             </div>
 
             {/* Persona Switcher Dropdown */}

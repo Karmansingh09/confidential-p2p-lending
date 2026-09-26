@@ -32,7 +32,7 @@ export const NetworkPage: React.FC<NetworkPageProps> = ({
     : 'MIDNIGHT PREPROD';
   const environmentDisplay = isProto
     ? 'Local Sandbox'
-    : 'Midnight Preprod · Testnet';
+    : 'Midnight Preprod';
 
   return (
     <div className="network-workspace" data-testid="network-page">

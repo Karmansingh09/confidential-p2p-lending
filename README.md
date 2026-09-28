@@ -444,3 +444,41 @@ User feedback is used to identify usability issues, wallet and transaction probl
 - **GitHub Repository:** https://github.com/Karmansingh09/confidential-p2p-lending
 - **Network:** Midnight Preprod
 
+---
+
+## RISEIN Level 6 — Supermoon
+
+### User Testing & Feedback
+
+The same Confidential P2P Lending MVP continues to be tested on Midnight Preprod with an expanded user base and an ongoing feedback loop.
+
+**User Feedback & Testing Responses:**
+https://docs.google.com/spreadsheets/d/1ikXAQwpAIn9SIG4GDFcGFDgfZyk141VGcpVV6BLAUAk/edit?usp=sharing
+
+The response sheet is continuously updated as additional Preprod users test the MVP.
+
+### Level 6 Requirements
+
+The Level 6 target is:
+
+- 70 Preprod users with verifiable public wallet addresses
+- Feedback loop documented
+- Updated project documentation
+- Minimum 30 meaningful commits
+
+The project already has more than 30 meaningful commits.
+
+### Preprod User Testing
+
+Additional users are being onboarded to the same Midnight Preprod MVP. Public Preprod wallet addresses and structured feedback are collected through the linked response sheet.
+
+Only public wallet addresses are collected. No seed phrases, private keys, passwords, encryption keys, or other sensitive wallet information are collected.
+
+### Level 6 Resources
+
+- **Live Demo:** https://confidential-p2p-lending-frontend.vercel.app/
+- **User Feedback & Testing Responses:** https://docs.google.com/spreadsheets/d/1ikXAQwpAIn9SIG4GDFcGFDgfZyk141VGcpVV6BLAUAk/edit?usp=sharing
+- **GitHub Repository:** https://github.com/Karmansingh09/confidential-p2p-lending
+- **Network:** Midnight Preprod
+
+

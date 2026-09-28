@@ -404,3 +404,43 @@ https://drive.google.com/file/d/1K4HS6xe2NcT0on_8aJgcPJTuo56B3DOH/view?usp=drive
 
 𝕏 Confidential P2P Lending
 https://x.com/ConfP2PLending
+
+---
+
+## RISEIN Level 5 — Users & Feedback
+
+### User Testing & Feedback
+
+The project uses structured user testing to collect feedback on the Confidential P2P Lending MVP running on Midnight Preprod.
+
+**User Feedback & Testing Responses:**
+https://docs.google.com/spreadsheets/d/1ikXAQwpAIn9SIG4GDFcGFDgfZyk141VGcpVV6BLAUAk/edit?usp=sharing
+
+The feedback collection covers:
+- Midnight Preprod wallet address
+- MVP testing
+- User experience
+- Wallet connection and readiness
+- Transaction experience
+- UI issues
+- Suggestions for improvement
+
+Only public wallet addresses are collected. No seed phrases, private keys, passwords, encryption keys, or other sensitive wallet information are collected.
+
+### Preprod User Testing
+
+The Level 5 user-testing target is 50 users interacting with the MVP on Midnight Preprod.
+
+Public wallet addresses collected from testers are maintained in the linked feedback response sheet.
+
+### Feedback Loop
+
+User feedback is used to identify usability issues, wallet and transaction problems, and areas where the MVP can be improved. Feedback is documented alongside the testing responses to provide a traceable record of user testing.
+
+### Level 5 Resources
+
+- **Live Demo:** https://confidential-p2p-lending-frontend.vercel.app/
+- **User Feedback & Testing Responses:** https://docs.google.com/spreadsheets/d/1ikXAQwpAIn9SIG4GDFcGFDgfZyk141VGcpVV6BLAUAk/edit?usp=sharing
+- **GitHub Repository:** https://github.com/Karmansingh09/confidential-p2p-lending
+- **Network:** Midnight Preprod
+
